@@ -71,7 +71,8 @@ final class StartSeedTests: XCTestCase {
         difficulty: Int = 2,
         isHold: Bool = false,
         defaultReps: Int? = 10,
-        defaultDurationSeconds: Int? = nil
+        defaultDurationSeconds: Int? = nil,
+        advancementCriteria: String = "3x15 clean reps"
     ) -> Exercise {
         Exercise(
             id: id,
@@ -91,7 +92,7 @@ final class StartSeedTests: XCTestCase {
             progressionOrder: 0,
             regressionId: nil,
             progressionId: nil,
-            advancementCriteria: "3x15 clean reps",
+            advancementCriteria: advancementCriteria,
             apartmentFriendly: true
         )
     }
@@ -815,25 +816,26 @@ final class StartSeedTests: XCTestCase {
 
     func testNoHistoryTargetScalesRepsAndSetsByTheSeed() {
         let target = AdaptiveOverload.target(
-            for: exercise(id: "ex", defaultReps: 10),
+            for: exercise(id: "ex", defaultReps: 10, advancementCriteria: "3x50 clean reps"),
             recentLogs: [],
             startingRepMultiplier: 1.30,
             startingSets: 4
         )
-        XCTAssertEqual(target.reps, 13, "10 default reps x1.30 rounds to 13")
+        XCTAssertEqual(target.reps, 15, "10 default reps x1.30 is 13, landing on the nearest grid number, 15 (ADR-0011)")
         XCTAssertEqual(target.sets, 4)
     }
 
     func testNoHistoryHoldTargetScalesByTheSeed() {
         let target = AdaptiveOverload.target(
             for: exercise(
-                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 20
+                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 20,
+                advancementCriteria: "3x60s hold"
             ),
             recentLogs: [],
             startingRepMultiplier: 1.15,
             startingSets: 3
         )
-        XCTAssertEqual(target.durationSeconds, 23, "20 default seconds x1.15 rounds to 23")
+        XCTAssertEqual(target.durationSeconds, 25, "20 default seconds x1.15 is 23, landing on the nearest grid number, 25 (ADR-0011)")
         XCTAssertNil(target.reps)
         XCTAssertEqual(target.sets, 3)
     }
@@ -849,14 +851,14 @@ final class StartSeedTests: XCTestCase {
             startingSets: AdaptiveOverload.defaultSets
         )
         XCTAssertEqual(neutral, unseeded)
-        XCTAssertEqual(unseeded.reps, 12)
+        XCTAssertEqual(unseeded.reps, 10, "a default of 12 is served rounded down onto the grid (ADR-0011)")
         XCTAssertEqual(unseeded.sets, AdaptiveOverload.defaultSets)
     }
 
     /// A runaway seed can never produce an absurd prescription: the existing rep/hold/set rails hold.
     func testSeededTargetIsClampedToTheRails() {
         let reps = AdaptiveOverload.target(
-            for: exercise(id: "ex", defaultReps: 40),
+            for: exercise(id: "ex", defaultReps: 40, advancementCriteria: "3x99 clean reps"),
             recentLogs: [],
             startingRepMultiplier: 10,
             startingSets: 9
@@ -865,7 +867,10 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(reps.sets, AdaptiveOverload.maxSets)
 
         let hold = AdaptiveOverload.target(
-            for: exercise(id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 90),
+            for: exercise(
+                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 90,
+                advancementCriteria: "3x999s hold"
+            ),
             recentLogs: [],
             startingRepMultiplier: 10,
             startingSets: 9
@@ -890,13 +895,61 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(seeded.sets, 3, "the set count tracks what the user sustained, not the seed")
     }
 
+    /// A seed never lifts a first prescription past one step below the move's advancement criterion,
+    /// and never below the floor of 10, so an advanced user cannot clear a new move in its first
+    /// session (ADR-0011). These are the moves whose x1.30 seed used to land on their own criterion:
+    /// push_diamond and push_archer (per side), 10 seeded to 15 against "3x15", and squat_bodyweight,
+    /// 15 seeded to 20 against "3x20".
+    func testASeededFirstPrescriptionStopsOneStepBelowTheMovesCriterion() async throws {
+        let library = try await library()
+        let seed = SessionPolicy.ColdStartContract.startingRepMultiplier(for: .advanced)
+        let sets = SessionPolicy.ColdStartContract.startingSets(for: .advanced)
+        for (id, expected) in [("push_diamond", 10), ("push_archer", 10), ("squat_bodyweight", 15)] {
+            let movement = try XCTUnwrap(library.first { $0.id == id })
+            let target = AdaptiveOverload.target(
+                for: movement, recentLogs: [], startingRepMultiplier: seed, startingSets: sets
+            )
+            XCTAssertEqual(target.reps, expected, "\(id): one step below its \"\(movement.advancementCriteria)\"")
+            XCTAssertEqual(target.sets, sets, id)
+        }
+        XCTAssertEqual(try XCTUnwrap(library.first { $0.id == "push_archer" }).isPerSide, true, "the archer's 10 is per side")
+    }
+
+    /// No catalog movement's first prescription, at any fitness level's Start Seed, clears its own
+    /// advancement criterion when performed as prescribed: every move takes more than one session.
+    func testNoFirstPrescriptionClearsItsMoveInOneSession() async throws {
+        for movement in try await library() {
+            let criteria = try XCTUnwrap(AdvancementCriteria(parsing: movement.advancementCriteria), movement.id)
+            for level in FitnessLevel.allCases {
+                let target = AdaptiveOverload.target(
+                    for: movement,
+                    recentLogs: [],
+                    startingRepMultiplier: SessionPolicy.ColdStartContract.startingRepMultiplier(for: level),
+                    startingSets: SessionPolicy.ColdStartContract.startingSets(for: level)
+                )
+                let performed = LoggedExercise(
+                    id: UUID(),
+                    exerciseId: movement.id,
+                    pillar: movement.pillar,
+                    movementPattern: movement.movementPattern,
+                    completedSets: Array(
+                        repeating: CompletedSet(reps: target.reps, durationSeconds: target.durationSeconds),
+                        count: target.sets
+                    ),
+                    skipped: false
+                )
+                XCTAssertFalse(criteria.isMet(by: performed, isHold: movement.isHold), "\(movement.id) at \(level)")
+            }
+        }
+    }
+
     // MARK: - The safety net: the Asymmetric Ramp still backs off fast
 
     /// An over-reported fitness level is corrected downward within one cycle: after a seeded first
     /// session rated `too_hard`, the next target drops below demonstrated capacity - and drops by more
     /// than a `too_easy` would climb, so the seed can never trap a user at an unsustainable volume.
     func testOverReportedLevelSelfCorrectsWithinOneCycle() {
-        let movement = exercise(id: "ex", defaultReps: 10)
+        let movement = exercise(id: "ex", defaultReps: 10, advancementCriteria: "3x50 clean reps")
 
         // The seeded advanced first prescription, which the user then works and rates.
         let seeded = AdaptiveOverload.target(
@@ -921,9 +974,11 @@ final class StartSeedTests: XCTestCase {
         )
 
         XCTAssertLessThan(eased.reps!, seeded.reps!, "a too-hard seeded session eases within one cycle")
-        XCTAssertGreaterThan(
+        // On the grid both directions move one step of five (ADR-0011); the back-off is still the faster
+        // one because it takes one session, while a climb from "just right" takes three.
+        XCTAssertGreaterThanOrEqual(
             seeded.reps! - eased.reps!, intensified.reps! - seeded.reps!,
-            "the ramp still backs off faster than it climbs"
+            "the back-off is never smaller than the climb"
         )
 
         // A skip of the seeded movement is the same eager down-signal.
@@ -1101,25 +1156,29 @@ final class StartSeedTests: XCTestCase {
 
     /// A mid-session swap keeps the session's Start Seed: the substitute's no-history target is sized
     /// by the same seed the rest of the lineup was, instead of silently reverting to the neutral x1.0.
+    /// Pinned on timed holds, since the cap one step below a move's criterion (ADR-0011) holds every
+    /// rep-based catalog move's seeded first number at its own default: an advanced user's hollow hold
+    /// swaps to the forearm plank, whose seed lifts it from 30 to 40 seconds.
     func testSwapKeepsTheSessionsStartSeed() async throws {
         let library = try await library()
         let user = freshUser(level: .advanced)
         let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
-        let original = try XCTUnwrap(library.first { $0.id == "push_diamond" })
+        let original = try XCTUnwrap(library.first { $0.id == "core_hollow_hold" })
+        let plank = try XCTUnwrap(library.first { $0.id == "core_forearm_plank" })
         let seed = ColdStartOverride.volumeSeed(user: user, sessionPolicy: policy, recentLogs: [])
 
         let slot = PrescribedExercise(
             id: UUID(),
             exercise: original,
             sets: seed.sets,
-            reps: AdaptiveOverload.target(
+            reps: nil,
+            durationSeconds: AdaptiveOverload.target(
                 for: original,
                 recentLogs: [],
                 startingRepMultiplier: seed.repMultiplier,
                 startingSets: seed.sets
-            ).reps,
-            durationSeconds: nil,
-            restSeconds: SessionAssembly.strengthRestSeconds
+            ).durationSeconds,
+            restSeconds: SessionAssembly.roundRestSeconds
         )
         let session = Workout(
             id: UUID(),
@@ -1131,34 +1190,24 @@ final class StartSeedTests: XCTestCase {
             blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])]
         )
 
-        let seeded = ExerciseSwap.swap(
-            slot, in: session, user: user, library: library, recentLogs: [], sessionPolicy: policy
-        )
-        guard case .substituted(let substitute) = seeded else {
-            return XCTFail("the advanced push slot must have an in-band substitute")
+        func substitute(_ policy: SessionPolicy) -> PrescribedExercise? {
+            let outcome = ExerciseSwap.swap(
+                slot, in: session, user: user, library: [original, plank], recentLogs: [], sessionPolicy: policy
+            )
+            guard case .substituted(let substitute) = outcome else { return nil }
+            return substitute
         }
-        let defaultReps = try XCTUnwrap(substitute.exercise.defaultReps)
-        XCTAssertEqual(
-            substitute.reps,
-            Int((Double(defaultReps) * seed.repMultiplier).rounded()),
-            "the substitute must carry the session's Start Seed, not the neutral seed"
-        )
 
+        let seeded = try XCTUnwrap(substitute(policy), "the hollow-hold slot must swap to the forearm plank")
+        XCTAssertEqual(seeded.exercise.id, plank.id)
+        XCTAssertEqual(seeded.durationSeconds, 40,
+                       "the substitute must carry the session's Start Seed: 30 seconds x1.30 lands on 40")
         // Without the policy the same swap falls back to the neutral seed - the exact divergence this
         // seam exists to close.
-        let unseeded = ExerciseSwap.swap(slot, in: session, user: user, library: library, recentLogs: [])
-        guard case .substituted(let neutral) = unseeded else {
-            return XCTFail("the unseeded swap must still substitute")
-        }
-        // Each side is measured against its *own* movement's default, because the two runs need not pick
-        // the same peer: the seed moves every candidate's per-set work, and with it which peer fits the
-        // slot's time budget best. What must hold either way is that the seeded run opens above the
-        // movement's default and the unseeded run opens exactly at it.
-        XCTAssertEqual(
-            neutral.reps, try XCTUnwrap(neutral.exercise.defaultReps),
-            "the neutral seed opens at the movement's own default"
-        )
-        XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), defaultReps)
+        let neutral = try XCTUnwrap(substitute(.default), "the unseeded swap must still substitute")
+        XCTAssertEqual(neutral.exercise.id, plank.id)
+        XCTAssertEqual(neutral.durationSeconds, plank.defaultDurationSeconds,
+                       "the neutral seed opens at the movement's own default")
     }
 
     // MARK: - The seeded target is reflected in the planned wall-clock
@@ -1216,41 +1265,43 @@ final class StartSeedTests: XCTestCase {
     ///
     /// Since US-CC08 a **rep-based** movement's authored estimate is scaled by
     /// `workPaceGenerosityFactor` (this is a runtime window, not just a planning proxy), so the sweep
-    /// measures each movement against its own *paced* estimate. A **hold** is unscaled: its per-second
-    /// cost is definitional, not estimated, so every hold number below is exactly what it was.
+    /// measures each movement against its own *paced* estimate. A **hold** is not split at all: it costs
+    /// exactly the seconds the player runs - one leg per side and the "Switch sides" beat between them,
+    /// with no setup, since every hold starts itself straight after its get-ready beat (ADR-0010).
     func testWorkPerSetSplitsTheEstimateIntoSetupPlusPerUnitWork() async throws {
         let library = try await library()
-        /// The authored estimate as the model now prices it: paced for a rep-based movement, untouched
-        /// for a hold.
-        func pacedEstimate(_ movement: Exercise) -> Int {
+        let beat = SessionAssembly.switchSidesSeconds
+        /// What the model prices a default-sized set at: the authored estimate, paced, for a rep-based
+        /// movement; the played seconds for a hold.
+        func pricedDefault(_ movement: Exercise, baseline: Int) -> Int {
             movement.isHold
-                ? movement.estimatedTimePerSetSeconds
+                ? movement.sidesPerSet * baseline + (movement.sidesPerSet - 1) * beat
                 : Int((Double(movement.estimatedTimePerSetSeconds) * SessionAssembly.workPaceGenerosityFactor).rounded())
         }
 
-        // A hold's per-unit cost is one second of work per prescribed second *per side*: a "30 second"
-        // 90/90 is 30s each way, so its 70s estimate leaves 10s of setup, not 40s.
+        // A hold costs one second per prescribed second *per side*, plus the beat between the sides: a
+        // "30 second" 90/90 is 30s each way and the switch, never the 10s of setup its estimate implies.
         let hip = try XCTUnwrap(library.first { $0.id == "mobility_9090_hip" })
         XCTAssertEqual(hip.sidesPerSet, 2)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 30), 70)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 40), 90)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 30), 60 + beat)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 40), 80 + beat)
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: AdaptiveOverload.maxHoldSeconds),
-            10 + 2 * AdaptiveOverload.maxHoldSeconds,
-            "a hold clamped to the safety ceiling costs its setup plus both sides of the hold"
+            2 * AdaptiveOverload.maxHoldSeconds + beat,
+            "a hold clamped to the safety ceiling costs both sides of the hold and the switch between them"
         )
 
         // The case that exposed the per-side-blind split: "3x30s hold per side" grown to 40s is 80s of
-        // holding plus 5s of setup. Charging it 65s under-counted a single slot by 60s over three sets.
+        // holding plus the switch. Charging it 65s under-counted a single slot by 60s over three sets.
         let sidePlank = try XCTUnwrap(library.first { $0.id == "core_side_plank" })
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 20), 45)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 40), 85)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 20), 40 + beat)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 40), 80 + beat)
 
-        // A single-sided hold is unchanged: 35s on a 12s default is 23s of setup plus the hold.
+        // A single-sided hold costs the hold alone, whatever setup its authored estimate implies.
         let tuckLSit = try XCTUnwrap(library.first { $0.id == "core_tuck_l_sit" })
         XCTAssertEqual(tuckLSit.sidesPerSet, 1)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 12), 35)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 20), 43)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 12), 12)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 20), 20)
 
         // A rep-based movement takes the fixed setup and derives its cadence from its own estimate:
         // 40s over 15 reps leaves 30s of work, so 2s a rep, and 30 reps costs 10 + 60 - each then paced
@@ -1270,12 +1321,12 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 5, durationSeconds: nil), paced(50))
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 8, durationSeconds: nil), paced(10 + 8 * 8))
 
-        // Every movement in the catalog reproduces its own authored estimate at its own default, and its
-        // implied setup is bounded on both sides: never negative (which would over-charge a grown set as
-        // strict proportionality did), and - for a rep-based movement, whose setup is *assumed* rather
-        // than observed - never more than `maxSetupShareOfEstimate` of the estimate, which is how a
-        // grown set gets under-charged. A hold's setup is the authored remainder, so it is bounded
-        // instead by the physical floor below.
+        // Every rep-based movement in the catalog reproduces its own authored estimate at its own
+        // default, and every hold its played seconds, and the implied setup is bounded on both sides:
+        // never negative (which would over-charge a grown set as strict proportionality did), and - for
+        // a rep-based movement, whose setup is *assumed* rather than observed - never more than
+        // `maxSetupShareOfEstimate` of the estimate, which is how a grown set gets under-charged. A
+        // hold carries no setup, so it is bounded instead by the physical floor below.
         for movement in library {
             guard let baseline = movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps,
                   baseline > 0 else { continue }
@@ -1288,10 +1339,10 @@ final class StartSeedTests: XCTestCase {
                 )
             }
 
-            let priced = pacedEstimate(movement)
+            let priced = pricedDefault(movement, baseline: baseline)
             XCTAssertEqual(
                 work(at: baseline), priced,
-                "\(movement.id) must price its own default set at its authored estimate, paced"
+                "\(movement.id) must price its own default set at its authored estimate, paced, or its played seconds"
             )
             // work(2×baseline) = setup + 2 × perUnit × baseline = 2 × estimate - setup, so the model's
             // own implied setup is readable straight off the doubled set. Reading it against the *paced*
@@ -1315,7 +1366,8 @@ final class StartSeedTests: XCTestCase {
                 )
             } else {
                 XCTAssertEqual(
-                    work(at: baseline), estimate,
+                    work(at: baseline),
+                    movement.sidesPerSet * baseline + (movement.sidesPerSet - 1) * beat,
                     "\(movement.id) is a hold: its per-second cost is definitional, so the pacing factor leaves it alone"
                 )
             }
@@ -1424,17 +1476,25 @@ final class StartSeedTests: XCTestCase {
                 + "(got \(advanced.exercise.id) vs \(beginner.exercise.id))"
         )
 
-        // Volume: 4 sets at ~x1.3 the movement's own default reps.
+        // Volume: 4 sets, the lead's reps at the default the cap one step below its criterion holds
+        // every rep-based catalog move to (ADR-0011), and the block's timed holds lifted by the x1.30
+        // seed above their own defaults.
         XCTAssertEqual(advanced.sets, SessionPolicy.ColdStartContract.startingSets(for: .advanced))
-        let defaultReps = try XCTUnwrap(advanced.exercise.defaultReps)
-        XCTAssertEqual(
-            advanced.reps,
-            Int((Double(defaultReps) * 1.30).rounded()),
-            "the advanced first prescription carries the x1.30 volume seed"
-        )
+        XCTAssertEqual(advanced.reps, try Self.gridSeeded(advanced.exercise, by: 1.30))
+        let advancedStrength = try XCTUnwrap(advancedBlocks.first { $0.category == .strength })
+        let holds = (advancedStrength.items + advancedStrength.reserve).filter(\.exercise.isHold)
+        XCTAssertFalse(holds.isEmpty, "the advanced strength block offers a timed hold")
+        for hold in holds {
+            let ownDefault = AdaptiveOverload.onGrid(
+                try XCTUnwrap(hold.exercise.defaultDurationSeconds), isHold: true, sides: hold.exercise.sidesPerSet
+            )
+            XCTAssertGreaterThan(try XCTUnwrap(hold.durationSeconds), ownDefault,
+                                 "\(hold.exercise.id) carries the x1.30 volume seed")
+            XCTAssertEqual(hold.durationSeconds, try Self.gridSeeded(hold.exercise, by: 1.30), hold.exercise.id)
+        }
 
-        // The beginner is untouched: their own default reps over the default set count.
-        XCTAssertEqual(beginner.reps, beginner.exercise.defaultReps)
+        // The beginner is untouched: their own default reps (on the grid) over the default set count.
+        XCTAssertEqual(beginner.reps, try Self.gridSeeded(beginner.exercise, by: 1.0))
         XCTAssertEqual(beginner.sets, AdaptiveOverload.defaultSets)
 
         // The bookends are never seeded: the same number of movements for both levels, one set each at the
@@ -1653,5 +1713,19 @@ final class StartSeedTests: XCTestCase {
         }
 
         XCTAssertEqual(signature(), signature())
+    }
+
+    /// A movement's default (reps, or hold seconds) seeded by `multiplier` the way Step 6 serves it
+    /// (ADR-0011): the default rounded down onto the grid of five (never below ten), scaled, landed on
+    /// the nearest grid number, and never lifted past one step below the movement's advancement criterion.
+    private static func gridSeeded(_ movement: Exercise, by multiplier: Double) throws -> Int {
+        let isHold = movement.isHold
+        let sides = movement.sidesPerSet
+        let raw = try XCTUnwrap(isHold ? movement.defaultDurationSeconds : movement.defaultReps)
+        let base = AdaptiveOverload.onGrid(raw, isHold: isHold, sides: sides)
+        let nearest = AdaptiveOverload.onGrid(Int((Double(base) * multiplier / 5).rounded()) * 5, isHold: isHold, sides: sides)
+        let criteria = try XCTUnwrap(AdvancementCriteria(parsing: movement.advancementCriteria))
+        let belowCriterion = AdaptiveOverload.onGrid(criteria.target - AdaptiveOverload.step, isHold: isHold, sides: sides)
+        return min(nearest, max(base, belowCriterion))
     }
 }

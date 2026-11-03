@@ -18,6 +18,10 @@ import XCTest
 /// adding any per-set completion/difficulty field trips it, the same build-time-fact enforcement pattern
 /// as `NoManualModeGuardTests` and `UITestLaunchGuardTests`, living in the routinely-run unit bundle for
 /// the same reason (the gate is `-scheme RepToday test`).
+///
+/// ADR-0011 adds one post-session, per-*move* signal beside the rating: after "too hard" the completion
+/// screen asks which moves the user could not finish, stored as `LoggedExercise.couldNotFinish`. The
+/// second test pins `LoggedExercise` to its fields plus that one flag, so the narrowing goes no further.
 final class NoPerSetCompletionTrackingGuardTests: XCTestCase {
 
     func testCompletedSetHasNoPerSetCompletionTrackingField() {
@@ -35,6 +39,31 @@ final class NoPerSetCompletionTrackingGuardTests: XCTestCase {
             and the end-of-session perceived-difficulty rating (US-L02, `rate`) is the sole adaptation \
             signal into the Asymmetric Ramp. Remove the per-set field - a finer signal is exactly what this \
             guard exists to keep from shipping.
+            """
+        )
+    }
+
+    /// ADR-0011 narrows this guard by exactly one field: `LoggedExercise.couldNotFinish`, the completion
+    /// screen's post-session "couldn't finish" mark - one optional flag per *move*, set only after a
+    /// "too hard" rating, never per set. Any other new field on the logged move is still refused, so a
+    /// per-set or per-move "did they really do it" record cannot slip in beside it.
+    func testLoggedExerciseCarriesOnlyThePostSessionCouldNotFinishMark() {
+        let allowed: Set<String> = [
+            "id", "exerciseId", "pillar", "movementPattern", "completedSets", "skipped", "couldNotFinish"
+        ]
+
+        let sample = LoggedExercise(
+            id: UUID(), exerciseId: "push_up", pillar: .strength, movementPattern: .push,
+            completedSets: [], skipped: false
+        )
+        let labels = Mirror(reflecting: sample).children.compactMap { $0.label }
+
+        XCTAssertEqual(
+            Set(labels), allowed,
+            """
+            `LoggedExercise` gained a field beyond \(allowed.sorted()): \(labels.sorted()). The only \
+            completion signal it may carry beyond the session's rating is ADR-0011's post-session, per-move \
+            `couldNotFinish` mark; a set still records prescribed = performed (US-CC09).
             """
         )
     }

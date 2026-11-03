@@ -172,7 +172,7 @@ enum PlateauDiagnosis {
             let clearedSessions = recentLogs.filter { log in
                 log.exercises.contains { logged in
                     logged.exerciseId == frontier.id
-                        && !logged.skipped
+                        && log.countsTowardAdvancement(logged)
                         && criteria.isMet(by: logged, isHold: frontier.isHold)
                 }
             }.count

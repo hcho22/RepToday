@@ -100,7 +100,7 @@
     "progressionOrder": 4,
     "regressionId": "push_standard",
     "progressionId": "push_archer",
-    "advancementCriteria": "3x10 clean reps",
+    "advancementCriteria": "3x15 clean reps",
     "apartmentFriendly": true
   },
   {
@@ -122,7 +122,7 @@
     "progressionOrder": 5,
     "regressionId": "push_diamond",
     "progressionId": "push_one_arm_assisted",
-    "advancementCriteria": "3x8 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -144,7 +144,7 @@
     "progressionOrder": 6,
     "regressionId": "push_archer",
     "progressionId": "push_one_arm",
-    "advancementCriteria": "3x6 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -165,7 +165,7 @@
     "progressionChainId": "push_horizontal",
     "progressionOrder": 7,
     "regressionId": "push_one_arm_assisted",
-    "advancementCriteria": "3x5 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -205,7 +205,7 @@
     "progressionChainId": "push_vertical",
     "progressionOrder": 1,
     "regressionId": "push_floor_dips",
-    "advancementCriteria": "3x10 clean reps",
+    "advancementCriteria": "3x15 clean reps",
     "apartmentFriendly": true
   },
   {
@@ -289,7 +289,7 @@
     "progressionOrder": 3,
     "regressionId": "squat_sumo",
     "progressionId": "squat_shrimp",
-    "advancementCriteria": "3x10 reps per side",
+    "advancementCriteria": "3x15 reps per side",
     "apartmentFriendly": true
   },
   {
@@ -311,7 +311,7 @@
     "progressionOrder": 4,
     "regressionId": "squat_cossack",
     "progressionId": "squat_pistol_assisted",
-    "advancementCriteria": "3x8 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -333,7 +333,7 @@
     "progressionOrder": 5,
     "regressionId": "squat_shrimp",
     "progressionId": "squat_pistol",
-    "advancementCriteria": "3x6 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -354,7 +354,7 @@
     "progressionChainId": "squat",
     "progressionOrder": 6,
     "regressionId": "squat_pistol_assisted",
-    "advancementCriteria": "3x5 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -482,7 +482,7 @@
     "progressionOrder": 3,
     "regressionId": "hinge_bridge_march",
     "progressionId": "hinge_nordic_assisted",
-    "advancementCriteria": "3x8 slow reps per side",
+    "advancementCriteria": "3x15 slow reps per side",
     "apartmentFriendly": true
   },
   {
@@ -504,7 +504,7 @@
     "progressionOrder": 4,
     "regressionId": "hinge_long_lever_bridge",
     "progressionId": "hinge_nordic",
-    "advancementCriteria": "3x6 clean reps",
+    "advancementCriteria": "3x15 clean reps",
     "apartmentFriendly": true
   },
   {
@@ -525,7 +525,7 @@
     "progressionChainId": "hinge_bridge",
     "progressionOrder": 5,
     "regressionId": "hinge_nordic_assisted",
-    "advancementCriteria": "3x5 clean reps",
+    "advancementCriteria": "3x15 clean reps",
     "apartmentFriendly": true
   },
   {
@@ -954,7 +954,7 @@
     "metValue": 2.8,
     "progressionChainId": "mobility_worlds_greatest",
     "progressionOrder": 0,
-    "advancementCriteria": "8 reps per side",
+    "advancementCriteria": "15 reps per side",
     "apartmentFriendly": true
   },
   {
@@ -1174,7 +1174,7 @@
     "progressionChainId": "primal_locomotion",
     "progressionOrder": 2,
     "regressionId": "primal_crab_walk",
-    "advancementCriteria": "3x10 reps",
+    "advancementCriteria": "3x15 reps",
     "apartmentFriendly": true,
     "progressionId": "primal_bear_shoulder_tap"
   },
@@ -1236,7 +1236,7 @@
     "progressionOrder": 1,
     "regressionId": "pull_wall_scapular_pull",
     "progressionId": "pull_floor_row_single_arm",
-    "advancementCriteria": "3x10 clean reps",
+    "advancementCriteria": "3x15 clean reps",
     "apartmentFriendly": true
   },
   {
@@ -1257,7 +1257,7 @@
     "progressionChainId": "pull_horizontal",
     "progressionOrder": 2,
     "regressionId": "pull_floor_row",
-    "advancementCriteria": "3x8 clean reps per side",
+    "advancementCriteria": "3x15 clean reps per side",
     "apartmentFriendly": true
   },
   {
@@ -1297,7 +1297,7 @@
     "progressionChainId": "primal_ground_flow",
     "progressionOrder": 1,
     "regressionId": "primal_gorilla_walk",
-    "advancementCriteria": "3x10 steps",
+    "advancementCriteria": "3x15 steps",
     "apartmentFriendly": true,
     "progressionId": "primal_underswitch"
   },
@@ -1319,7 +1319,7 @@
     "progressionChainId": "primal_ground_flow",
     "progressionOrder": 2,
     "regressionId": "primal_lizard_crawl",
-    "advancementCriteria": "3x8 reps per side",
+    "advancementCriteria": "3x15 reps per side",
     "apartmentFriendly": true
   },
   {
@@ -1553,7 +1553,7 @@
     "metValue": 2.9,
     "progressionChainId": "mobility_cossack",
     "progressionOrder": 0,
-    "advancementCriteria": "8 reps per side",
+    "advancementCriteria": "15 reps per side",
     "apartmentFriendly": true
   },
   {
@@ -1577,7 +1577,7 @@
     "metValue": 2.5,
     "progressionChainId": "mobility_hip_circles",
     "progressionOrder": 0,
-    "advancementCriteria": "10 reps per side",
+    "advancementCriteria": "15 reps per side",
     "apartmentFriendly": true
   },
   {
@@ -1600,7 +1600,7 @@
     "metValue": 2.3,
     "progressionChainId": "mobility_side_bend",
     "progressionOrder": 0,
-    "advancementCriteria": "10 reps per side",
+    "advancementCriteria": "15 reps per side",
     "apartmentFriendly": true
   },
   {

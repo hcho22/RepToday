@@ -46,7 +46,9 @@ struct ActiveSessionState: Codable, Equatable {
     /// the Hold Timer that is persisted at all. The running countdown deliberately is **not**: unlike a
     /// rest, which genuinely continues while the app is away, a hold does not survive the player being
     /// torn down - the user stopped holding when they left the screen - so a resumed session restarts
-    /// the leg on a deliberate tap. Carrying the side is what stops them repeating one they already did.
+    /// the owed side's leg fresh from the full count when the player starts it
+    /// (`ActiveSessionViewModel.start()`). Carrying the side is what stops them repeating one they
+    /// already did.
     struct Hold: Codable, Equatable {
         /// The 1-based side of the current set; greater than 1 only for a per-side movement mid-set.
         var side: Int

@@ -12,9 +12,9 @@ import AVFoundation
 /// through is marked by its own tone (and its own haptic), so the states are tellable apart by ear -
 /// and by touch when the tone is muted or withheld. One case per state:
 ///
-/// - `.go` - an effort begins or is ready to begin; start the work now. Fires when a work window
-///   auto-starts (begin the reps), and when a natural rest reveals a manual strength/primal training
-///   hold that awaits its Start-hold tap (begin the hold) - the two places nothing else self-cues.
+/// - `.go` - an effort begins; start the work now. Fires when a work window auto-starts (begin the
+///   reps), and when a strength/primal training hold's first leg auto-starts (`autoStartHoldIfNeeded`,
+///   begin the hold); a bookend hold and a per-side hold's later side stay silent.
 /// - `.halfway` - the (optional) midpoint of a work window.
 /// - `.transition` - a short between-station transition inside a circuit round has begun (US-CC04).
 /// - `.roundRest` - the bounded between-round rest has begun (US-CC04).
@@ -93,7 +93,7 @@ struct SystemSessionCuePlayer: SessionCuePlayer {
         case .go:         return 1113 // begin-recording: a rising "start now"
         case .halfway:    return 1105 // a soft, unobtrusive midpoint tock
         case .transition: return 1057 // "Tink": the short between-station beat
-        case .roundRest:  return 1075 // a lower, longer tone for the longer round break
+        case .roundRest:  return 1075 // a lower, longer tone for the round break
         case .done:       return 1114 // end-recording: a settling "that's the set"
         }
     }

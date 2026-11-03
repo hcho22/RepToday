@@ -303,6 +303,174 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selectInChain(chain, logs: logs)?.exercise.id, "c1")
     }
 
+    // MARK: - Step down at the floor (ADR-0011)
+
+    private func stepDownChain() -> [Exercise] {
+        makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x15 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x15 clean reps"),
+            (id: "c2", difficulty: 3, criteria: "3x15 clean reps"),
+        ])
+    }
+
+    func testTooHardAtTenStepsOneRungDownTheChain() {
+        let logs = [
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 5),
+        ]
+        let selection = selectInChain(stepDownChain(), logs: logs)
+        XCTAssertEqual(selection?.exercise.id, "c1", "already at ten, too hard serves the rung below")
+        XCTAssertEqual(selection?.didAdvance, false)
+    }
+
+    func testTooHardAboveTenStaysOnTheRung() {
+        let logs = [repsLog(id: "c2", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c2", "above ten it only takes five off")
+    }
+
+    func testASkipAtTenStepsDownToo() {
+        let logs = [
+            repsLog(id: "c2", reps: [], daysAgo: 1, skipped: true),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 6),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    }
+
+    /// On the real catalog: a user climbs push_standard 10, 10, 10, then 15, clearing its "3x12" and
+    /// reaching push_diamond at 10, which they rate too hard. The step down serves push_standard at the
+    /// floor (10), not at the 15 it last logged - that 15 would clear "3x12" again and send them
+    /// straight back to diamond every other session. The user holds on standard and climbs back by the
+    /// normal rules: three "just right" sessions at 10, then 15, which clears it again (ADR-0011).
+    func testTheOldClearOfTheLowerRungDoesNotClimbStraightBack() async throws {
+        let library = try await MockExerciseService().exercises()
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let chain = library.filter { $0.progressionChainId == standard.progressionChainId }
+        var logs = [10, 10, 10, 15].enumerated().map { index, reps in
+            repsLog(id: "push_standard", reps: [reps, reps, reps], daysAgo: 20 - index, difficulty: .justRight)
+        }
+
+        // What Step 5 serves and the number Step 6 serves it at, the way every caller sizes a station.
+        func served() throws -> (id: String, reps: Int) {
+            let selection = try XCTUnwrap(selectInChain(chain, logs: logs))
+            let target = AdaptiveOverload.target(
+                for: selection.exercise,
+                recentLogs: logs,
+                steppedDownSince: ProgressionChainSelection.stepDownDate(
+                    onto: selection.exercise,
+                    library: library,
+                    recentLogs: logs
+                )
+            )
+            return (selection.exercise.id, try XCTUnwrap(target.reps))
+        }
+        func record(_ session: (id: String, reps: Int), daysAgo: Int, _ difficulty: PerceivedDifficulty) {
+            let reps = Array(repeating: session.reps, count: 3)
+            logs.append(repsLog(id: session.id, reps: reps, daysAgo: daysAgo, difficulty: difficulty))
+        }
+
+        let diamond = try served()
+        XCTAssertEqual(diamond.id, "push_diamond")
+        XCTAssertEqual(diamond.reps, 10)
+        record(diamond, daysAgo: 15, .tooHard)
+
+        var trace: [(id: String, reps: Int)] = []
+        for daysAgo in [14, 13, 12, 11] {
+            let session = try served()
+            trace.append(session)
+            record(session, daysAgo: daysAgo, .justRight)
+        }
+        XCTAssertEqual(trace.map(\.id), Array(repeating: "push_standard", count: 4),
+                       "the user holds on the easier rung instead of alternating")
+        XCTAssertEqual(trace.map(\.reps), [10, 10, 10, 15], "served at the floor, then the normal climb")
+        XCTAssertEqual(try served().id, "push_diamond", "a later clear of the lower rung earns the way back")
+    }
+
+    func testClearingTheLowerRungAfterTheStepDownClimbsBack() {
+        let logs = [
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 1),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+        ]
+        let selection = selectInChain(stepDownChain(), logs: logs)
+        XCTAssertEqual(selection?.exercise.id, "c2", "a later clear of the lower rung earns the way back")
+    }
+
+    func testWorkingTheLowerRungWithoutClearingItStaysThere() {
+        let logs = [
+            repsLog(id: "c1", reps: [10, 10, 10], daysAgo: 1),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    }
+
+    func testTooHardAtTenOnTheLowerRungStepsDownAgain() {
+        let logs = [
+            repsLog(id: "c1", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+            repsLog(id: "c0", reps: [15, 15, 15], daysAgo: 9),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c0")
+    }
+
+    func testTooHardAtTenStepsDownFromTheServedRungWhenTheFrontierIsOutOfReach() {
+        // The logged frontier c2 is a rung this user no longer gets, so they are served c1.
+        let reachedC2 = repsLog(id: "c2", reps: [15, 15, 15], daysAgo: 9)
+        let eligible: Set = ["c0", "c1"]
+        XCTAssertEqual(selectInChain(stepDownChain(), eligible: eligible, logs: [reachedC2])?.exercise.id, "c1")
+
+        // "Too hard" at ten on that served rung still steps one rung down.
+        let logs = [repsLog(id: "c1", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard), reachedC2]
+        XCTAssertEqual(selectInChain(stepDownChain(), eligible: eligible, logs: logs)?.exercise.id, "c0")
+    }
+
+    func testTheEntryRungAtTenStaysOnTheEntryRung() {
+        let logs = [repsLog(id: "c0", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c0", "there is no rung below the entry")
+    }
+
+    // MARK: - "Couldn't finish" never counts toward advancement (ADR-0011)
+
+    func testAMoveMarkedCouldNotFinishNeverAdvances() {
+        var marked = repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)
+        marked.exercises[0].couldNotFinish = true
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: [marked])?.exercise.id, "c1",
+                       "the logged 3x15 met the criteria, but the user said they could not finish it")
+
+        var unmarked = marked
+        unmarked.exercises[0].couldNotFinish = nil
+        unmarked.perceivedDifficulty = .justRight
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: [unmarked])?.exercise.id, "c2")
+    }
+
+    /// "Too hard" with nothing tapped eases every move off, as the completion screen says, so the session
+    /// counts toward no move's advancement: `push_standard` logged at 15 x3 (its criteria are 3x12) eases
+    /// to 10 next session and does not move up to `push_diamond`. A "too hard" session that tapped a
+    /// different move keeps the untapped one's advancement.
+    func testTooHardWithNothingTappedNeverAdvances() async throws {
+        let library = try await MockExerciseService().exercises()
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let chain = library.filter { $0.progressionChainId == standard.progressionChainId }
+
+        var untapped = repsLog(id: "push_standard", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)
+        untapped.exercises[0].couldNotFinish = false
+        XCTAssertEqual(selectInChain(chain, logs: [untapped])?.exercise.id, "push_standard",
+                       "too hard with nothing tapped never moves the user up")
+        XCTAssertEqual(AdaptiveOverload.target(for: standard, recentLogs: [untapped]).reps, 10,
+                       "it eases standard from 15 to 10")
+
+        var otherTapped = log(daysAgo: 1, [
+            (id: "push_standard", pattern: .push, sets: Array(repeating: CompletedSet(reps: 15, durationSeconds: nil), count: 3), skipped: false),
+            (id: "squat_bodyweight", pattern: .squat, sets: Array(repeating: CompletedSet(reps: 15, durationSeconds: nil), count: 3), skipped: false),
+        ], difficulty: .tooHard)
+        otherTapped.exercises[0].couldNotFinish = false
+        otherTapped.exercises[1].couldNotFinish = true
+        XCTAssertEqual(selectInChain(chain, logs: [otherTapped])?.exercise.id, "push_diamond",
+                       "an untapped move in a session that tapped another still counts")
+    }
+
     func testFrontierIsHighestOrderWorked() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),

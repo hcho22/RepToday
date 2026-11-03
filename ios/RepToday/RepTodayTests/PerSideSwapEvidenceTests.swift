@@ -862,10 +862,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// A hosted player with its hold actually running, for rendering and reading mid-countdown.
     ///
-    /// The leg is started by activating the real "Start hold" control, the way VoiceOver's double-tap
-    /// does, because a running leg is deliberately unreachable any other way: a hold is never persisted
-    /// (US-O03), so there is no snapshot that restores one. That is the point of the rule, and it means
-    /// the only honest way to see this state is the one the user takes to reach it.
+    /// The leg starts on its own as the player appears (ADR-0010: every hold auto-starts, training holds
+    /// included), which is the only way a running leg is reachable: a hold is never persisted (US-O03),
+    /// so there is no snapshot that restores one. The helper asserts no Start-hold tap was needed.
     ///
     /// `settlingAt` pins what the ring *reads* before the surface is handed back, which is what a render
     /// needs. Without it the leg is captured a fraction of a second after it started, so whether the
@@ -879,12 +878,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         _ view: V, size: CGSize, settlingAt settlingSeconds: Int? = nil
     ) throws -> UIHostingController<V> {
         let host = hosted(view, size: size)
-        let start = try XCTUnwrap(
-            AccessibilityTree.element(labeled: "Start hold", in: host.view)
-                ?? AccessibilityTree.element(labeled: "Start hold, side 1 of 2", in: host.view),
-            "the player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
+        let appeared = AccessibilityTree.labels(in: host.view)
+        XCTAssertFalse(
+            appeared.contains { $0.hasPrefix("Start hold") },
+            "the hold should start on its own, with no Start-hold tap; it reads \(appeared)"
         )
-        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
 
         func pump(until end: Date) {
             RunLoop.main.run(mode: .default, before: end)
@@ -897,7 +895,14 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             return host
         }
 
-        let target = "Hold, \(settlingSeconds) seconds remaining"
+        // The leg started as the player appeared, so hosting may already have used up a second or two:
+        // pin the requested second, or the next whole second still ahead if that one has passed.
+        let showing = appeared.compactMap { label -> Int? in
+            guard label.hasPrefix("Hold, "), label.hasSuffix(" seconds remaining") else { return nil }
+            return Int(label.dropFirst("Hold, ".count).dropLast(" seconds remaining".count))
+        }.first
+        let pinned = showing.map { min(settlingSeconds, $0 - 1) } ?? settlingSeconds
+        let target = "Hold, \(pinned) seconds remaining"
         func reads(_ label: String) -> Bool { AccessibilityTree.labels(in: host.view).contains(label) }
         let ceiling = Date().addingTimeInterval(20)
         while Date() < ceiling && !reads(target) {
@@ -932,8 +937,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testHoldTimerReplacesTheAlwaysOnSessionClock() throws {
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
-        // A *training* hold, not a bookend: US-CC05 makes warm-up/cooldown holds auto-start hands-free,
-        // so the manual Start-hold path this test gates lives only on strength/primal timed holds now.
+        // A *training* hold: since ADR-0010 it auto-starts like a bookend hold, and "Start hold" returns
+        // only after the user deliberately stops it.
         let holdIndex = try XCTUnwrap(
             firstTrainingHoldIndex(in: workout),
             "the generated session carries no training-block timed hold (bookend holds auto-start, US-CC05)"
@@ -944,28 +949,15 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         print("=== Rep Today - the player at \(hold.exercise.id): \(seconds)s"
               + (sides > 1 ? " per side, two legs per set" : "") + " ===")
 
-        // Idle: the Hold Timer leads, with the manual completion kept as a quiet secondary.
-        let idle = resumed(workout, at: holdIndex, currentSet: 1)
-        let idleLabels = AccessibilityTree.labels(in: hosted(try playerView(idle), size: playerSize).view)
+        let state = resumed(workout, at: holdIndex, currentSet: 1)
         let expectedStart = sides > 1 ? "Start hold, side 1 of \(sides)" : "Start hold"
         let manualTitle = hold.sets > 1
             ? "Complete set"
             : (holdIndex == slots.count - 1 ? "Finish session" : "Finish exercise")
-        XCTAssertTrue(
-            idleLabels.contains(expectedStart),
-            "the player should offer \"\(expectedStart)\"; it reads \(idleLabels)"
-        )
-        XCTAssertTrue(
-            idleLabels.contains(manualTitle),
-            "an idle hold should still offer \"\(manualTitle)\" as the way to bank a set held off-timer; "
-            + "it reads \(idleLabels)"
-        )
-        try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png", story: Evidence.sessionTimer)
 
-        // Running: the countdown takes the demo's place and speaks the seconds it has left. The leg is
-        // started through the real control, since a hold is never persisted and so cannot be restored
-        // into this state (US-O03).
-        let runningHost = try hostedMidHold(try playerView(idle), size: playerSize, settlingAt: seconds - 1)
+        // Running: the leg starts on its own as the player appears (ADR-0010), the countdown takes the
+        // demo's place and speaks the seconds it has left.
+        let runningHost = try hostedMidHold(try playerView(state), size: playerSize, settlingAt: seconds - 1)
         let runningLabels = AccessibilityTree.labels(in: runningHost.view)
         XCTAssertTrue(
             runningLabels.contains { $0.hasPrefix("Hold, ") && $0.hasSuffix(" seconds remaining") },
@@ -983,6 +975,25 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "the row keeps its slots while the hold runs; it reads \(runningLabels)"
         )
         try renderHosted(runningHost, size: playerSize, fileName: "player-hold-running.png", story: Evidence.sessionTimer)
+
+        // Idle, after a deliberate Stop hold: the Hold Timer leads again with "Start hold", and the
+        // manual completion stays a quiet secondary.
+        let stop = try XCTUnwrap(AccessibilityTree.element(labeled: "Stop hold", in: runningHost.view))
+        XCTAssertTrue(stop.accessibilityActivate(), "the Stop hold control did not activate")
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.3))
+        runningHost.view.setNeedsLayout()
+        runningHost.view.layoutIfNeeded()
+        let idleLabels = AccessibilityTree.labels(in: runningHost.view)
+        XCTAssertTrue(
+            idleLabels.contains(expectedStart),
+            "a stopped hold should offer \"\(expectedStart)\" as the way back; it reads \(idleLabels)"
+        )
+        XCTAssertTrue(
+            idleLabels.contains(manualTitle),
+            "an idle hold should still offer \"\(manualTitle)\" as the way to bank a set held off-timer; "
+            + "it reads \(idleLabels)"
+        )
+        try renderHosted(runningHost, size: playerSize, fileName: "player-hold-idle.png", story: Evidence.sessionTimer)
 
         for labels in [idleLabels, runningLabels] {
             XCTAssertFalse(
@@ -1007,11 +1018,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let seconds = try XCTUnwrap(slot.durationSeconds)
         print("=== Rep Today - \(slot.exercise.id): \(seconds)s per side, so one set is two legs ===")
 
+        // The leg starts on its own (ADR-0010), so side 1 is already running as the player appears.
         let firstSide = resumed(workout, at: index, currentSet: 1)
         let firstLabels = AccessibilityTree.labels(in: hosted(try playerView(firstSide), size: playerSize).view)
-        XCTAssertTrue(
-            firstLabels.contains("Start hold, side 1 of 2"),
-            "the button should name the side it starts; it reads \(firstLabels)"
+        XCTAssertFalse(
+            firstLabels.contains { $0.hasPrefix("Start hold") },
+            "side 1 should start on its own; it reads \(firstLabels)"
         )
         XCTAssertTrue(
             // Inside the strength circuit block the tracker leads with "Round N of M" (US-CC02); a
@@ -1025,13 +1037,13 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
         try render(try playerView(firstSide), size: playerSize, fileName: "player-per-side-hold-side-1.png", story: Evidence.sessionTimer)
 
-        // Parked between the legs - the state a relaunch restores to, so it must read as owing side 2.
+        // Between the legs - the state a relaunch restores to, so it must resume on side 2.
         var secondSide = firstSide
         secondSide.hold = ActiveSessionState.Hold(side: 2)
         let secondLabels = AccessibilityTree.labels(in: hosted(try playerView(secondSide), size: playerSize).view)
         XCTAssertTrue(
-            secondLabels.contains("Start hold, side 2 of 2"),
-            "a restored between-legs hold owes side 2; it reads \(secondLabels)"
+            secondLabels.contains { $0.contains("side 2 of 2") && ($0.hasPrefix("Set ") || $0.hasPrefix("Round ")) },
+            "a restored between-legs hold owes side 2 and starts it; it reads \(secondLabels)"
         )
         try render(try playerView(secondSide), size: playerSize, fileName: "player-per-side-hold-side-2.png", story: Evidence.sessionTimer)
     }
@@ -1061,21 +1073,20 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// The Hold Timer driven the way a user drives it, in real time (US-O03).
     ///
     /// Everything else about the hold is asserted against an injected clock or a static render. This one
-    /// hosts the production `ActiveSessionView`, taps its real "Start hold" control the way VoiceOver's
-    /// double-tap does, and then lets the wall clock actually run out - so the `Timer` publisher, the
+    /// hosts the production `ActiveSessionView`, lets its hold start on its own (ADR-0010), and then
+    /// lets the wall clock actually run out - so the `Timer` publisher, the
     /// deadline arithmetic, the auto-record and the hand-off to the rest overlay are all exercised as
     /// one live system rather than as pieces. The hold is authored short so the test does not have to
     /// wait out a real 30-second plank.
     func testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer() throws {
         let workout = shortHoldWorkout(seconds: 2, sets: 1)
 
+        // The hold starts on its own as the player appears (ADR-0010) - no Start-hold tap.
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
-        let start = try XCTUnwrap(
-            AccessibilityTree.element(labeled: "Start hold", in: host.view),
-            "the live player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
+        XCTAssertFalse(
+            AccessibilityTree.labels(in: host.view).contains { $0.hasPrefix("Start hold") },
+            "the live player should not wait for a Start-hold tap; it reads \(AccessibilityTree.labels(in: host.view))"
         )
-
-        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
 
         // Let the hold actually run out in wall-clock time. The runloop is pumped until the hand-off
         // has *settled* - the rest overlay up and the countdown torn down - rather than for a fixed
@@ -1252,12 +1263,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         // rather than rotating to another station.
         let workout = singleStationShortHoldWorkout(seconds: 120, sets: 2)
 
+        // The leg starts on its own as the player appears (ADR-0010).
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
-        let start = try XCTUnwrap(
-            AccessibilityTree.element(labeled: "Start hold", in: host.view),
-            "the live player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
-        )
-        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
         RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.6))
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
@@ -1410,7 +1417,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     }
 
     /// Closing the player mid-hold leaves **no** countdown on disk at all (US-O03), driven through the
-    /// real Start hold and End session controls on the hosted production player.
+    /// hold starting on its own (ADR-0010) and the real End session control on the hosted production
+    /// player.
     ///
     /// This is the rule that finally closed a defect three narrower guards could not. Persisting the leg
     /// - as a live deadline, as a frozen remainder, or as a frozen remainder of zero - always ended the
@@ -1421,8 +1429,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testClosingThePlayerMidHoldLeavesNoLegOnDisk() async throws {
         let store = InMemoryActiveSessionStore()
         let workout = try generate()
-        // A *training* hold: the manual Start-hold path this drives is a strength/primal one now that
-        // US-CC05 auto-starts the bookend holds.
+        // A *training* hold, which auto-starts like a bookend hold since ADR-0010.
         let index = try XCTUnwrap(
             firstTrainingHoldIndex(in: workout),
             "the generated session carries no training-block timed hold (bookend holds auto-start, US-CC05)"
@@ -1473,7 +1480,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         // And that is what the Resume card hands back: no countdown, nothing recorded, ready to restart.
         let resumedPlayer = ActiveSessionViewModel(state: snapshot, now: { Date() })
-        XCTAssertFalse(resumedPlayer.isHolding, "the resumed session offers Start hold, not a live countdown")
+        XCTAssertFalse(resumedPlayer.isHolding, "the resumed session restores no live countdown; its leg starts fresh")
         XCTAssertFalse(resumedPlayer.isHoldPaused)
         XCTAssertEqual(
             resumedPlayer.completedSetCount, bankedBefore,

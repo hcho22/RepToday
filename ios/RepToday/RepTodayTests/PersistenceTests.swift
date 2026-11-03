@@ -451,6 +451,36 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded, legacy, "the old snapshot round-trips to the same value, no field lost")
     }
 
+    /// ADR-0010/ADR-0011: the two new fields are optional, so a snapshot or log written before them
+    /// decodes unchanged - a prescription with no `stretchSeconds` (played at its generous pace) and a
+    /// logged move with no `couldNotFinish` mark (its session's rating decides) - and a value carrying
+    /// them round-trips.
+    func testPrescriptionsAndLoggedMovesDecodeWithAndWithoutTheNewOptionalFields() throws {
+        let saved = makeActiveSessionState()
+        let encoded = try PersistenceCoder.encoder.encode(saved)
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("stretchSeconds"),
+                       "an unstretched prescription writes no stretch key, so older code reads it unchanged")
+        XCTAssertEqual(try PersistenceCoder.decoder.decode(ActiveSessionState.self, from: encoded), saved)
+
+        var stretched = saved
+        stretched.slots[0].prescription.stretchSeconds = 7
+        let roundTripped = try PersistenceCoder.decoder.decode(
+            ActiveSessionState.self, from: PersistenceCoder.encoder.encode(stretched)
+        )
+        XCTAssertEqual(roundTripped.slots[0].prescription.stretchSeconds, 7)
+
+        let legacyMove = Data(#"{"id":"\#(UUID().uuidString)","exerciseId":"push_up","pillar":"strength","movementPattern":"push","completedSets":[{"reps":12}],"skipped":false}"#.utf8)
+        let move = try PersistenceCoder.decoder.decode(LoggedExercise.self, from: legacyMove)
+        XCTAssertNil(move.couldNotFinish, "a log written before the mark decodes with no mark")
+
+        var marked = move
+        marked.couldNotFinish = true
+        let markedRoundTrip = try PersistenceCoder.decoder.decode(
+            LoggedExercise.self, from: PersistenceCoder.encoder.encode(marked)
+        )
+        XCTAssertEqual(markedRoundTrip.couldNotFinish, true)
+    }
+
     /// US-TP12: a snapshot saved while `Exercise.animationName` existed (the retired US-O01 animation
     /// seam) carries that key on every exercise. It must still decode - to the same value, nothing
     /// lost - and resume at its saved position.

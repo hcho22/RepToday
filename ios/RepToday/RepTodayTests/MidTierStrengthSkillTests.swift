@@ -29,14 +29,14 @@ final class MidTierStrengthSkillTests: XCTestCase {
     private let gatedChains: [GatedChain] = [
         GatedChain(
             chainId: "push_horizontal", isHold: false,
-            frontier: ("push_archer", 4, 8),            // "3x8 clean reps per side"
-            bridge: ("push_one_arm_assisted", 4, 6),    // "3x6 clean reps per side"
+            frontier: ("push_archer", 4, 15),           // "3x15 clean reps per side"
+            bridge: ("push_one_arm_assisted", 4, 15),   // "3x15 clean reps per side"
             summit: ("push_one_arm", 5)
         ),
         GatedChain(
             chainId: "squat", isHold: false,
-            frontier: ("squat_shrimp", 4, 8),           // "3x8 clean reps per side"
-            bridge: ("squat_pistol_assisted", 4, 6),    // "3x6 clean reps per side"
+            frontier: ("squat_shrimp", 4, 15),          // "3x15 clean reps per side"
+            bridge: ("squat_pistol_assisted", 4, 15),   // "3x15 clean reps per side"
             summit: ("squat_pistol", 5)
         ),
         GatedChain(

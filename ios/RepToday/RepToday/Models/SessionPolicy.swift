@@ -87,8 +87,10 @@ struct SessionPolicy: Codable, Equatable {
     /// (US-G04), after which Step 0 is a no-op.
     var coldStartContract: ColdStartContract?
 
-    /// The Re-entry Ramp state, present only while walking a user back up after a Return
-    /// (US-E06). `nil` in the steady state.
+    /// The Re-entry Ramp the Programmer recorded at the user's most recent Return (US-E06), `nil` before
+    /// any Return. Nothing clears or counts it down, and the engine does not read it: the ramp's position
+    /// comes from the logs (`ReturnOverride.rampSessionsRemaining(recentLogs:)`). It stays so older data
+    /// and older app versions still load.
     var reentry: Reentry?
 
     /// An honest note about the last real change (US-F04/US-G03), or `nil` when there is
@@ -156,11 +158,14 @@ extension SessionPolicy {
         static let neutralStartingSets = 3
     }
 
-    /// The Re-entry Ramp state after a Return (US-E06). Difficulty is held below normal and
-    /// walked back up over the remaining sessions - the readjustment for lost time lives here,
-    /// never in the Return itself.
+    /// The Re-entry Ramp the Programmer recorded after a Return (US-E06). Difficulty is held below
+    /// normal and walked back up over the sessions after the Return - the readjustment for lost time
+    /// lives there, never in the Return itself. The engine reads the ramp's position from the logs
+    /// (`ReturnOverride.rampSessionsRemaining(recentLogs:)`), not from this value; it stays so older data
+    /// and older app versions still load.
     struct Reentry: Codable, Equatable {
-        /// Sessions still to ramp back up; decrements each session until it reaches zero.
+        /// The ramp length recorded at the Return. Nothing counts it down, so it is not the ramp's
+        /// position.
         var rampSessionsRemaining: Int
     }
 
@@ -535,7 +540,9 @@ extension SessionPolicy.ColdStartContract {
     /// The Start Seed's per-set **volume multiplier** for a self-reported fitness level (US-O02):
     /// **beginner x1.0, intermediate x1.15, advanced x1.30**. It scales only the *no-history* default
     /// target (an exercise the user has never logged); once there is demonstrated capacity, Step 6 is
-    /// capacity-relative and the seed no longer applies.
+    /// capacity-relative and the seed no longer applies. Step 6 never lifts a first prescription past one
+    /// step below the movement's advancement criterion (ADR-0011), so in today's catalog the multiplier
+    /// lifts timed holds and leaves every rep-based move's first number at its own default.
     static func startingRepMultiplier(for level: FitnessLevel) -> Double {
         switch level {
         case .beginner: return 1.0

@@ -1,9 +1,10 @@
 # ADR-0003: Even-round circuit timing (round-rest as the fit lever)
 
 - Status: Accepted (2026-08-14) and **implemented** 2026-08-14 in `SessionAssembly` (US-CC03/US-CC04, engine-only). The per-exercise set-adjust lever is retired for training blocks: a training block now carries one uniform round count, and the timing fit lands the ±60s target by tuning a bounded between-round rest (`minRoundRestSeconds`...`maxRoundRestSeconds`), falling back to whole rounds / whole exercises - always uniformly. The player-side rendering of rounds (US-CC02) and applying a mid-circuit skip/swap across all remaining rounds (US-CC07) have since landed - the latter needed no engine change, since the substitute already keeps the block's uniform round count. The generous runtime pace (US-CC08) has also landed and re-prices the `workPerSet` term this formula sums (see Consequences below); the levers and the uniformity rule are unchanged.
+- Superseded in part by [ADR-0010](0010-short-rests-stretched-work-windows.md) (2026-11-02): the bounded between-round rest is no longer the fit lever - every rest is now at most 15 seconds and the fit lands the remaining gap by stretching rep-based strength sets' work windows. The uniform round count per training block and the ±60s tolerance recorded here are unchanged.
 - Date: 2026-08-14
 - Deciders: captain, via the "Continuous-Circuit Sessions" decision session (2026-08-14)
-- Relates to: [ADR-0002](0002-per-interval-pacer-clock.md) (the pacer clock that counts down these intervals); the domain term `CONTEXT.md` -> "Continuous Circuit (planned)".
+- Relates to: [ADR-0002](0002-per-interval-pacer-clock.md) (the pacer clock that counts down these intervals); the domain term `CONTEXT.md` -> "Continuous Circuit".
 
 ## Context
 

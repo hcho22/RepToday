@@ -47,6 +47,15 @@ struct LoggedExercise: Codable, Equatable, Identifiable {
     var completedSets: [CompletedSet]
     /// True when the user skipped this exercise; repeated skips drop it from the pool.
     var skipped: Bool
+    /// The completion screen's post-session "couldn't finish" mark (ADR-0011): after rating a session
+    /// "too hard" the user taps the moves they could not finish. The follow-up records an answer on every
+    /// move it lists - `true` for a tapped move, which steps it back and keeps this session from counting
+    /// toward its advancement, `false` for an untapped one - so "nothing tapped" is told apart from a log
+    /// the follow-up never reached. `nil` (a move it did not list, and every log written before the mark
+    /// existed) leaves the session's rating to decide (`WorkoutLog.stepsBack(_:)`).
+    /// One flag per move, never per set: a set still records prescribed = performed (US-CC09).
+    /// Optional so older logs decode unchanged and older app versions ignore it.
+    var couldNotFinish: Bool? = nil
 }
 
 extension LoggedExercise {
@@ -56,6 +65,29 @@ extension LoggedExercise {
     /// patterns, so a skipped or set-less step never reads as done work on either surface.
     var wasPerformed: Bool {
         !skipped && completedSets.contains { ($0.reps ?? 0) > 0 || ($0.durationSeconds ?? 0) > 0 }
+    }
+}
+
+extension WorkoutLog {
+    /// Whether this session steps `logged` back (ADR-0011): a skip, or "too hard" on a move the user
+    /// marked "couldn't finish" - or on every move when they marked none, which is what the completion
+    /// screen promises ("everything eases off a little"). A "too hard" session that marked some moves
+    /// leaves the others alone. The one definition behind Adaptive Overload's step back
+    /// (`AdaptiveOverload.signal(for:in:)`) and `countsTowardAdvancement(_:)`.
+    func stepsBack(_ logged: LoggedExercise) -> Bool {
+        if logged.skipped { return true }
+        guard perceivedDifficulty == .tooHard else { return false }
+        return logged.couldNotFinish == true || !exercises.contains { $0.couldNotFinish == true }
+    }
+
+    /// Whether `logged` may count toward clearing a tier's advancement criteria (and a Foundation line,
+    /// and so the earned Strength Phase). In a session the "couldn't finish" follow-up answered (any move
+    /// carries a mark), only when the session does not step it back: a move stepped back still recorded
+    /// the target it asked for (prescribed = performed), so its sets would otherwise read as met. A log
+    /// the follow-up never reached - every log written before it existed - counts every move it did not
+    /// skip, exactly as it always has, so a tier or Foundation line it cleared stays cleared.
+    func countsTowardAdvancement(_ logged: LoggedExercise) -> Bool {
+        exercises.contains { $0.couldNotFinish != nil } ? !stepsBack(logged) : !logged.skipped
     }
 }
 

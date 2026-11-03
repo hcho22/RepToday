@@ -24,19 +24,21 @@ import Foundation
 /// - **Structure** - every session opens with a `.warmup` block (mobility) and, past
 ///   `cooldownThresholdMinutes`, closes with a `.cooldown` block of static stretches. These bookends
 ///   are the only mobility in the session (US-M01): there is no mobility middle block at any length.
-/// - **Timing fit (even-round circuit model, US-CC03/US-CC04)** - a training block is played as
-///   circuit *rounds* (one set of each exercise per round, "Round N of M"), so every exercise in a
-///   training block carries the **same** set count = the block's round count; the block is internally
-///   uniform (see ADR-0003). Its planned wall-clock is
+/// - **Timing fit (even-round circuit model, US-CC03; stretched work windows, ADR-0010)** - a training
+///   block is played as circuit *rounds* (one set of each exercise per round, "Round N of M"), so every
+///   exercise in a training block carries the **same** set count = the block's round count; the block is
+///   internally uniform (see ADR-0003). Its planned wall-clock is
 ///   `rounds × Σ(exercise workPerSet) + rounds × between-station transitions + (rounds - 1) × round-rest`
-///   (`blockSeconds`), where `workPerSet` re-prices the movement's estimate as a fixed per-set setup
-///   cost plus the per-unit work of the target Step 6 actually prescribed (see `workSecondsPerSet`).
-///   The old per-exercise set-adjust lever (which produced *uneven* blocks) is retired for training
-///   blocks; the timing fit instead tunes the bounded **between-round rest** within its band as the
-///   primary lever, falling back to adding/dropping a whole round (uniformly) or a whole exercise -
-///   never an uneven per-exercise count, and never touching the capacity-relative *per-set* target
-///   from Step 6. The warm-up/cooldown bookends stay one set each and flow linearly. A deterministic
-///   best-fit pass trims or extends the session until it lands within `toleranceSeconds` of the request.
+///   (`blockSeconds`), where `workPerSet` re-prices a rep movement's estimate as a fixed per-set setup
+///   cost plus the per-unit work of the target Step 6 actually prescribed, and charges a timed hold the
+///   seconds the player runs (see `workSecondsPerSet`).
+///   Every rest is at most `maxRestSeconds` (15s), so rest is no longer a lever. The fit first picks
+///   the coarse shape - whole rounds (uniformly) and whole exercises, never an uneven per-exercise
+///   count - and then lands the remaining gap by **stretching** the work window of the session's
+///   rep-based training sets (`stretchWorkWindows`): the extra seconds sit at the end of the set for
+///   the user to rest, the set still records what it asked for, and the capacity-relative *per-set*
+///   target from Step 6 is never touched. The warm-up/cooldown bookends and timed holds keep their
+///   prescribed lengths and flow as before. The session lands within `toleranceSeconds` of the request.
 ///
 /// Identity and the reference clock enter here (the earlier steps are clock-free and id-free): the
 /// `Workout`/`WorkoutBlock`/`PrescribedExercise` ids are fresh `UUID`s and `createdAt`/staleness are
@@ -55,28 +57,42 @@ enum SessionAssembly {
     /// move from the warm-up into the first station, etc.) - see `blockSeconds`/`totalSeconds`.
     static let transitionSeconds = 15
 
-    /// The default **between-round rest** a training block is seeded at, before the timing fit tunes it
-    /// within `[minRoundRestSeconds, maxRoundRestSeconds]` (US-CC04). In-band by construction (40 sits
-    /// between 30 and 75), so a session that never needs tuning still ships a sensible recovery rest.
-    static let strengthRestSeconds = 40
+    /// The longest any rest may run (ADR-0010): the between-station transition, the between-block
+    /// transition, the between-round rest, and a bookend's between-set rest. The spare seconds at the
+    /// end of a stretched work window are part of the set, not a rest, and are not bound by it. The
+    /// player clamps every rest it opens to this too, so a session saved before the cap resumes with
+    /// short rests.
+    static let maxRestSeconds = 15
+
+    /// The **between-round rest** of a circuit training block (US-CC04, shortened by ADR-0010): fixed at
+    /// the rest cap rather than tuned, since the fit's fine lever is now the stretched work window.
+    static let roundRestSeconds = maxRestSeconds
     /// Rest between the (single) sets of a mobility bookend movement. A bookend is one set, so this is
     /// never actually charged (there is no between-set gap on a one-set item); kept only as the value a
-    /// materialized bookend prescription carries.
-    static let mobilityRestSeconds = 15
+    /// materialized bookend prescription carries, at the rest cap.
+    static let mobilityRestSeconds = maxRestSeconds
+    /// The brief hands-free "Switch sides" beat between the two legs of a per-side hold (US-CC05,
+    /// ADR-0010): a get-ready pause the player runs on the shared rest countdown, and which the plan
+    /// charges inside the hold's set (`workSecondsPerSet`), so a per-side hold costs what it plays.
+    static let switchSidesSeconds = 5
     /// The ±window the assembled session must land within around the requested time (1 minute).
     static let toleranceSeconds = 60
 
-    /// The bounded band the **between-round rest** may take (US-CC04, ADR-0003). This is the primary
-    /// timing-fit lever that replaces the retired per-exercise set-adjust move: within a training block
-    /// each second of round-rest moves `(rounds - 1)` seconds of planned wall-clock, giving fine-grained
-    /// control without touching set counts or the capacity-relative per-set target from Step 6. The fit
-    /// never leaves this band - a value outside it would be either no recovery at all or a rest so long it
-    /// stalls the circuit - so when the band alone cannot close the gap the coarser whole-round /
-    /// whole-exercise levers take over (still uniformly, never an uneven block). The chosen value is a
-    /// deterministic function of the inputs (the fit's greedy best-fit jump toward closing the gap,
-    /// clamped to the band).
-    static let minRoundRestSeconds = 30
-    static let maxRoundRestSeconds = 75
+    /// The most a rep-based training set's work window may be stretched past its generous pace
+    /// (`workSecondsPerSet`) to land the session on the requested length (ADR-0010). A safety rail, not
+    /// the target: the fit prefers whole rounds and stations that leave the stretch small, and only a
+    /// shape it cannot fill any other way leans on the rail. That shape exists: an injury flag that
+    /// removes whole patterns (a lower-back flag drops pull and hinge) leaves a 60-minute strength block
+    /// at the round cap with no station left to add, and stretching is then the only lever that lands
+    /// the session - so the rail sits at 90 seconds rather than 60, which such a session needs.
+    static let maxStretchSecondsPerSet = 90
+
+    /// How the coarse fit weighs a second of stretch against a second of landing error (ADR-0010): a
+    /// stretched second counts half, so the fit prefers a shape a little short of the request (filled
+    /// by stretching) over one that overshoots by the same amount, yet still prefers adding a round or a
+    /// station over a large stretch. Expressed as an integer weight pair to keep the cost exact.
+    static let landingErrorCostWeight = 2
+    static let stretchCostWeight = 1
 
     /// Round-count rails a *training* block's uniform set count (= its round count) may move between
     /// (US-CC03, capped by US-RC01). Every exercise in the block shares this count, so a round is
@@ -168,8 +184,8 @@ enum SessionAssembly {
     /// The fixed per-set cost of getting into position, bracing, and getting out again - the *setup*
     /// half of the work model in `workSecondsPerSet` for a rep-based movement.
     ///
-    /// A hold needs no such constant: its per-unit cost is known a priori (see `secondsPerHoldSecond`),
-    /// so its setup is simply the authored remainder `estimate - sides × defaultDurationSeconds`. A rep
+    /// A hold needs no such constant: it is charged only the seconds the player runs (see
+    /// `workSecondsPerSet`), and gets into position during the get-ready beat before it. A rep
     /// carries no authored duration, so exactly one of the two halves has to be assumed and the other
     /// read off the movement's own authored cadence. Assuming the setup - and deriving the cadence - is
     /// the right way round: cadence genuinely varies per movement (the catalog authors anything from
@@ -177,10 +193,11 @@ enum SessionAssembly {
     /// the floor and back up is much the same work whatever the movement is.
     ///
     /// The value is calibrated from the *holds*, where setup is observed rather than fitted: across the
-    /// catalog's 26 holds the authored remainder is 5-25 seconds with a median of exactly 10. Taking
-    /// the constant from a different family of movements than the ones it is then applied to is what
-    /// keeps it from being circular - the previous per-rep constant was calibrated from the four
-    /// rep-based entries it subsequently assigned zero setup to, which is no calibration at all.
+    /// catalog's 26 holds the authored remainder `estimate - sides × defaultDurationSeconds` is 5-25
+    /// seconds with a median of exactly 10. Taking the constant from a different family of movements
+    /// than the ones it is then applied to is what keeps it from being circular - the previous per-rep
+    /// constant was calibrated from the four rep-based entries it subsequently assigned zero setup to,
+    /// which is no calibration at all.
     static let setupSecondsPerSet = 10.0
 
     /// The most of a **rep-based** movement's authored per-set estimate that `workSecondsPerSet` will
@@ -190,12 +207,7 @@ enum SessionAssembly {
     /// across the shipped catalog (every estimate is at least 35s), it bounds a future entry rather than
     /// today's.
     ///
-    /// It deliberately does *not* apply to holds. A hold's setup is not assumed but observed - the
-    /// authored remainder left once its known per-unit cost is subtracted - so there is no constant to
-    /// bound, and capping it would corrupt a figure the catalog states outright. Several shipped holds
-    /// are legitimately over this share (`core_l_sit` implies 25s of setup on a 35s estimate, 71%;
-    /// `core_tuck_l_sit` 23s on 35s, 66%), which is the catalog describing a movement that takes longer
-    /// to get into than to hold, not an authoring error.
+    /// It does not apply to holds, which are charged no setup at all (`workSecondsPerSet`).
     static let maxSetupShareOfEstimate = 0.5
 
     /// The one constant that turns `workSecondsPerSet` from a planning-only proxy into a **generous
@@ -259,8 +271,9 @@ enum SessionAssembly {
     /// Step 5's no-repeat window and its `progressionRate` paces Step 6's overload bump (its
     /// `pillarWeighting` is inert since US-M01 - see `SessionPolicy`). It also carries the situational
     /// overrides the
-    /// engine reads: the `coldStartContract` for a brand-new user (US-E04) and the `reentry` ramp for a
-    /// returning one (US-E06). It defaults to `SessionPolicy.default` (every lever neutral, no
+    /// engine reads: the `coldStartContract` for a brand-new user (US-E04). The Return and its Re-entry
+    /// Ramp (US-E06) are read from `recentLogs` instead (`ReturnOverride`). It defaults to
+    /// `SessionPolicy.default` (every lever neutral, no
     /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
     ///
     /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
@@ -434,9 +447,9 @@ enum SessionAssembly {
         )
 
         // The Return / Re-entry Ramp holds Step 6's volume below normal: the gentle floor on the Return
-        // itself, climbing back over the following ramp sessions (`sessionPolicy.reentry`). Neutral in
-        // the steady state, so it is a no-op.
-        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
+        // itself, climbing back over the ramp sessions completed since it (read from the logs). Neutral
+        // in the steady state, so it is a no-op.
+        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, recentLogs: recentLogs)
 
         // The Start Seed's volume half: the reps/sets a no-history prescription opens at, matched to
         // the self-reported fitness level and eased by any cold-start down-signal already logged, so it
@@ -537,7 +550,8 @@ enum SessionAssembly {
     // MARK: - Planned wall-clock
 
     /// The planned seconds one set of `exercise` takes at the per-set target Step 6 actually
-    /// prescribed: a fixed per-set `setup` cost plus `perUnit × prescribed` of work.
+    /// prescribed: for a rep movement a fixed per-set `setup` cost plus `perUnit × prescribed` of work,
+    /// for a timed hold the seconds the player runs.
     ///
     /// `Exercise.estimatedTimePerSetSeconds` is a single constant calibrated against the movement's
     /// *own* default per-set value (`defaultReps` / `defaultDurationSeconds`), so reading it directly
@@ -550,19 +564,19 @@ enum SessionAssembly {
     /// `prescribed / default` therefore overstates a capacity-grown set and understates a shrunk one,
     /// so the estimate is split into its two components instead - one assumed, the other read off the
     /// movement's own authored fields:
-    /// - a **hold**'s per-unit cost is known a priori: `secondsPerHoldSecond` per prescribed second,
-    ///   *doubled* when the movement is `isPerSide`, because a "20 second" side plank is 20 seconds
-    ///   left plus 20 seconds right. Its setup is then the authored remainder,
-    ///   `estimate - sides × defaultDurationSeconds` - 5s for `core_side_plank`, 10s for
-    ///   `mobility_pigeon` - so a grown 40s side plank costs 85s, not the 65s a per-side-blind split
-    ///   charged or the 90s strict proportionality charged.
+    /// - a **hold** needs no estimate: it costs exactly what the player runs, `secondsPerHoldSecond` per
+    ///   prescribed second, *doubled* when the movement is `isPerSide` (a "20 second" side plank is 20
+    ///   seconds left plus 20 seconds right), plus the `switchSidesSeconds` beat between the legs. No
+    ///   setup is charged: every hold starts itself straight after its get-ready beat (ADR-0010), so the
+    ///   authored setup in its estimate is never played, and charging it ended a hands-free session
+    ///   short of the length chosen.
     /// - a **rep** carries no authored duration to anchor the per-unit half, so the other half is the
     ///   assumed one: setup is `setupSecondsPerSet` (capped by `maxSetupShareOfEstimate`), and the
     ///   cadence is the authored remainder `(estimate - setup) / defaultReps`. Reading cadence per
     ///   movement is what keeps per-side and slow-tempo reps honest - `push_archer` ("3x8 clean reps per
     ///   side", 5 reps in 50s) prices 8 reps at 74s rather than the 59s a fixed 3s-per-rep cadence gave.
     ///
-    /// Both halves reproduce `estimatedTimePerSetSeconds` exactly at the movement's own default, so a
+    /// The rep split reproduces `estimatedTimePerSetSeconds` exactly at the movement's own default, so a
     /// default-sized set is priced exactly as the catalog authored it and only a target Step 6 moved
     /// off the default is re-priced. That keeps the planned wall-clock - and therefore the ±1 minute
     /// promise the timing fit is measured against - honest about the session the user is actually going
@@ -572,17 +586,19 @@ enum SessionAssembly {
     /// what makes this a **runtime** pace rather than a planning proxy: the authored estimate is a
     /// typical-case time, and the factor moves it to the slower-end pace a user comfortably finishes
     /// within - so a default-sized *rep* set is priced above what the catalog authored, while a
-    /// default-sized *hold* still costs exactly it. The hold is left alone because its per-unit cost is
+    /// *hold* still costs exactly its played seconds. The hold is left alone because its per-unit cost is
     /// definitional rather than estimated (prescribed seconds are elapsed seconds), not because of where
     /// the set is played: every rep-based set is paced, warm-up and cooldown stretches included, since
     /// their reps are estimated the same way and the plan owes them the same slower-user budget. See that
     /// constant for the calibration and the accepted trade-off.
     ///
     /// - Note: This is per-set *work* only; the between-round rest and the between-station transition are
-    ///   counted separately by `blockSeconds`/`plannedSeconds`.
+    ///   counted separately by `blockSeconds`/`plannedSeconds`, and any stretch the timing fit adds to a
+    ///   rep-based training set's window is added on top (`workSecondsPerSet(of:)`, ADR-0010).
     /// - Note: This is now a **single source of truth** shared by planning and runtime (US-CC08). Since
     ///   US-CC01 the player's auto-advancing work window for a rep-based training set counts down exactly
-    ///   this number (`ActiveSessionViewModel.workWindowSecondsPerSet`), so the seconds the fit budgeted
+    ///   this number plus the set's stretch (`ActiveSessionViewModel.workWindowSecondsPerSet`,
+    ///   `workSecondsPerSet(of:)`), so the seconds the fit budgeted
     ///   for a set are the seconds the user is given to perform it - the screen window can never be
     ///   roomier than the plan (which would make every set overrun the requested minutes) nor tighter
     ///   (which would rush the user). It is still not *measured*: a completed set logs the target it was
@@ -592,38 +608,44 @@ enum SessionAssembly {
     ///   accumulates across a session where random error averages out - and, since US-CC08, that its
     ///   overall level is deliberately set at the generous end rather than the typical one.
     static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
+        if exercise.isHold, let durationSeconds, durationSeconds > 0 {
+            // A hold costs exactly what the player runs: one leg per side, with the "Switch sides" beat
+            // between legs. No setup is charged, because the player runs none - every hold starts itself
+            // straight after its get-ready beat (ADR-0010).
+            let sides = exercise.sidesPerSet
+            let legs = Int((Double(sides * durationSeconds) * secondsPerHoldSecond).rounded())
+            return max(1, legs + (sides - 1) * switchSidesSeconds)
+        }
         let estimate = exercise.estimatedTimePerSetSeconds
-        // A hold's per-unit cost is definitional rather than estimated - prescribed seconds are elapsed
-        // seconds - so there is nothing for the generosity factor to be generous about and it does not
-        // apply (see `workPaceGenerosityFactor`). Every rep-based set is paced, whatever block it lands
-        // in, including the no-baseline fallback below, which is the same estimate by another route.
-        let generosity = exercise.isHold ? 1.0 : workPaceGenerosityFactor
-        let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
-        let prescribed = exercise.isHold ? durationSeconds : reps
-        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else {
+        // A hold with no prescribed seconds runs on a work window of its flat estimate, and a hold's
+        // estimate is not a guess at a user's pace, so the generosity factor does not apply to it (see
+        // `workPaceGenerosityFactor`). Every rep-based set is paced, whatever block it lands in,
+        // including the no-baseline fallback below, which is the same estimate by another route.
+        guard !exercise.isHold, let baseline = exercise.defaultReps, baseline > 0, let reps, reps > 0 else {
+            let generosity = exercise.isHold ? 1.0 : workPaceGenerosityFactor
             return max(1, Int((Double(estimate) * generosity).rounded()))
         }
 
-        let authoredPerUnit = Double(estimate) / Double(baseline)
-        let perUnit: Double
-        if exercise.isHold {
-            // Known per-unit cost; the `min` keeps a hold whose authored estimate does not even cover
-            // its own sides (bad authoring) from yielding a negative setup.
-            perUnit = min(Double(exercise.sidesPerSet) * secondsPerHoldSecond, authoredPerUnit)
-        } else {
-            // Assumed setup, derived cadence; the `max` enforces `maxSetupShareOfEstimate`.
-            perUnit = max(
-                (Double(estimate) - setupSecondsPerSet) / Double(baseline),
-                authoredPerUnit * (1 - maxSetupShareOfEstimate)
-            )
-        }
+        // Assumed setup, derived cadence; the `max` enforces `maxSetupShareOfEstimate`.
+        let perUnit = max(
+            (Double(estimate) - setupSecondsPerSet) / Double(baseline),
+            Double(estimate) / Double(baseline) * (1 - maxSetupShareOfEstimate)
+        )
         let setup = max(0, Double(estimate) - perUnit * Double(baseline))
-        let paced = setup + perUnit * Double(prescribed)
-        return max(1, Int((paced * generosity).rounded()))
+        let paced = setup + perUnit * Double(reps)
+        return max(1, Int((paced * workPaceGenerosityFactor).rounded()))
     }
 
-    /// The planned seconds one set of a prescribed slot takes, at the target it actually carries.
+    /// The planned seconds one set of a prescribed slot takes, at the target it actually carries: its
+    /// generous pace (`paceSecondsPerSet(of:)`) plus any stretch the timing fit gave its work window
+    /// (ADR-0010). This is the work window the player counts down for a rep-based training set.
     static func workSecondsPerSet(of prescription: PrescribedExercise) -> Int {
+        paceSecondsPerSet(of: prescription) + max(0, prescription.stretchSeconds ?? 0)
+    }
+
+    /// The generous-pace seconds one set of a prescribed slot takes at the target it carries, before any
+    /// stretch (`workSecondsPerSet(for:reps:durationSeconds:)`).
+    static func paceSecondsPerSet(of prescription: PrescribedExercise) -> Int {
         workSecondsPerSet(
             for: prescription.exercise,
             reps: prescription.reps,
@@ -681,41 +703,70 @@ enum SessionAssembly {
 
     // MARK: - Timing fit
 
-    /// Trims or extends `blocks` until the planned wall-clock is as close to `targetSeconds` as the
-    /// available adjustments allow (comfortably inside `toleranceSeconds` in practice, not merely at
-    /// its edge).
+    /// Lands `blocks` on `targetSeconds` (ADR-0010): first the coarse shape, then the stretch.
     ///
-    /// A deterministic best-fit loop: each pass measures the signed error, then picks the single
-    /// adjustment - tune the between-round rest, add/drop a whole round, or promote/drop a whole exercise
-    /// (US-CC04's levers) - that brings the planned time closest to target, applying it only if it
-    /// strictly reduces the absolute error. No move ever makes a training block uneven: the round-rest
-    /// and whole-round levers touch every station equally, and a promoted station joins at the block's
-    /// current round count. The loop runs to the local minimum (it stops only when no adjustment can
-    /// shrink the gap further). Because every accepted step strictly shrinks a non-negative integer
-    /// error, the loop converges.
+    /// A deterministic best-fit loop picks the shape: each pass tries every coarse move - add/drop a
+    /// whole round, promote/drop a whole exercise - and applies the one with the lowest `fitCost`,
+    /// only if it strictly lowers it. The cost already knows the remaining gap will be filled by
+    /// stretching rep-based work windows, so a shape a little short of the request is cheap and an
+    /// overshoot is not; a shape the stretch rail cannot fill is costed by the gap it leaves, and one
+    /// that would land outside `toleranceSeconds` is costed so high that any shape inside it wins. No
+    /// move ever makes a training block uneven: the round move touches every station equally, and a
+    /// promoted station joins at the block's round count. Every accepted step strictly lowers a
+    /// non-negative integer cost, so the loop converges. The shape is then stretched to land
+    /// (`stretchWorkWindows`).
     static func fit(_ blocks: inout [PlannedBlock], targetSeconds: Int) {
         for _ in 0..<maxFitIterations {
-            let error = totalSeconds(blocks) - targetSeconds
-            if error == 0 { return }
-            guard let chosen = bestAdjustment(in: blocks, towardError: error) else { return }
+            let cost = fitCost(blocks, targetSeconds: targetSeconds)
+            if cost == 0 { break }
+            guard let chosen = bestAdjustment(in: blocks, currentCost: cost, cost: { fitCost($0, targetSeconds: targetSeconds) }) else { break }
             apply(chosen, to: &blocks)
         }
+        stretchWorkWindows(&blocks, targetSeconds: targetSeconds)
     }
 
-    /// The single best strictly-improving adjustment for the given signed `error` (planned - target), or
-    /// `nil` at the local minimum. Shared by the global `fit` and the per-block `shapeTowardTargets` so
-    /// the two passes use identical levers and tie-breaks. `restrictedTo` limits enumeration to one block.
+    /// The coarse fit's cost of a shape (ADR-0010): the landing error left after the shape is stretched
+    /// as far as it usefully can, weighted against the stretch it takes. Below the target the gap is
+    /// filled by stretch up to the session's `stretchCapacity`; above it nothing can shrink, so the
+    /// overshoot is the landing error. A landing outside `toleranceSeconds` adds a cost no in-tolerance
+    /// shape can reach. Pure over the blocks, read with every stretch at zero.
+    static func fitCost(_ blocks: [PlannedBlock], targetSeconds: Int) -> Int {
+        let planned = totalSeconds(blocks)
+        let landing: Int
+        let stretch: Int
+        if planned >= targetSeconds {
+            landing = planned - targetSeconds
+            stretch = 0
+        } else {
+            stretch = min(targetSeconds - planned, stretchCapacity(blocks))
+            landing = targetSeconds - planned - stretch
+        }
+        let outOfTolerance = landing > toleranceSeconds ? outOfTolerancePenalty : 0
+        return landingErrorCostWeight * landing + stretchCostWeight * stretch + outOfTolerance
+    }
+
+    /// A cost larger than any in-tolerance shape can reach, added to a shape that lands outside
+    /// `toleranceSeconds` so the fit always prefers one inside it when one exists.
+    private static let outOfTolerancePenalty = 1_000_000
+
+    /// The single best strictly-improving adjustment under `cost`, or `nil` at the local minimum.
+    /// Shared by the global `fit` and the per-block `shapeTowardTargets` so the two passes use identical
+    /// levers and tie-breaks: candidates are tried in a fixed order and the first strictly-lowest wins.
+    /// `restrictedTo` limits enumeration to one block.
     private static func bestAdjustment(
         in blocks: [PlannedBlock],
-        towardError error: Int,
-        restrictedTo only: Int? = nil
+        currentCost: Int,
+        restrictedTo only: Int? = nil,
+        cost: ([PlannedBlock]) -> Int
     ) -> Adjustment? {
-        var best: (adjustment: Adjustment, resultError: Int)?
-        for (adjustment, delta) in candidates(in: blocks, towardError: error, restrictedTo: only) {
-            let resultError = abs(error + delta)
-            guard resultError < abs(error) else { continue }
-            if best == nil || resultError < best!.resultError {
-                best = (adjustment, resultError)
+        var best: (adjustment: Adjustment, cost: Int)?
+        for adjustment in candidates(in: blocks, restrictedTo: only) {
+            var trial = blocks
+            apply(adjustment, to: &trial)
+            let trialCost = cost(trial)
+            guard trialCost < currentCost else { continue }
+            if best == nil || trialCost < best!.cost {
+                best = (adjustment, trialCost)
             }
         }
         return best?.adjustment
@@ -734,9 +785,10 @@ enum SessionAssembly {
     /// (`allowSetAdjust`) is `rounds × Σ workPerSet + rounds × between-station transitions +
     /// (rounds - 1) × round-rest`, reading its uniform round count and round-rest off its (equal) items.
     /// A **linear** bookend is `Σ workPerSet` (one set each) plus the transitions between its stations.
-    /// Because every timing-fit adjustment touches exactly one block and never changes whether a block is
-    /// non-empty, the between-block transition count is invariant during the fit, so this per-block
-    /// measure and the global `totalSeconds` stay consistent and the weight-shaping pass is exact.
+    /// `workPerSet` includes any stretch the fit gave the item. Because every timing-fit adjustment
+    /// touches exactly one block and never changes whether a block is non-empty, the between-block
+    /// transition count is invariant during the fit, so this per-block measure and the global
+    /// `totalSeconds` stay consistent and the weight-shaping pass is exact.
     static func blockSeconds(_ block: PlannedBlock) -> Int {
         guard !block.items.isEmpty else { return 0 }
         let perRoundWork = block.items.reduce(0) { $0 + $1.workSecondsPerSet }
@@ -752,151 +804,108 @@ enum SessionAssembly {
         return work + stationGaps * transitionSeconds
     }
 
+    // MARK: - Stretched work windows (ADR-0010)
+
+    /// Whether `item`'s work window may stretch: a rep-based set in a circuit training block. Timed
+    /// holds keep their prescribed seconds (they are definitional), and the warm-up/cooldown bookends
+    /// keep their prescribed lengths.
+    static func isStretchable(_ item: PlannedItem, in block: PlannedBlock) -> Bool {
+        block.allowSetAdjust && !item.exercise.isHold
+    }
+
+    /// The number of rep-based training sets the stretch can be spread across: every stretchable
+    /// station's round count, summed over the session.
+    static func stretchableSetCount(_ blocks: [PlannedBlock]) -> Int {
+        blocks.reduce(0) { sum, block in
+            sum + block.items.filter { isStretchable($0, in: block) }.reduce(0) { $0 + $1.sets }
+        }
+    }
+
+    /// The most the session can be lengthened by stretching: every rep-based training set at
+    /// `maxStretchSecondsPerSet`.
+    static func stretchCapacity(_ blocks: [PlannedBlock]) -> Int {
+        stretchableSetCount(blocks) * maxStretchSecondsPerSet
+    }
+
+    /// Fill the gap between the fitted shape and `targetSeconds` by lengthening the work windows of the
+    /// session's rep-based training sets (ADR-0010). The gap (capped at `stretchCapacity`) is spread
+    /// evenly across those sets: every set gets the same whole-second stretch, and the few seconds left
+    /// over go one more second per set to stations in session order, as long as a whole station's
+    /// rounds fit in what is left - so a station's stretch is the same in every round and the result is
+    /// deterministic. A shape at or over the target is left unstretched (a window never shrinks below
+    /// its generous pace).
+    static func stretchWorkWindows(_ blocks: inout [PlannedBlock], targetSeconds: Int) {
+        let gap = targetSeconds - totalSeconds(blocks)
+        let sets = stretchableSetCount(blocks)
+        guard gap > 0, sets > 0 else { return }
+        let total = min(gap, stretchCapacity(blocks))
+        let even = total / sets
+        var leftover = total - even * sets
+        for blockIndex in blocks.indices {
+            for itemIndex in blocks[blockIndex].items.indices
+            where isStretchable(blocks[blockIndex].items[itemIndex], in: blocks[blockIndex]) {
+                let rounds = blocks[blockIndex].items[itemIndex].sets
+                var stretch = even
+                if even < maxStretchSecondsPerSet, leftover >= rounds {
+                    stretch += 1
+                    leftover -= rounds
+                }
+                blocks[blockIndex].items[itemIndex].stretchSeconds = stretch
+            }
+        }
+    }
+
     // MARK: - Target shaping
 
     /// Grows each block that carries a `targetSeconds` toward that share (a best-fit greedy scoped to
     /// the single block), so an extended session's strength/primal blocks are split toward the fixed
     /// strength-leads-primal division (`extendedTrainingBlocks`) *before* `fit` lands the overall total.
     /// A single-block training middle carries no target and is left entirely to the global fit. It uses
-    /// the same levers as the global fit - the round-rest, whole rounds within the rails, and reserve
-    /// promotion - and never touches the capacity-relative per-set target from Step 6, nor makes the
-    /// block uneven.
+    /// the same coarse levers as the global fit - whole rounds within the rails and reserve promotion -
+    /// and never touches the capacity-relative per-set target from Step 6, nor makes the block uneven.
     static func shapeTowardTargets(_ blocks: inout [PlannedBlock]) {
         for index in blocks.indices {
             guard let target = blocks[index].targetSeconds else { continue }
+            let cost: ([PlannedBlock]) -> Int = { abs(blockSeconds($0[index]) - target) }
             for _ in 0..<maxFitIterations {
-                let error = blockSeconds(blocks[index]) - target
-                if error == 0 { break }
-                guard let chosen = bestAdjustment(in: blocks, towardError: error, restrictedTo: index) else { break }
+                let current = cost(blocks)
+                if current == 0 { break }
+                guard let chosen = bestAdjustment(in: blocks, currentCost: current, restrictedTo: index, cost: cost) else { break }
                 apply(chosen, to: &blocks)
             }
         }
     }
 
-    /// Every available timing-fit move with the signed seconds it would add or remove, under the
-    /// even-round model (US-CC04, widened by US-RC01). For a **circuit** training block the round count
-    /// and the between-round rest are tuned *together* as one atomic move: for each round count within
-    /// one step of the current one (`{-1, 0, +1}`, clamped to the rails), the in-band round-rest that
-    /// best cancels `error` is solved directly and offered as a single `setRoundsAndRest`. Coupling them
-    /// is what lets the fit trade a whole round for more (or less) rest in one step - e.g. drop a round
-    /// *and* stretch the rest to the top of its band - rather than getting trapped at a round count whose
-    /// only reachable rest is pinned to a band edge. The round-rest alone is the fine lever (the `0`-step
-    /// case); a whole round is the coarse one.
-    ///
-    /// Promoting a whole exercise (from the reserve, possibly a US-RC01 accessory) is coupled the same
-    /// way, but searches the *entire* `minTrainingSets...maxTrainingSets` range rather than one step: a
-    /// new station's cost scales with the round count it joins at, so pricing it only at the block's
-    /// *current* round count (which the round-only lever may have already walked toward the cap chasing
-    /// a gap it alone cannot close) can make the only available widening move an oversized, overshooting
-    /// jump. Searching the whole range for the round count that best fits the block *with the station
-    /// already added* is what lets the fit actually find "add a station and run it at 2-3 rounds instead
-    /// of 4" in one step (`addReserveWithRounds`) - dropping the last station is the mirror coarse lever,
-    /// still at the block's current round count. A **linear** bookend grows/shrinks purely by one-set
-    /// movement count (`addReserve` there always joins at one set). Enumerated in a fixed block order (and,
-    /// per block, in `{-1, 0, +1}` round order for the fine lever) so ties resolve deterministically.
-    /// `restrictedTo`, when set, limits enumeration to a single block. `error` is the current signed gap
-    /// (planned - target).
-    private static func candidates(
-        in blocks: [PlannedBlock],
-        towardError error: Int,
-        restrictedTo only: Int? = nil
-    ) -> [(Adjustment, Int)] {
-        var result: [(Adjustment, Int)] = []
+    /// Every available coarse timing-fit move (ADR-0010, building on US-CC04 and US-RC01). For a
+    /// **circuit** training block: one round more or fewer for every station at once (`setRounds`,
+    /// within the rails); promoting the next reserve station - possibly a US-RC01 accessory -
+    /// **jointly** with each round count the widened block could run at (`addReserveWithRounds`), since
+    /// a new station's cost scales with the round count it joins at and pricing it only at the block's
+    /// current count can make the one widening move an overshooting jump; and dropping the last station.
+    /// A **linear** bookend grows/shrinks purely by one-set movement count. Enumerated in a fixed block
+    /// order, and per block in a fixed move order, so ties resolve deterministically. `restrictedTo`,
+    /// when set, limits enumeration to a single block.
+    private static func candidates(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [Adjustment] {
+        var result: [Adjustment] = []
         for (blockIndex, block) in blocks.enumerated() {
             if let only, only != blockIndex { continue }
             guard let lead = block.items.first else { continue }
-            let perRoundWork = block.items.reduce(0) { $0 + $1.workSecondsPerSet }
-            let stationGaps = max(0, block.items.count - 1)
-
             if block.allowSetAdjust {
-                let rounds = lead.sets
-                let roundRest = lead.restSeconds
-                // Per-round fixed cost (work + within-round transitions), independent of the round count
-                // and the rest, so a block's seconds are `rounds × perRoundCost + (rounds - 1) × rest`.
-                let perRoundCost = perRoundWork + stationGaps * transitionSeconds
-                let currentBlockSeconds = rounds * perRoundCost + max(0, rounds - 1) * roundRest
-
-                // Combined round-count + round-rest lever. For each candidate round count one step from
-                // the current one, solve the in-band rest that best drives the total to target, and offer
-                // the pair as a single move. The `0`-step case is the pure fine round-rest jump.
-                for delta in [-1, 0, 1] {
-                    let newRounds = rounds + delta
-                    guard newRounds >= minTrainingSets, newRounds <= maxTrainingSets else { continue }
-                    // The block seconds that would cancel `error`: current minus the gap (since a change
-                    // in this block's seconds moves the total one-for-one).
-                    let desiredBlockSeconds = currentBlockSeconds - error
-                    let newRest: Int
-                    if newRounds >= 2 {
-                        let ideal = Double(desiredBlockSeconds - newRounds * perRoundCost) / Double(newRounds - 1)
-                        newRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, Int(ideal.rounded())))
-                    } else {
-                        // A single round has no between-round gap, so the rest is uncharged; keep it in
-                        // band for when a later step grows the block back past one round.
-                        newRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, roundRest))
-                    }
-                    let newBlockSeconds = newRounds * perRoundCost + max(0, newRounds - 1) * newRest
-                    let moveDelta = newBlockSeconds - currentBlockSeconds
-                    guard moveDelta != 0 else { continue }
-                    result.append((.setRoundsAndRest(block: blockIndex, rounds: newRounds, rest: newRest), moveDelta))
+                for delta in [-1, 1] {
+                    let rounds = lead.sets + delta
+                    guard rounds >= minTrainingSets, rounds <= maxTrainingSets else { continue }
+                    result.append(.setRounds(block: blockIndex, rounds: rounds))
                 }
-
-                // Whole-exercise lever (US-RC01): promote the next reserve station - possibly a
-                // second-chain accessory - **jointly** with the round count it would run at, exactly
-                // like the round+rest move above searches its own small range rather than only
-                // stepping ±1. Pricing a new station at whatever round count the round-only lever
-                // happened to leave the block at (i.e. always "the block's *current* round count")
-                // was tried and rejected: once the round lever alone has already walked the block up
-                // near the cap chasing a gap it cannot fully close, a station's cost (`rounds × ...`)
-                // is priced at that same near-cap count, so the one available widening move becomes an
-                // oversized, overshooting jump with no way back to a smaller round count that would
-                // have paired with it far better. Searching the whole `minTrainingSets...maxTrainingSets`
-                // range for the round count that best fits the block *with the station already added*
-                // is what actually finds "add a station and run it at 2-3 rounds instead of 4" in one
-                // step, which is the shape a long session widening for real should take - the emergent
-                // depth-first behavior (short sessions never take this over the cheaper round+rest
-                // moves; only a session four rounds of its current stations still falls short of does).
-                if let next = block.reserve.first {
-                    let wps = workSecondsPerSet(for: next.exercise, reps: next.reps, durationSeconds: next.durationSeconds)
-                    let widenedStationGaps = stationGaps + 1
-                    let widenedPerRoundCost = perRoundWork + wps + widenedStationGaps * transitionSeconds
-                    let desiredBlockSeconds = currentBlockSeconds - error
-                    var best: (rounds: Int, rest: Int, seconds: Int)?
-                    for candidateRounds in minTrainingSets...maxTrainingSets {
-                        let candidateRest: Int
-                        if candidateRounds >= 2 {
-                            let ideal = Double(desiredBlockSeconds - candidateRounds * widenedPerRoundCost)
-                                / Double(candidateRounds - 1)
-                            candidateRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, Int(ideal.rounded())))
-                        } else {
-                            candidateRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, roundRest))
-                        }
-                        let candidateSeconds = candidateRounds * widenedPerRoundCost
-                            + max(0, candidateRounds - 1) * candidateRest
-                        if best == nil || abs(candidateSeconds - desiredBlockSeconds) < abs(best!.seconds - desiredBlockSeconds) {
-                            best = (candidateRounds, candidateRest, candidateSeconds)
-                        }
-                    }
-                    if let best {
-                        result.append((
-                            .addReserveWithRounds(block: blockIndex, rounds: best.rounds, rest: best.rest),
-                            best.seconds - currentBlockSeconds
-                        ))
+                if !block.reserve.isEmpty {
+                    for rounds in minTrainingSets...maxTrainingSets {
+                        result.append(.addReserveWithRounds(block: blockIndex, rounds: rounds))
                     }
                 }
-                // Drop the last station (returns it to the reserve), removing `rounds` sets of its work
-                // plus one between-station gap per round.
-                if block.items.count > block.minItems, let last = block.items.last {
-                    result.append((.dropItem(block: blockIndex), -(rounds * (last.workSecondsPerSet + transitionSeconds))))
-                }
-            } else {
-                // Linear bookend: it grows/shrinks purely by one-set movement count.
-                if let next = block.reserve.first {
-                    let wps = workSecondsPerSet(for: next.exercise, reps: next.reps, durationSeconds: next.durationSeconds)
-                    result.append((.addReserve(block: blockIndex), wps + transitionSeconds))
-                }
-                if block.items.count > block.minItems, let last = block.items.last {
-                    result.append((.dropItem(block: blockIndex), -(last.workSecondsPerSet + transitionSeconds)))
-                }
+            } else if !block.reserve.isEmpty {
+                result.append(.addReserve(block: blockIndex))
+            }
+            if block.items.count > block.minItems {
+                result.append(.dropItem(block: blockIndex))
             }
         }
         return result
@@ -904,10 +913,9 @@ enum SessionAssembly {
 
     private static func apply(_ adjustment: Adjustment, to blocks: inout [PlannedBlock]) {
         switch adjustment {
-        case let .setRoundsAndRest(block, rounds, rest):
+        case let .setRounds(block, rounds):
             for index in blocks[block].items.indices {
                 blocks[block].items[index].sets = rounds
-                blocks[block].items[index].restSeconds = rest
             }
         case let .addReserve(block):
             // Linear bookend only (see `.addReserveWithRounds` for a circuit training block): join at
@@ -915,17 +923,15 @@ enum SessionAssembly {
             var promoted = blocks[block].reserve.removeFirst()
             promoted.sets = 1
             blocks[block].items.append(promoted)
-        case let .addReserveWithRounds(block, rounds, rest):
+        case let .addReserveWithRounds(block, rounds):
             // Circuit training block (US-RC01): the promoted station and every existing station move to
-            // the jointly-solved round count/rest together, so the block stays uniform the moment the
-            // new station lands rather than joining at a stale round count a later move must reconcile.
+            // the chosen round count together, so the block stays uniform the moment the new station
+            // lands rather than joining at a stale round count a later move must reconcile.
             var promoted = blocks[block].reserve.removeFirst()
-            promoted.sets = rounds
-            promoted.restSeconds = rest
+            promoted.restSeconds = roundRestSeconds
             blocks[block].items.append(promoted)
             for index in blocks[block].items.indices {
                 blocks[block].items[index].sets = rounds
-                blocks[block].items[index].restSeconds = rest
             }
         case let .dropItem(block):
             let removed = blocks[block].items.removeLast()
@@ -933,17 +939,18 @@ enum SessionAssembly {
         }
     }
 
-    /// One timing-fit move, addressed by block index into the in-progress `[PlannedBlock]`. Every move
-    /// preserves a training block's uniform round count (US-CC03): `setRoundsAndRest` writes the same
-    /// round count and rest to every station, and `addReserve` joins at the block's current round count.
+    /// One coarse timing-fit move, addressed by block index into the in-progress `[PlannedBlock]`.
+    /// Every move preserves a training block's uniform round count (US-CC03): `setRounds` writes the
+    /// same round count to every station, and `addReserveWithRounds` moves the whole block, new station
+    /// included, to one round count.
     private enum Adjustment {
-        /// Set every station of a circuit block to the same round count and (in-band) between-round rest.
-        case setRoundsAndRest(block: Int, rounds: Int, rest: Int)
+        /// Set every station of a circuit block to the same round count.
+        case setRounds(block: Int, rounds: Int)
         /// Promote the next reserve movement into a **linear bookend** block, at one set.
         case addReserve(block: Int)
         /// Promote the next reserve movement into a **circuit training** block (US-RC01), and set every
-        /// station - the new one included - to the jointly-solved round count and (in-band) rest.
-        case addReserveWithRounds(block: Int, rounds: Int, rest: Int)
+        /// station - the new one included - to the chosen round count.
+        case addReserveWithRounds(block: Int, rounds: Int)
         /// Drop the last movement from the block back to the reserve.
         case dropItem(block: Int)
     }
@@ -962,19 +969,23 @@ struct PlannedItem: Equatable {
     let exercise: Exercise
     let reps: Int?
     let durationSeconds: Int?
+    /// Seconds the timing fit added to this set's work window past its generous pace (ADR-0010): the
+    /// spare time at the end of the set the user rests through. Zero until `stretchWorkWindows` runs,
+    /// and only ever set on a rep-based set in a circuit training block.
+    var stretchSeconds: Int = 0
     /// The set count. On a circuit training block this is the block's uniform round count; the timing
-    /// fit moves it only via the block-level `setRoundsAndRest` move, so it stays equal across the block.
+    /// fit moves it only via the block-level `setRounds`/`addReserveWithRounds` moves, so it stays equal
+    /// across the block.
     var sets: Int
-    /// On a circuit training block this is the between-round rest (a tunable lever within
-    /// `[minRoundRestSeconds, maxRoundRestSeconds]`, kept equal across the block); on a bookend it is
-    /// the (uncharged) one-set rest.
+    /// On a circuit training block this is the between-round rest (`SessionAssembly.roundRestSeconds`,
+    /// equal across the block); on a bookend it is the (uncharged) one-set rest.
     var restSeconds: Int
 
     /// Planned seconds for one set at this item's actual per-set target (see
     /// `SessionAssembly.workSecondsPerSet(for:reps:durationSeconds:)`), so a seeded or
-    /// capacity-grown prescription is sized as the work it really is.
+    /// capacity-grown prescription is sized as the work it really is - plus any stretch (ADR-0010).
     var workSecondsPerSet: Int {
-        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds)
+        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds) + stretchSeconds
     }
 
     func materialize() -> PrescribedExercise {
@@ -984,7 +995,8 @@ struct PlannedItem: Equatable {
             sets: sets,
             reps: reps,
             durationSeconds: durationSeconds,
-            restSeconds: restSeconds
+            restSeconds: restSeconds,
+            stretchSeconds: stretchSeconds > 0 ? stretchSeconds : nil
         )
     }
 }
@@ -1281,6 +1293,11 @@ private struct Builder {
             recentLogs: recentLogs,
             progressionRate: progressionRate,
             reentryScale: reentryScale,
+            steppedDownSince: ProgressionChainSelection.stepDownDate(
+                onto: selection.exercise,
+                library: library,
+                recentLogs: recentLogs
+            ),
             startingRepMultiplier: startVolume.repMultiplier,
             startingSets: startVolume.sets
         )
@@ -1291,7 +1308,7 @@ private struct Builder {
                 reps: target.reps,
                 durationSeconds: target.durationSeconds,
                 sets: SessionAssembly.clampTrainingSets(target.sets),
-                restSeconds: SessionAssembly.strengthRestSeconds
+                restSeconds: SessionAssembly.roundRestSeconds
             )
         )
     }

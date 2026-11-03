@@ -132,17 +132,41 @@ final class ReturnOverrideTests: XCTestCase {
 
     // MARK: - Re-entry Ramp scale
 
+    /// A session `daysAgo` that was served as a Return.
+    private func returnLog(daysAgo: Int) -> WorkoutLog {
+        var log = log(daysAgo: daysAgo)
+        log.wasReturn = true
+        return log
+    }
+
     /// A Return serves the gentle volume floor.
     func testReturnUsesFloorScale() {
-        XCTAssertEqual(ReturnOverride.reentryScale(isReturn: true, reentry: nil), ReturnOverride.reentryFloorScale)
-        // Even with a ramp present, a fresh Return takes precedence and serves the floor.
+        XCTAssertEqual(ReturnOverride.reentryScale(isReturn: true, recentLogs: []), ReturnOverride.reentryFloorScale)
+        // Even with a ramp in progress, a fresh Return takes precedence and serves the floor.
         XCTAssertEqual(
-            ReturnOverride.reentryScale(isReturn: true, reentry: .init(rampSessionsRemaining: 1)),
+            ReturnOverride.reentryScale(isReturn: true, recentLogs: [returnLog(daysAgo: 9), log(daysAgo: 8)]),
             ReturnOverride.reentryFloorScale
         )
     }
 
-    /// The ramp climbs from the floor back to neutral as the counter decrements.
+    /// The ramp's position is read from the logs: the sessions completed after the most recent Return
+    /// count it down, it lasts exactly `rampSessions` sessions and then ends, and logs before the Return
+    /// do not count.
+    func testRampPositionCountsTheSessionsCompletedSinceTheReturn() {
+        var logs = [log(daysAgo: 30), returnLog(daysAgo: 10)]
+        var remaining = [ReturnOverride.rampSessionsRemaining(recentLogs: logs)]
+        for daysAgo in [9, 8, 7, 6] {
+            logs.append(log(daysAgo: daysAgo))
+            remaining.append(ReturnOverride.rampSessionsRemaining(recentLogs: logs))
+        }
+        XCTAssertEqual(remaining, [3, 2, 1, 0, 0])
+        XCTAssertEqual(ReturnOverride.rampSessionsRemaining(recentLogs: [log(daysAgo: 1)]), 0,
+                       "with no Return in the logs there is no ramp")
+        XCTAssertEqual(ReturnOverride.rampSessionsRemaining(recentLogs: logs + [returnLog(daysAgo: 2)]), 3,
+                       "a later Return starts a fresh ramp")
+    }
+
+    /// The ramp climbs from the floor back to neutral as its sessions are completed.
     func testRampScaleClimbsAsRemainingDecrements() {
         let three = ReturnOverride.rampScale(remaining: 3)
         let two = ReturnOverride.rampScale(remaining: 2)
@@ -157,17 +181,36 @@ final class ReturnOverrideTests: XCTestCase {
     }
 
     func testReentryScaleUsesRampWhenActiveAndNotReturn() {
-        let scale = ReturnOverride.reentryScale(isReturn: false, reentry: .init(rampSessionsRemaining: 2))
+        let scale = ReturnOverride.reentryScale(isReturn: false, recentLogs: [returnLog(daysAgo: 3), log(daysAgo: 2)])
         XCTAssertEqual(scale, ReturnOverride.rampScale(remaining: 2), accuracy: 0.0001)
         XCTAssertLessThan(scale, 1.0, "an active ramp still holds volume below normal")
     }
 
     func testReentryScaleNeutralWithNoRampOrReturn() {
-        XCTAssertEqual(ReturnOverride.reentryScale(isReturn: false, reentry: nil), AdaptiveOverload.neutralReentryScale)
-        XCTAssertEqual(
-            ReturnOverride.reentryScale(isReturn: false, reentry: .init(rampSessionsRemaining: 0)),
-            AdaptiveOverload.neutralReentryScale, "an exhausted ramp is neutral"
-        )
+        XCTAssertEqual(ReturnOverride.reentryScale(isReturn: false, recentLogs: [log(daysAgo: 1)]),
+                       AdaptiveOverload.neutralReentryScale)
+        let finished = [returnLog(daysAgo: 4), log(daysAgo: 3), log(daysAgo: 2), log(daysAgo: 1)]
+        XCTAssertEqual(ReturnOverride.reentryScale(isReturn: false, recentLogs: finished),
+                       AdaptiveOverload.neutralReentryScale, "a finished ramp is neutral")
+    }
+
+    /// A held session - a Return, and the ramp sessions completed after it - never counts as capacity.
+    /// A later Return cuts the earlier ramp short and starts its own, and once a ramp is over the
+    /// sessions after it count as capacity again. The split reads the logs in time order, whatever
+    /// order they arrive in.
+    func testSplitHeldMarksEveryReturnAndItsRampSessions() {
+        let preReturn = log(daysAgo: 40)
+        let return1 = returnLog(daysAgo: 30)
+        let ramp1 = log(daysAgo: 29)
+        let return2 = returnLog(daysAgo: 20)
+        let ramp2 = [19, 18, 17].map { log(daysAgo: $0) }
+        let after = log(daysAgo: 16)
+
+        let split = ReturnOverride.splitHeld([after, return2, preReturn] + ramp2 + [ramp1, return1])
+        XCTAssertEqual(split.capacity.map(\.id), [preReturn.id, after.id])
+        XCTAssertEqual(split.held.map(\.id), [return1.id, ramp1.id, return2.id] + ramp2.map(\.id))
+        XCTAssertEqual(ReturnOverride.splitHeld([log(daysAgo: 2), log(daysAgo: 1)]).held.count, 0,
+                       "with no Return in the logs nothing is held")
     }
 
     func testRampScaleClampsOutOfRange() {

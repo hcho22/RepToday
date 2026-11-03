@@ -191,7 +191,7 @@ final class TrainerChoiceTests: XCTestCase {
 }
 
 /// A user service whose reads work and whose saves always fail.
-private actor SaveFailingUserService: UserServiceProtocol {
+actor SaveFailingUserService: UserServiceProtocol {
     struct SaveFailed: Error {}
     private let user: User?
 

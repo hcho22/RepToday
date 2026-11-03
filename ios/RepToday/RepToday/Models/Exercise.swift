@@ -51,7 +51,8 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// Set when the prescribed per-set value is *per side* - a 20-second side plank is 20 seconds left
     /// plus 20 seconds right, and `advancementCriteria` says so in words ("3x30s hold per side").
     /// The timing model needs it explicitly for holds, whose per-second work cost is fixed at one second
-    /// per prescribed second *per side*, so a per-side hold's set costs twice its prescribed duration.
+    /// per prescribed second *per side*, so a per-side hold's set costs twice its prescribed duration
+    /// plus the "Switch sides" beat between the legs.
     /// Read through `sidesPerSet` rather than directly; optional (absent means not per side) so an
     /// `Exercises.json` copy or an already-persisted active session written before it existed decodes
     /// unchanged.
@@ -64,8 +65,9 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// then paced: since US-CC08 the same function scales the *rep* half by
     /// `SessionAssembly.workPaceGenerosityFactor`, so what a rep-based set actually costs the plan - and
     /// what the player's work window counts down - is the slower-end `round(estimate x 1.25)`, and this
-    /// authored value is the typical-case time underneath it. A **hold** is unscaled (its per-second cost
-    /// is definitional, not estimated), so a default-sized hold still costs exactly what is authored here.
+    /// authored value is the typical-case time underneath it. A **hold** with prescribed seconds does not
+    /// read it: it costs exactly the seconds the player runs (its legs and the "Switch sides" beat, no
+    /// setup, ADR-0010), so this value prices a hold only when it carries no prescribed seconds.
     var estimatedTimePerSetSeconds: Int
     /// Metabolic equivalent, used to estimate active energy for HealthKit.
     var metValue: Double

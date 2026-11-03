@@ -20,8 +20,8 @@ final class HingeStrengthSkillTests: XCTestCase {
     // The hinge_bridge chain's new phase-gated tail: the discipline frontier, the US-SP03 mid-tier
     // bridge, and the difficulty-5 summit, with the clearing value that advances each rung.
     private let chainId = "hinge_bridge"
-    private let frontier = (id: "hinge_long_lever_bridge", difficulty: 4, clear: 8)  // "3x8 slow reps per side"
-    private let bridge = (id: "hinge_nordic_assisted", difficulty: 4, clear: 6)       // "3x6 clean reps"
+    private let frontier = (id: "hinge_long_lever_bridge", difficulty: 4, clear: 15)  // "3x15 slow reps per side"
+    private let bridge = (id: "hinge_nordic_assisted", difficulty: 4, clear: 15)       // "3x15 clean reps"
     private let summit = (id: "hinge_nordic", difficulty: 5)
 
     private func library() async throws -> [Exercise] {
@@ -150,20 +150,42 @@ final class HingeStrengthSkillTests: XCTestCase {
         XCTAssertEqual(fromBridge.exercise.difficulty, summit.difficulty)
     }
 
-    /// The freshly-advanced bridge must not clear itself on first exposure: with no prior history the
-    /// engine doses `hinge_nordic_assisted` off its `defaultReps` (US-CC09 records prescribed=performed),
-    /// so if that seed matched the "3x6 clean reps" threshold the user would leap frontier -> bridge ->
-    /// summit in two sessions with no dwell on the bridge. Pin that the first prescription sits strictly
-    /// below the clearing threshold, so the climb takes multiple sessions ("a rung at a time, no 4->5 jump").
-    func testFreshHingeBridgePrescriptionSitsBelowItsClearingThreshold() async throws {
+    /// The freshly-advanced bridge opens at the ten-rep floor (ADR-0011), below its "3x15 clean reps"
+    /// criterion, so it can never clear on first exposure: three "just right" sessions at 10 climb it to
+    /// 15, and only a fourth session at 15 clears it - a newly reached move takes at least four sessions.
+    /// A session at 15 the user marks "couldn't finish" never clears it either.
+    func testFreshHingeBridgeTakesAtLeastFourSessionsToClear() async throws {
         let library = try await library()
         let bridgeEx = try XCTUnwrap(library.first { $0.id == bridge.id })
+        let members = library.filter { $0.progressionChainId == chainId }
+        let eligibleIds = Set(members.map(\.id))
+        func session(_ reps: Int, daysAgo: Int, marked: Bool = false) -> WorkoutLog {
+            var log = clearingLog(bridge.id, value: reps)
+            log.completedAt = Date(timeIntervalSince1970: 1_760_000_000 - Double(daysAgo) * 86_400)
+            if marked {
+                log.perceivedDifficulty = .tooHard
+                log.exercises[0].couldNotFinish = true
+            }
+            return log
+        }
+        func selected(_ logs: [WorkoutLog]) throws -> String {
+            try XCTUnwrap(ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: logs)).exercise.id
+        }
 
-        let firstTarget = AdaptiveOverload.target(for: bridgeEx, recentLogs: [])
-        let firstReps = try XCTUnwrap(firstTarget.reps, "the bridge is rep-based, so it has a rep target")
-        XCTAssertLessThan(firstReps, bridge.clear,
-                          "the fresh bridge prescription must sit below its \(bridge.clear)-rep clearing threshold, "
-                          + "so a Strength-Phase user must climb across sessions before reaching the summit")
+        XCTAssertEqual(AdaptiveOverload.target(for: bridgeEx, recentLogs: []).reps, AdaptiveOverload.minReps,
+                       "the bridge opens at the ten-rep floor")
+        XCTAssertLessThan(AdaptiveOverload.minReps, bridge.clear, "below its fifteen-rep criterion")
+
+        let threeAtTen = [session(10, daysAgo: 1), session(10, daysAgo: 2), session(10, daysAgo: 3)]
+        XCTAssertEqual(try selected(Array(threeAtTen.prefix(1))), bridge.id, "one session at ten does not clear it")
+        XCTAssertEqual(try selected(threeAtTen), bridge.id, "three sessions at ten do not clear it")
+        XCTAssertEqual(AdaptiveOverload.target(for: bridgeEx, recentLogs: threeAtTen).reps, 15,
+                       "but they climb it to fifteen")
+
+        XCTAssertEqual(try selected([session(15, daysAgo: 0, marked: true)] + threeAtTen), bridge.id,
+                       "a fourth session marked couldn't finish never clears it")
+        XCTAssertEqual(try selected([session(15, daysAgo: 0)] + threeAtTen), summit.id,
+                       "a fourth, finished session at fifteen clears it")
     }
 
     /// The mirror: a **discipline**-phase user at the same frontier can reach neither new hinge skill

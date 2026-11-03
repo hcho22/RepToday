@@ -4,21 +4,27 @@ import Foundation
 /// to prescribe, decide *how much* of it the user should do - sets, and either reps-per-set
 /// (rep-based) or hold seconds (hold) - matched to what they have actually demonstrated.
 ///
-/// The promise is "challenging but never absurd": every target is **capacity-relative**, computed
-/// from the user's own logged performance, never a fixed heroic number ("100 squats"). The lever is
-/// the per-set target (reps or seconds); the set count tracks what the user already sustains.
+/// The promise is "challenging but never absurd": every target is **capacity-relative**, read from
+/// the user's own logged performance, never a fixed heroic number ("100 squats"). The lever is the
+/// per-set target (reps or seconds); the set count tracks what the user already sustains.
 ///
-/// - **Demonstrated capacity** - read back from the most recent *usable* (non-skipped, non-empty)
-///   logged performance of this exact exercise: the number of sets worked and the rounded average
-///   per-set value. A freshly-advanced exercise (Step 5 moved the user up a tier) has no history of
-///   its own, so it falls back to the exercise's `defaultReps`/`defaultDurationSeconds`.
-/// - **The Asymmetric Ramp (US-E05)** - that same log's `perceivedDifficulty` (or a skip) steers the
-///   next target, and it does so *asymmetrically*: it backs off fast and climbs slow. A single recent
-///   `tooHard` **or a skip** of this exercise pulls the next target down eagerly (the larger step),
-///   `tooEasy` nudges it up only patiently (a smaller step), and `justRight`/no rating nudges it
-///   progressively up by the gentlest step. Every signal moves the target by at least one so its
-///   direction is never lost to rounding, and the down-step magnitude is always >= the up-step, so a
-///   user is never overwhelmed by a too-hard day and never bored by a too-easy one.
+/// **Round numbers (ADR-0011).** Every per-set target sits on a grid of `step` (5): reps are 10, 15,
+/// 20 and up to `maxReps`, holds are 10, 15, 20 seconds and up to the hold ceiling, and nothing is ever
+/// prescribed below `minReps`/`minHoldSeconds` (10) - a user who cannot do ten simply does what they
+/// can. A per-side movement follows the same grid per side.
+///
+/// - **Demonstrated capacity** - the most recent *usable* (non-skipped, non-empty) logged performance
+///   of this exact exercise, rounded down onto the grid (`onGrid`), so a number logged before the grid
+///   existed (13, 14) is served at the round number below it (10) and never below the floor. A
+///   freshly-advanced exercise (Step 5 moved the user up a tier) has no history of its own, so it falls
+///   back to the exercise's own default, likewise rounded down onto the grid.
+/// - **The climb (amends the Asymmetric Ramp, US-E05)** - the target moves one `step` at a time:
+///   three sessions in a row at the same number rated "just right" (an unrated session counts as "just
+///   right") add 5; "too easy" adds 5 at once; "too hard" or a skip takes 5 off - or, already at the
+///   floor, steps the movement one rung down its progression chain (`ProgressionChainSelection`) while
+///   the number stays at the floor. When "too hard" comes with the completion screen's "couldn't
+///   finish" list, only the moves the user tapped step back; the others hold (`signal(for:in:)`). It
+///   still backs off faster than it climbs: one bad day steps back, while a climb takes three good ones.
 /// - **Safety rails** - per-set targets and set counts are clamped to sane floors and ceilings, so
 ///   even a runaway log can never produce an absurd ("heroic") prescription.
 ///
@@ -49,60 +55,44 @@ enum AdaptiveOverload {
 
     // MARK: Tuning constants
 
-    /// The per-cycle bump curve (the PRD's open question made concrete), tuned as the **Asymmetric
-    /// Ramp** (US-E05): back off fast, climb slow. Each multiplier is applied to demonstrated
-    /// capacity, then rounded; direction is then guaranteed (every signal - easier, harder, or the
-    /// progressive nudge - always moves the target by at least one), so a small capacity can never
-    /// stall.
-    ///
-    /// - `progressiveStep` (`justRight` / no rating): the gentlest nudge just above capacity.
-    /// - `easyStep` (`tooEasy`): a patient climb above capacity.
-    /// - `hardStep` (`tooHard` or a **skip**): an eager back-off below capacity.
-    ///
-    /// The asymmetry invariant is `(1 - hardStep) >= (easyStep - 1)`: the down-step is at least as
-    /// large as the up-step (here twice as large - a 20% eager back-off against a 10% patient climb),
-    /// so a too-hard day is corrected decisively while a too-easy day advances only gradually. A skip
-    /// is treated as an eager down-signal exactly like `tooHard` (the user bailed; that was too much).
-    ///
-    /// The two *advancing* steps (`progressiveStep`/`easyStep`) are scaled by the Session Policy's
-    /// `progressionRate` (US-E03): the deviation-from-capacity grows with the rate, so a higher rate
-    /// advances reps/holds faster while still clamping to the safety rails. The neutral rate `1.0`
-    /// leaves the curve exactly as it was, so `SessionPolicy.default` is a no-op. `hardStep` is a
-    /// safety response to a too-hard/skip signal, so the rate never scales the ease (a faster program
-    /// must not back off harder): the eager down-step is a fixed property of the ramp. (Because only
-    /// the up-steps are paced, a deliberately aggressive `progressionRate` can climb faster than the
-    /// fixed back-off - the asymmetry is a property of the base ramp at the neutral rate, by design.)
-    static let progressiveStep = 1.05
-    static let easyStep = 1.10
-    static let hardStep = 0.80
+    /// The one step every per-set target moves by and lands on (ADR-0011): reps and hold seconds are
+    /// always a multiple of it.
+    static let step = 5
 
-    /// The neutral progression rate: the Session Policy default, reproducing the pre-policy curve.
+    /// How many sessions in a row at the same number, each rated "just right" (or left unrated), earn
+    /// the next `step` at the neutral `progressionRate` (ADR-0011). The Session Policy's
+    /// `progressionRate` scales this count (`justRightSessionsToClimb(progressionRate:)`).
+    static let justRightSessionsToClimb = 3
+
+    /// The neutral progression rate: the Session Policy default, reproducing the three-session climb.
     static let neutralProgressionRate = 1.0
 
     /// The neutral Re-entry Ramp scale (US-E06): `1.0` holds nothing back, so the default reproduces
-    /// the pre-ramp target exactly. A Return and its Re-entry Ramp pass a scale `< 1.0`
+    /// the un-held target exactly. A Return and its Re-entry Ramp pass a scale `< 1.0`
     /// (`ReturnOverride.reentryScale`) to hold the per-set target below normal and walk it back up.
     static let neutralReentryScale = 1.0
 
     /// The neutral Start Seed volume multiplier (US-O02): `1.0` scales nothing, so the no-history
-    /// default target is exactly the exercise's own default. A cold-start user at a higher
-    /// self-reported fitness level passes a larger multiplier
-    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) so their *first* prescription of a
-    /// movement carries proportionate volume; it is clamped to the same per-set rails as every other
-    /// target, and it never touches a capacity-derived one.
+    /// default target is exactly the exercise's own (grid-rounded) default. A cold-start user at a
+    /// higher self-reported fitness level passes a larger multiplier
+    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) to lift their *first* prescription of a
+    /// movement; it is landed on the grid, clamped to the same per-set rails as every other target, and
+    /// never touches a capacity-derived one. The lift stops one `step` below the movement's advancement
+    /// criterion (ADR-0011), so in today's catalog it lifts timed holds but no rep-based move's first
+    /// number; the Start Seed still sets the first set count (`startingSets`) and the tier band.
     ///
     /// Aliased from the policy contract's own neutral rather than restated, so the value the
     /// Programmer writes and the value this step falls back to cannot drift apart.
     static let neutralStartingRepMultiplier = SessionPolicy.ColdStartContract.neutralStartingRepMultiplier
 
-    /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
-    /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
-    /// keep a target meaningful after repeated easing.
+    /// Floors and ceilings for the per-set target, all multiples of `step`. The ceilings are
+    /// deliberately generous - they are a safety rail against an absurd prescription, not a
+    /// normal-range limiter - and the floors are the smallest number ever prescribed (ADR-0011).
     ///
     /// `maxHoldSeconds` bounds what one *set* costs, not the number the player shows: a per-side hold
-    /// is clamped to `maxHoldSeconds / sidesPerSet` so three minutes stays three minutes whether the
-    /// movement is held once or once per side (see `clampPerSet`).
-    static let minReps = 3
+    /// is clamped to `maxHoldSeconds / sidesPerSet`, landed on the grid, so three minutes stays three
+    /// minutes whether the movement is held once or once per side (see `clampPerSet`).
+    static let minReps = 10
     static let maxReps = 50
     static let minHoldSeconds = 10
     static let maxHoldSeconds = 180
@@ -116,210 +106,341 @@ enum AdaptiveOverload {
     static let maxSets = 4
     static let defaultSets = SessionPolicy.ColdStartContract.neutralStartingSets
 
+    // MARK: Signals
+
+    /// What one logged performance of an exercise tells the next target (ADR-0011).
+    enum Signal: Equatable {
+        /// "Too hard" (on a move the user marked as not finished, or on every move when they marked
+        /// none) or a skip: take one `step` off, or step down the chain when already at the floor.
+        case stepBack
+        /// "Too easy": add one `step` at once.
+        case climbNow
+        /// "Just right" or unrated: counts toward the run of sessions that earns the next `step`.
+        case justRight
+        /// A move the user did *not* mark in a "too hard" session that marked others: it neither steps
+        /// back nor counts toward the climb, so the number holds and the run of "just right" restarts.
+        case hold
+    }
+
+    /// The signal one logged move carries, read from its session's rating and the completion screen's
+    /// per-move "couldn't finish" marks (ADR-0011). A skip is always a step back. On a "too hard"
+    /// session, a session that marked at least one move steps back only the marked moves and holds the
+    /// rest; a session that marked none (and every log written before the marks existed) steps every
+    /// move back, as "too hard" always has.
+    static func signal(for logged: LoggedExercise, in log: WorkoutLog) -> Signal {
+        if log.stepsBack(logged) { return .stepBack }
+        switch log.perceivedDifficulty {
+        case .tooHard:
+            return .hold
+        case .tooEasy:
+            return .climbNow
+        case .justRight, .none:
+            return .justRight
+        }
+    }
+
+    /// The number of "just right" sessions in a row at one number that earn the next `step`, scaled by
+    /// the Session Policy's `progressionRate` (US-E03, ADR-0011): `3 / rate`, rounded up, never below
+    /// one. The neutral rate `1.0` is three sessions; an eased rate (the floor `0.5`) asks for six, and
+    /// the fastest rate (`2.0`) for two - so the lever keeps its direction and can never skip a step or
+    /// climb by more than one at a time.
+    static func justRightSessionsToClimb(progressionRate: Double) -> Int {
+        let rate = max(SessionPolicy.minProgressionRate, progressionRate)
+        return max(1, Int((Double(justRightSessionsToClimb) / rate).rounded(.up)))
+    }
+
     // MARK: Target selection
 
-    /// The capacity-relative target for `exercise`, derived from the user's most recent usable
-    /// performance of it in `recentLogs` and that session's `perceivedDifficulty`. With no usable
-    /// history the exercise's own defaults are used (clamped to the safety rails).
+    /// The capacity-relative target for `exercise`, derived from the user's recent performances of it
+    /// in `recentLogs` and their signals (see `signal(for:in:)`). With no usable history the exercise's
+    /// own grid-rounded default is used (clamped to the safety rails).
     ///
-    /// `progressionRate` is the Session Policy lever (US-E03) scaling the advancing bump: `1.0` is
-    /// neutral (pre-policy behavior), a higher rate advances reps/holds faster. It only affects the
-    /// step *up* from demonstrated capacity, so a no-history default (which has no bump to scale) is
-    /// unchanged by it.
+    /// `progressionRate` is the Session Policy lever (US-E03): it sets how many "just right" sessions a
+    /// climb takes (`justRightSessionsToClimb(progressionRate:)`); every climb is still one `step`. A
+    /// no-history default (which has no climb to pace) is unchanged by it.
     ///
     /// `reentryScale` is the Return / Re-entry Ramp lever (US-E06): `1.0` is neutral (no-op), while a
     /// value `< 1.0` (`ReturnOverride.reentryScale`) holds the *capacity-derived* per-set target below
-    /// what the signal and `progressionRate` would otherwise prescribe, so a returning user is eased
-    /// back gradually. It is applied only to capacity-derived targets - a no-history default is already
-    /// the gentle starting value and is left untouched - and it always lands at least one below the
-    /// un-held target (down to the safety floor) so the ease is never lost to rounding.
+    /// what it would otherwise be: the scaled value rounded down onto the grid, and always at least one
+    /// `step` below the un-held target (down to the floor), so the ease is never lost to rounding. A
+    /// no-history default is already the gentle starting value and is left untouched.
+    ///
+    /// A **held** session - a Return or a Re-entry Ramp session (`ReturnOverride.splitHeld`) - logged
+    /// what the hold served, not what the user can do, so it never counts as capacity: the target is
+    /// read from the latest session that was not held, and with none the default applies. So a held
+    /// session is never held against the previous one's held number, and a user who lapses twice is held
+    /// against the capacity from before the first Return. Once a held session steps this move back ("too
+    /// hard", "couldn't finish" or a skip) after that capacity, though, the move is never served above
+    /// the climb's own target over every log - that session's number less one `step` - until a later
+    /// session earns it back by the normal climb (ADR-0011).
+    ///
+    /// `steppedDownSince` is the date a step back at the floor moved the user down onto this rung
+    /// (`ProgressionChainSelection.stepDownDate(onto:library:recentLogs:)`), `nil` otherwise. The rung is
+    /// then served at the floor and climbs by the normal rules from the sessions after it alone, so a
+    /// user who keeps finding the harder move too hard holds on the easier one (ADR-0011).
     ///
     /// `startingRepMultiplier` / `startingSets` are the cold-start **Start Seed** (US-O02), and they
-    /// apply *only* to the no-history default target - the very first prescription of a movement, where
-    /// there is no demonstrated capacity to be relative to and the exercise's own default would
-    /// otherwise under-serve a genuinely active user. Both are clamped to the existing rails, and both
-    /// are ignored the moment the user has logged the movement, so session 2+ stays capacity-relative
-    /// exactly as before. The neutral values reproduce the pre-seed target precisely.
+    /// apply *only* to the no-history default target - the very first prescription of a movement. The
+    /// multiplier scales the grid-rounded default and lands on the nearest grid number (never below
+    /// the default for a multiplier above one), and both are clamped to the existing rails and ignored
+    /// the moment the user has logged the movement. The seed never lifts the default past one `step`
+    /// below the movement's advancement criterion, so no move can clear in its first session. The
+    /// neutral values reproduce the default precisely.
     static func target(
         for exercise: Exercise,
         recentLogs: [WorkoutLog],
         progressionRate: Double = neutralProgressionRate,
         reentryScale: Double = neutralReentryScale,
+        steppedDownSince: Date? = nil,
         startingRepMultiplier: Double = neutralStartingRepMultiplier,
         startingSets: Int = defaultSets
     ) -> OverloadTarget {
-        guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
-            return defaultTarget(
+        let split = ReturnOverride.splitHeld(recentLogs)
+        let sinceStepDown: (WorkoutLog) -> Bool = { log in steppedDownSince.map { log.completedAt > $0 } ?? true }
+        let capacityLogs = split.capacity.filter(sinceStepDown)
+        let heldLogs = split.held.filter(sinceStepDown)
+        let target: OverloadTarget
+        if let capacity = demonstratedCapacity(for: exercise, recentLogs: capacityLogs) {
+            let perSet = adjusted(
+                capacity,
+                isHold: exercise.isHold,
+                sides: exercise.sidesPerSet,
+                progressionRate: progressionRate,
+                reentryScale: reentryScale
+            )
+            target = OverloadTarget(
+                sets: clampSets(capacity.sets),
+                reps: exercise.isHold ? nil : perSet,
+                durationSeconds: exercise.isHold ? perSet : nil
+            )
+        } else if steppedDownSince != nil {
+            let atFloor = floor(isHold: exercise.isHold, sides: exercise.sidesPerSet)
+            target = OverloadTarget(
+                sets: clampSets(startingSets),
+                reps: exercise.isHold ? nil : atFloor,
+                durationSeconds: exercise.isHold ? atFloor : nil
+            )
+        } else {
+            target = defaultTarget(
                 for: exercise,
                 startingRepMultiplier: startingRepMultiplier,
                 startingSets: startingSets
             )
         }
-        let perSet = adjusted(
-            capacity.perSetValue,
-            signal: capacity.signal,
+
+        let capacitySince = capacityLogs
+            .filter { log in log.exercises.contains { $0.exerciseId == exercise.id } }
+            .map(\.completedAt)
+            .max()
+        guard
+            heldLogs.contains(where: { log in
+                capacitySince.map { log.completedAt > $0 } ?? true
+                    && log.exercises.contains { $0.exerciseId == exercise.id && log.stepsBack($0) }
+            }),
+            let latest = demonstratedCapacity(for: exercise, recentLogs: capacityLogs + heldLogs)
+        else { return target }
+        let ceiling = adjusted(
+            latest,
             isHold: exercise.isHold,
             sides: exercise.sidesPerSet,
             progressionRate: progressionRate,
-            reentryScale: reentryScale
+            reentryScale: neutralReentryScale
         )
         return OverloadTarget(
-            sets: clampSets(capacity.sets),
-            reps: exercise.isHold ? nil : perSet,
-            durationSeconds: exercise.isHold ? perSet : nil
+            sets: target.sets,
+            reps: target.reps.map { min($0, ceiling) },
+            durationSeconds: target.durationSeconds.map { min($0, ceiling) }
         )
+    }
+
+    /// When the user's most recent outcome on `exercise` is a step back *at the floor* - "too hard"
+    /// (or a skip) on a move already at ten reps or ten seconds - the date of that outcome, else `nil`.
+    /// The number cannot go lower, so Step 5 serves the rung below on the movement's progression chain
+    /// instead (`ProgressionChainSelection`), and only a later session's clean performance there earns
+    /// the way back up (ADR-0011).
+    static func floorStepBackDate(for exercise: Exercise, recentLogs: [WorkoutLog]) -> Date? {
+        guard
+            let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs),
+            capacity.signal == .stepBack,
+            capacity.value <= floor(isHold: exercise.isHold, sides: exercise.sidesPerSet)
+        else { return nil }
+        return capacity.signalDate
+    }
+
+    // MARK: Grid
+
+    /// `value` rounded down onto the grid and clamped to the per-set rails: a multiple of `step`, never
+    /// below the floor (10) and never above the ceiling. This is how a number logged before the grid
+    /// existed - or a catalog default such as 12 - becomes the round number the user is served
+    /// (ADR-0011).
+    static func onGrid(_ value: Int, isHold: Bool, sides: Int) -> Int {
+        clampPerSet((value / step) * step, isHold: isHold, sides: sides)
     }
 
     // MARK: Capacity
 
-    /// The direction the Asymmetric Ramp (US-E05) moves the next target, resolved from the most
-    /// recent signal: `eased` (an eager down-step on `tooHard` or a **skip**), `intensify` (a patient
-    /// up-step on `tooEasy`), or `progress` (the gentlest nudge up on `justRight`/no rating).
-    private enum RampSignal {
-        case eased
-        case intensify
-        case progress
-    }
-
-    /// What the user demonstrated on an exercise: how many sets they worked, the representative
-    /// per-set value, and the resolved ramp signal for the next target.
+    /// What the user demonstrated on an exercise: how many sets they worked, the grid value they worked
+    /// at, the signal for the next target, the session date that signal came from, and how many
+    /// sessions in a row (newest first) were "just right" at that same grid value.
     private struct Capacity {
         let sets: Int
-        let perSetValue: Int
-        let signal: RampSignal
+        let value: Int
+        let signal: Signal
+        let signalDate: Date
+        let justRightRun: Int
     }
 
     /// The user's demonstrated capacity for `exercise`: scan `recentLogs` newest-first and take the
-    /// first session that worked it non-skipped with at least one usable set, reading the set count,
-    /// the rounded average per-set value (reps for a rep-based movement, seconds for a hold), and the
-    /// resolved ramp signal. A **more-recent skip** of this exercise (encountered before the worked
-    /// session) is the Asymmetric Ramp's eager down-signal (US-E05): it overrides the worked session's
-    /// own rating so the next target eases, regardless of how that earlier session felt. Returns `nil`
-    /// when no worked performance exists, so the caller falls back to the exercise defaults.
+    /// first session that worked it non-skipped with at least one usable set, reading the set count and
+    /// the rounded average per-set value (reps for a rep-based movement, seconds for a hold), landed on
+    /// the grid. A **more-recent skip** of this exercise (encountered before the worked session) is a
+    /// step back (US-E05) that overrides the worked session's own rating. Otherwise the signal is that
+    /// session's own (`signal(for:in:)`), and the "just right" run counts it and the consecutive older
+    /// sessions that were also "just right" at the same grid value. Returns `nil` when no worked
+    /// performance exists, so the caller falls back to the exercise defaults.
     private static func demonstratedCapacity(
         for exercise: Exercise,
         recentLogs: [WorkoutLog]
     ) -> Capacity? {
         let newestFirst = recentLogs.sorted { $0.completedAt > $1.completedAt }
-        var sawRecentSkip = false
+        var recentSkipDate: Date?
+        var latest: (sets: Int, value: Int, signal: Signal, date: Date)?
+        var run = 0
         for log in newestFirst {
             guard let logged = log.exercises.first(where: { $0.exerciseId == exercise.id }) else {
                 continue
             }
             if logged.skipped {
-                sawRecentSkip = true
+                // A skip before the first worked session overrides its signal; a skip below it ends
+                // the "just right" run like any other non-"just right" session.
+                if latest == nil {
+                    if recentSkipDate == nil { recentSkipDate = log.completedAt }
+                    continue
+                }
+                break
+            }
+            guard let value = gridValue(of: logged, for: exercise) else { continue }
+
+            let signal = signal(for: logged, in: log)
+            guard let first = latest else {
+                latest = (value.sets, value.perSet, signal, log.completedAt)
+                if recentSkipDate == nil, signal == .justRight { run = 1 } else { break }
                 continue
             }
-
-            let values = logged.completedSets.compactMap { set -> Int? in
-                let value = exercise.isHold ? set.durationSeconds : set.reps
-                guard let value, value > 0 else { return nil }
-                return value
-            }
-            guard !values.isEmpty else { continue }
-
-            let average = (Double(values.reduce(0, +)) / Double(values.count)).rounded()
-            let signal: RampSignal = sawRecentSkip ? .eased : rampSignal(for: log.perceivedDifficulty)
-            return Capacity(sets: values.count, perSetValue: Int(average), signal: signal)
+            guard signal == .justRight, value.perSet == first.value else { break }
+            run += 1
         }
-        return nil
+        guard let latest else { return nil }
+        if let recentSkipDate {
+            return Capacity(sets: latest.sets, value: latest.value, signal: .stepBack, signalDate: recentSkipDate, justRightRun: 0)
+        }
+        return Capacity(sets: latest.sets, value: latest.value, signal: latest.signal, signalDate: latest.date, justRightRun: run)
     }
 
-    /// Maps a session's `perceivedDifficulty` to the ramp direction. A skip is handled upstream in
-    /// `demonstratedCapacity` (it forces `.eased` before this is consulted).
-    private static func rampSignal(for difficulty: PerceivedDifficulty?) -> RampSignal {
-        switch difficulty {
-        case .tooHard: return .eased
-        case .tooEasy: return .intensify
-        case .justRight, .none: return .progress
+    /// The set count and grid value of one logged performance, or `nil` when it carries no usable set.
+    private static func gridValue(of logged: LoggedExercise, for exercise: Exercise) -> (sets: Int, perSet: Int)? {
+        let values = logged.completedSets.compactMap { set -> Int? in
+            let value = exercise.isHold ? set.durationSeconds : set.reps
+            guard let value, value > 0 else { return nil }
+            return value
         }
+        guard !values.isEmpty else { return nil }
+        let average = Int((Double(values.reduce(0, +)) / Double(values.count)).rounded())
+        return (values.count, onGrid(average, isHold: exercise.isHold, sides: exercise.sidesPerSet))
     }
 
-    /// The starting target when there is no usable history: the exercise's own per-set default scaled
-    /// by the Start Seed's `startingRepMultiplier` over `startingSets` (US-O02), clamped to the safety
-    /// rails. The neutral seed (`x1.0`, `defaultSets`) is the pre-seed target exactly.
+    /// The starting target when there is no usable history: the exercise's own per-set default rounded
+    /// down onto the grid, scaled by the Start Seed's `startingRepMultiplier` (landing on the nearest
+    /// grid number) over `startingSets` (US-O02), clamped to the safety rails. A seed never lifts the
+    /// default past one `step` below the movement's advancement criterion (rounded down onto the grid,
+    /// never below the floor), so a seeded first prescription cannot clear the move in one session
+    /// (ADR-0011). The neutral seed (`x1.0`, `defaultSets`) is the grid-rounded default exactly, and no
+    /// catalog default reaches its own criterion.
     private static func defaultTarget(
         for exercise: Exercise,
         startingRepMultiplier: Double,
         startingSets: Int
     ) -> OverloadTarget {
         let sets = clampSets(startingSets)
-        let multiplier = max(0, startingRepMultiplier)
-        if exercise.isHold {
-            let base = exercise.defaultDurationSeconds ?? minHoldSeconds
-            let seconds = clampPerSet(rounded(base, by: multiplier), isHold: true, sides: exercise.sidesPerSet)
-            return OverloadTarget(sets: sets, reps: nil, durationSeconds: seconds)
-        } else {
-            let base = exercise.defaultReps ?? minReps
-            let reps = clampPerSet(rounded(base, by: multiplier), isHold: false, sides: exercise.sidesPerSet)
-            return OverloadTarget(sets: sets, reps: reps, durationSeconds: nil)
-        }
+        let sides = exercise.sidesPerSet
+        let base = exercise.isHold
+            ? (exercise.defaultDurationSeconds ?? minHoldSeconds)
+            : (exercise.defaultReps ?? minReps)
+        let gridBase = onGrid(base, isHold: exercise.isHold, sides: sides)
+        let nearest = nearestOnGrid(Double(gridBase) * max(0, startingRepMultiplier), isHold: exercise.isHold, sides: sides)
+        let seeded = AdvancementCriteria(parsing: exercise.advancementCriteria).map { criteria in
+            min(nearest, max(gridBase, onGrid(criteria.target - step, isHold: exercise.isHold, sides: sides)))
+        } ?? nearest
+        return OverloadTarget(
+            sets: sets,
+            reps: exercise.isHold ? nil : seeded,
+            durationSeconds: exercise.isHold ? seeded : nil
+        )
     }
 
     // MARK: Adjustment
 
-    /// Applies the Asymmetric Ramp (US-E05) to demonstrated `capacity`, then the Return / Re-entry Ramp
-    /// hold (US-E06), and clamps to the per-set rails. `.eased` (a `tooHard` or a skip) lands at least
-    /// one below capacity via the eager `hardStep` (down to the floor), `.intensify` (`tooEasy`) at
-    /// least one above via the patient `easyStep`, and `.progress` (`justRight`/no rating) at least one
-    /// above via the gentlest `progressiveStep` - so the direction of a signal is never lost to
-    /// rounding. The two advancing steps are scaled by `progressionRate` (US-E03); the eager down-step
-    /// is not (see `hardStep`).
+    /// Applies the climb (ADR-0011) to demonstrated `capacity`, then the Return / Re-entry Ramp hold
+    /// (US-E06), and clamps to the per-set rails. A step back takes one `step` off (down to the floor),
+    /// "too easy" adds one, a held move stays, and a run of "just right" sessions at the same number as
+    /// long as `justRightSessionsToClimb(progressionRate:)` adds one.
     ///
-    /// A `reentryScale < 1.0` (US-E06) then holds that result below the normal target: it scales the
-    /// otherwise-prescribed value and lands at least one below it (down to the floor), so a Return /
-    /// Re-entry Ramp session is always gentler than the un-held session while remaining within the
-    /// rails. The neutral `1.0` is a no-op, so the pre-ramp curve is reproduced exactly.
-    ///
-    /// `sides` is the movement's `sidesPerSet`, passed straight to `clampPerSet` so the hold ceiling
-    /// bounds what one *set* costs rather than what the player displays - `maxHoldSeconds` on a
-    /// per-side hold would otherwise mean twice that much work.
+    /// A `reentryScale < 1.0` (US-E06) then holds that result below the normal target: the scaled
+    /// value rounded down onto the grid, and at least one `step` below the un-held target (down to the
+    /// floor), so a Return / Re-entry Ramp session is always gentler than the un-held session while
+    /// remaining within the rails. The neutral `1.0` is a no-op.
     private static func adjusted(
-        _ capacity: Int,
-        signal: RampSignal,
+        _ capacity: Capacity,
         isHold: Bool,
         sides: Int,
         progressionRate: Double,
         reentryScale: Double
     ) -> Int {
-        let scaled: Int
-        switch signal {
-        case .eased:
-            scaled = min(rounded(capacity, by: hardStep), capacity - 1)
-        case .intensify:
-            scaled = max(rounded(capacity, by: paced(easyStep, rate: progressionRate)), capacity + 1)
-        case .progress:
-            scaled = max(rounded(capacity, by: paced(progressiveStep, rate: progressionRate)), capacity + 1)
+        let current = capacity.value
+        let next: Int
+        switch capacity.signal {
+        case .stepBack:
+            next = current - step
+        case .climbNow:
+            next = current + step
+        case .hold:
+            next = current
+        case .justRight:
+            next = capacity.justRightRun >= justRightSessionsToClimb(progressionRate: progressionRate)
+                ? current + step
+                : current
         }
-        let held = reentryScale < neutralReentryScale
-            ? min(rounded(scaled, by: reentryScale), scaled - 1)
-            : scaled
-        return clampPerSet(held, isHold: isHold, sides: sides)
+        let unheld = onGrid(next, isHold: isHold, sides: sides)
+        guard reentryScale < neutralReentryScale else { return unheld }
+        let scaled = Int((Double(unheld) * max(0, reentryScale)).rounded(.down))
+        return onGrid(min(scaled, unheld - step), isHold: isHold, sides: sides)
     }
 
-    /// Scales an advancing multiplier by `progressionRate` around `1.0`: the deviation from
-    /// no-change (`step - 1`) grows with the rate, so a faster program advances by more each cycle
-    /// while the neutral rate `1.0` reproduces `step` exactly. Only advancing steps (>= 1) are paced.
-    private static func paced(_ step: Double, rate: Double) -> Double {
-        1.0 + (step - 1.0) * rate
+    /// `value` landed on the nearest grid number and clamped to the rails (a tie rounds up).
+    private static func nearestOnGrid(_ value: Double, isHold: Bool, sides: Int) -> Int {
+        let steps = (value / Double(step)).rounded(.toNearestOrAwayFromZero)
+        return clampPerSet(Int(steps) * step, isHold: isHold, sides: sides)
     }
 
-    private static func rounded(_ value: Int, by factor: Double) -> Int {
-        Int((Double(value) * factor).rounded())
+    /// The per-set floor for a movement: 10 reps or 10 seconds (per side), or the ceiling when a
+    /// per-side hold's ceiling would sit below it.
+    private static func floor(isHold: Bool, sides: Int) -> Int {
+        clampPerSet(0, isHold: isHold, sides: sides)
     }
 
     /// Clamps a per-set target to the safety rails, reading `maxHoldSeconds` as the ceiling on what the
-    /// *set* costs rather than on the number shown.
+    /// *set* costs rather than on the number shown, landed on the grid.
     ///
     /// A per-side hold is performed once per side, so a prescribed "90 seconds" of `core_side_plank` is
     /// three minutes of holding. Capping the prescribed number alone would let an `isPerSide` movement
     /// reach six minutes in a single set - past the entire budget of a 5-minute session - which is
-    /// exactly the absurd prescription the rail exists to prevent. Dividing the ceiling by `sides` makes
-    /// the rail mean what its doc says for every movement. The floor stays per-side (10 seconds a side
-    /// is still a meaningful hold), and `min` keeps it from crossing the divided ceiling.
+    /// exactly the absurd prescription the rail exists to prevent. Dividing the ceiling by `sides` (and
+    /// rounding it down onto the grid) makes the rail mean what its doc says for every movement. The
+    /// floor stays per-side (10 seconds a side is still a meaningful hold), and `min` keeps it from
+    /// crossing the divided ceiling.
     private static func clampPerSet(_ value: Int, isHold: Bool, sides: Int) -> Int {
         let effectiveSides = max(1, sides)
-        let hi = isHold ? maxHoldSeconds / effectiveSides : maxReps
+        let hi = isHold ? (maxHoldSeconds / effectiveSides / step) * step : maxReps
         let lo = min(isHold ? minHoldSeconds : minReps, hi)
         return min(max(value, lo), hi)
     }

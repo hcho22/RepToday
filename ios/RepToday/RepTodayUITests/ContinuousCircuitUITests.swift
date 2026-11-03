@@ -56,22 +56,7 @@ final class ContinuousCircuitUITests: XCTestCase {
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
             .firstMatch
 
-        var reachedWorkWindow = false
-        for _ in 0..<30 {
-            if workWindow.waitForExistence(timeout: 2) {
-                reachedWorkWindow = true
-                break
-            }
-            if app.buttons["Skip rest"].exists {
-                app.buttons["Skip rest"].tap()
-                continue
-            }
-            let skip = app.buttons["Skip this exercise"]
-            if skip.exists {
-                skip.tap()
-                continue
-            }
-        }
+        let reachedWorkWindow = reachTrainingWorkWindow(workWindow)
 
         XCTAssertTrue(
             reachedWorkWindow,
@@ -114,12 +99,7 @@ final class ContinuousCircuitUITests: XCTestCase {
             .descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
             .firstMatch
-        var reachedWorkWindow = false
-        for _ in 0..<30 {
-            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
-            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
-            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
-        }
+        let reachedWorkWindow = reachTrainingWorkWindow(workWindow)
         XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set")
 
         // The training block is a circuit, so it surfaces "Round N of M" (US-CC02).
@@ -170,12 +150,7 @@ final class ContinuousCircuitUITests: XCTestCase {
             .descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
             .firstMatch
-        var reachedWorkWindow = false
-        for _ in 0..<30 {
-            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
-            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
-            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
-        }
+        let reachedWorkWindow = reachTrainingWorkWindow(workWindow)
         XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set (the circuit head)")
 
         // The circuit must have at least two rounds for "removed from later rounds" to be observable; the
@@ -197,9 +172,9 @@ final class ContinuousCircuitUITests: XCTestCase {
 
         // Rotate through the rest of the circuit, recording the (round, exercise) pairs a finger sees, and
         // advance each station by whichever control it offers, staying hands-free without waiting on a
-        // real-time hold: **Done** ends a rep-based work window, and the manual **Complete set** /
-        // **Finish exercise** banks a training hold's set instantly (a training hold keeps its manual path,
-        // US-CC05 - so it never blocks the walk on a wall-clock countdown). The one exercise we
+        // real-time hold: **Done** ends a rep-based work window, and the optional **Complete set** /
+        // **Finish exercise** banks a training hold's set instantly (the hold starts on its own since
+        // ADR-0010, but banking it by hand keeps the walk off a wall-clock countdown). The one exercise we
         // deliberately skipped above must appear in none of the recorded pairs. Stops as soon as a later
         // round is reached - that is all this case needs to prove the skip held past round 1.
         var seen: [(round: String, exercise: String)] = []
@@ -251,12 +226,7 @@ final class ContinuousCircuitUITests: XCTestCase {
             .descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
             .firstMatch
-        var reachedWorkWindow = false
-        for _ in 0..<30 {
-            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
-            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
-            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
-        }
+        let reachedWorkWindow = reachTrainingWorkWindow(workWindow)
         XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set with a work window")
 
         // The Pause control is present in the one flow and reachable by a finger - no separate mode.
@@ -320,10 +290,10 @@ final class ContinuousCircuitUITests: XCTestCase {
 
         // Reach a warm-up stretch's auto-started hold. A hold auto-starts the moment its stretch is
         // revealed, so we only ever Skip past a dynamic (non-hold) warm-up movement - never tap
-        // Start hold. The scan is bounded to the warm-up: a strength/primal *training* hold reached past
-        // it legitimately shows Start hold (US-CC02's manual circuit surface), so leaving the warm-up
-        // stops the scan rather than failing it. While inside the warm-up, a Start-hold control is an
-        // outright failure - a bookend hold must never wait on a tap.
+        // Start hold. The scan is bounded to the warm-up, which is what this case is about (training holds
+        // auto-start too since ADR-0010), so leaving the warm-up stops the scan rather than failing it.
+        // While inside the warm-up, a Start-hold control is an outright failure - a hold must never wait
+        // on a tap.
         var reachedAutoStartedHold = false
         for _ in 0..<10 {
             // A rest overlay between stretches hides the block context; clear it first, then re-check.
@@ -379,6 +349,25 @@ final class ContinuousCircuitUITests: XCTestCase {
         )
         XCTAssertFalse(app.buttons["Start hold"].exists, "side 2 must not wait for a Start-hold tap either")
         attachScreenshot(named: "03-side-2-autostarted")
+    }
+
+    /// Walks forward to the first rep-based work window inside a training circuit, skipping past rests
+    /// and anything before it. Since ADR-0010 a rep-based warm-up move runs on a work window too, so a
+    /// work window alone no longer means a strength set; the circuit's "Round N of M" label (US-CC02),
+    /// which the linear warm-up never shows, is what marks the training block. Each iteration first
+    /// gives the freshly-rendered step a beat to reveal its window, so a strength set is never itself
+    /// skipped in the race after the prior tap.
+    private func reachTrainingWorkWindow(_ workWindow: XCUIElement) -> Bool {
+        let roundLabel = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Round "))
+            .firstMatch
+        for _ in 0..<30 {
+            if workWindow.waitForExistence(timeout: 2), roundLabel.exists { return true }
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
+            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
+        }
+        return false
     }
 
     /// Whether the player is currently on a warm-up step, read off the block-context label the player

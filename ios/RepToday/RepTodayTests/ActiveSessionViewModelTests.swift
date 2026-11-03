@@ -434,9 +434,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.circuitRoundCount)
     }
 
-    /// The rotation crosses two distinct rest gaps (US-CC04): a short between-station transition inside a
-    /// round, and the longer between-round rest at a round boundary. Both flow through the US-K02 rest
-    /// overlay so the session stays hands-free.
+    /// The rotation crosses two distinct rest gaps (US-CC04): a between-station transition inside a
+    /// round, and the between-round rest at a round boundary - both at most 15 seconds, told apart by
+    /// their cue. Both flow through the US-K02 rest overlay so the session stays hands-free.
     func testCircuitCrossesTransitionBetweenStationsAndRoundRestBetweenRounds() {
         let strength = WorkoutBlock(
             id: UUID(), title: "Strength", category: .strength,
@@ -462,7 +462,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeSet()
         XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
         XCTAssertEqual(vm.currentRound, 2)
-        XCTAssertEqual(vm.restTotalSeconds, 45, "between rounds is the round rest")
+        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.maxRestSeconds, "between rounds is the round rest, capped at 15s (ADR-0010)")
     }
 
     /// The overlay can tell a between-station **transition beat** apart from a between-round rest so it
@@ -490,7 +490,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.skipRest()
         XCTAssertFalse(vm.isTransitionBeat, "skipping the rest ends the beat")
 
-        // squat round 1 -> push_up round 2 crosses the longer between-round rest, not a transition.
+        // squat round 1 -> push_up round 2 crosses the between-round rest, not a transition.
         vm.completeSet()
         XCTAssertTrue(vm.isResting, "a between-round rest is running")
         XCTAssertFalse(vm.isTransitionBeat, "a between-round rest is not a transition beat")
@@ -524,19 +524,20 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
     // MARK: - Rest timer (US-K02)
 
-    /// Completing a set opens a rest for the just-completed prescription's `restSeconds`, counting
-    /// down from that value against the injected clock.
+    /// Completing a set opens a rest for the just-completed prescription's `restSeconds`, capped at
+    /// `SessionAssembly.maxRestSeconds` (ADR-0010), counting down against the injected clock. The
+    /// fixture prescribes 30s, so the cap is what the user gets.
     func testCompleteSetStartsRest() {
         var clock = start
         let vm = makeViewModel(clock: { clock })
 
-        vm.completeSet() // cat_cow done -> push_up; the 30s rest begins
+        vm.completeSet() // cat_cow done -> push_up; its 30s rest opens at the 15s cap
         XCTAssertTrue(vm.isResting)
-        XCTAssertEqual(vm.restTotalSeconds, 30)
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 30)
+        XCTAssertEqual(vm.restTotalSeconds, 15)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 15)
 
         clock = start.addingTimeInterval(10)
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "counts down with the clock")
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 5, "counts down with the clock")
     }
 
     /// The rest announces its kind at its *start* (a `.transition` here), and the boundary-crossing cue
@@ -547,16 +548,18 @@ final class ActiveSessionViewModelTests: XCTestCase {
         var clock = start
         let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
-        vm.completeSet() // opens the 30s rest into push_up (a strength work window)
+        vm.start() // the warm-up's hold starts on its own and fires no .go
+        XCTAssertEqual(spy.count(of: .go), 0)
+        vm.completeSet() // bank it -> opens the 15s rest into push_up (a strength work window)
         XCTAssertEqual(spy.count(of: .transition), 1, "the rest names itself at its start")
         XCTAssertEqual(spy.count(of: .go), 0, "the next window has not started yet")
 
         clock = start.addingTimeInterval(10)
         vm.completeRestIfElapsed(asOf: clock)
-        XCTAssertTrue(vm.isResting, "still resting - 20s to go")
+        XCTAssertTrue(vm.isResting, "still resting - 5s to go")
         XCTAssertEqual(spy.count(of: .go), 0)
 
-        clock = start.addingTimeInterval(30)
+        clock = start.addingTimeInterval(15)
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isResting, "rest ended at zero")
         XCTAssertTrue(vm.isRunningWorkWindow, "the next work window auto-started")
@@ -586,12 +589,12 @@ final class ActiveSessionViewModelTests: XCTestCase {
     func testExtendRestAddsTime() {
         var clock = start
         let vm = makeViewModel(clock: { clock })
-        vm.completeSet() // 30s rest, deadline at t+30
+        vm.completeSet() // 15s rest (the cap), deadline at t+15
 
-        clock = start.addingTimeInterval(10) // 20s remaining
+        clock = start.addingTimeInterval(10) // 5s remaining
         vm.extendRest(by: 15)
-        XCTAssertEqual(vm.restTotalSeconds, 45)
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 35)
+        XCTAssertEqual(vm.restTotalSeconds, 30, "+15s is an optional extra beyond the cap")
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 20)
     }
 
     /// Backgrounding pauses the rest: the remaining freezes while away and resumes from that remainder
@@ -599,21 +602,21 @@ final class ActiveSessionViewModelTests: XCTestCase {
     func testPauseFreezesAndResumeReschedules() {
         var clock = start
         let vm = makeViewModel(clock: { clock })
-        vm.completeSet() // 30s rest, deadline at t+30
+        vm.completeSet() // 15s rest, deadline at t+15
 
-        clock = start.addingTimeInterval(10) // 20s remaining
+        clock = start.addingTimeInterval(4) // 11s remaining
         vm.pauseRest(asOf: clock)
         XCTAssertTrue(vm.isRestPaused)
 
         clock = start.addingTimeInterval(120) // two minutes in the background
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "frozen while paused")
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 11, "frozen while paused")
 
         vm.resumeRest(asOf: clock)
         XCTAssertFalse(vm.isRestPaused)
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "resumes from the captured remainder")
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 11, "resumes from the captured remainder")
 
         clock = start.addingTimeInterval(125) // 5s after resuming
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 15)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 6)
     }
 
     /// A paused rest never auto-completes even once its captured remainder would have hit zero in
@@ -773,8 +776,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
     }
 
     /// A per-side hold is one leg per *side*, because the engine charges both: the first leg cues the
-    /// switch and parks on side 2 without recording anything, and only the last leg records the set. A
-    /// single countdown that recorded the set after one side would quietly halve the prescribed work.
+    /// switch, and a brief "Switch sides" beat leads hands-free into side 2 (ADR-0010: training holds
+    /// flow like bookend ones) without recording anything; only the last leg records the set. A single
+    /// countdown that recorded the set after one side would quietly halve the prescribed work.
     func testPerSideHoldRunsOneLegPerSideAndRecordsOneSet() {
         var clock = start
         let spy = SpyCuePlayer()
@@ -784,18 +788,20 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.holdSide, 1)
         XCTAssertEqual(vm.holdSecondsPerSide, 20, "each leg is the prescribed per-side hold, not the pair")
 
-        vm.startHold()
+        vm.start() // side 1 starts on its own (ADR-0010)
+        XCTAssertTrue(vm.isHolding)
         clock = start.addingTimeInterval(20)
         vm.completeHoldIfElapsed(asOf: clock)
 
         XCTAssertEqual(spy.completions, 1, "the cue marks the switch")
-        XCTAssertEqual(vm.holdSide, 2, "parked on the second side")
-        XCTAssertFalse(vm.isHolding, "the next leg waits for the user's tap - time to change position")
+        XCTAssertEqual(vm.holdSide, 2, "now on the second side")
+        XCTAssertTrue(vm.isSwitchingSides, "a brief switch-sides beat gives time to change position")
         XCTAssertEqual(vm.completedSetCount, 0, "half the set is not a set")
-        XCTAssertFalse(vm.isResting)
 
-        vm.startHold()
-        clock = start.addingTimeInterval(40)
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isHolding, "side 2 starts on its own - no tap")
+        clock = clock.addingTimeInterval(20)
         vm.completeHoldIfElapsed(asOf: clock)
 
         XCTAssertEqual(spy.completions, 2)
@@ -811,11 +817,13 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let spy = SpyCuePlayer()
         let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock }, feedback: spy)
 
-        vm.startHold()
+        vm.start() // side 1 starts on its own (ADR-0010)
         clock = start.addingTimeInterval(20)
-        vm.completeHoldIfElapsed(asOf: clock) // side 1 done, parked on side 2
-        vm.startHold()
-        clock = start.addingTimeInterval(25)
+        vm.completeHoldIfElapsed(asOf: clock) // side 1 done; the switch-sides beat opens
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
+        vm.completeRestIfElapsed(asOf: clock) // side 2 auto-starts
+        XCTAssertTrue(vm.isHolding)
+        clock = clock.addingTimeInterval(5)
         vm.cancelHold()
 
         XCTAssertFalse(vm.isHolding)
@@ -857,7 +865,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// paces toward (US-CC02).
     func testHoldCannotStartDuringRest() {
         let vm = makeViewModel(singleHoldWorkout(sets: 2), clock: { self.start })
-        vm.completeSet() // round 1 recorded manually -> the between-round rest opens
+        vm.start()
+        vm.completeSet() // round 1 banked by hand -> the between-round rest opens
 
         XCTAssertTrue(vm.isResting)
         XCTAssertFalse(vm.canStartHold)
@@ -865,7 +874,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isHolding, "start is a no-op during rest")
 
         vm.skipRest()
-        XCTAssertTrue(vm.canStartHold, "round 2 of the same hold is reachable once the rest ends")
+        XCTAssertTrue(vm.isHolding, "round 2 of the same hold starts on its own once the rest ends (ADR-0010)")
     }
 
     /// Skipping the exercise drops a running hold without firing its cue and clears the side, so the
@@ -1077,11 +1086,10 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let original = ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
         )
-        original.start()
-        original.startHold()
+        original.start() // the hold auto-starts (ADR-0010)
         original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done -> owes side 2
-        original.startHold()
-        original.pauseHold(asOf: start.addingTimeInterval(25)) // frozen with 15s left
+        original.completeRestIfElapsed(asOf: start.addingTimeInterval(25)) // switch beat over, side 2 starts
+        original.pauseHold(asOf: start.addingTimeInterval(30)) // frozen with 15s left
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -1089,10 +1097,14 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let resumed = ActiveSessionViewModel(
             state: saved, now: { self.start.addingTimeInterval(86_400) }, cuePlayer: spy
         )
+        XCTAssertFalse(resumed.isHolding, "the frozen leg is not restored")
         resumed.start()
         resumed.resumeHold(asOf: start.addingTimeInterval(86_400)) // what onAppear used to do
 
-        XCTAssertFalse(resumed.isHolding)
+        // The resumed session opens a fresh, full-length leg on the side still owed - never the frozen
+        // remainder, and never a leg that finishes itself.
+        XCTAssertTrue(resumed.isHolding, "the owed side auto-starts fresh on resume")
+        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(86_400)), 20)
         XCTAssertEqual(resumed.holdSide, 2, "but the side they still owe is preserved")
         XCTAssertEqual(resumed.completedSetCount, 0)
         XCTAssertEqual(spy.completions, 0)
@@ -1633,7 +1645,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         // slot's budget is the one the assembler would really have sized this session with.
         let slot = PrescribedExercise(
             id: UUID(), exercise: target, sets: 3, reps: try XCTUnwrap(target.defaultReps),
-            durationSeconds: nil, restSeconds: SessionAssembly.strengthRestSeconds
+            durationSeconds: nil, restSeconds: SessionAssembly.roundRestSeconds
         )
         let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])
         let workout = Workout(
@@ -1744,7 +1756,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let store = InMemoryActiveSessionStore()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
-        original.completeSet() // opens a 30s rest, deadline start+30
+        original.completeSet() // opens a 15s rest (the cap), deadline start+15
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -1753,7 +1765,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
         XCTAssertTrue(resumed.isResting)
         XCTAssertFalse(resumed.isRestPaused)
-        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(5)), 25)
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(5)), 10)
     }
 
     /// A rest paused on backgrounding is persisted with its frozen remainder, so a relaunch resumes it
@@ -1762,8 +1774,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let store = InMemoryActiveSessionStore()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
-        original.completeSet() // 30s rest, deadline start+30
-        original.pauseRest(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        original.completeSet() // 15s rest, deadline start+15
+        original.pauseRest(asOf: start.addingTimeInterval(4)) // freeze with 11s remaining
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -1771,11 +1783,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(60) })
         XCTAssertTrue(resumed.isResting)
         XCTAssertTrue(resumed.isRestPaused)
-        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(60)), 20, "frozen remainder held across relaunch")
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(60)), 11, "frozen remainder held across relaunch")
 
         // Foregrounding reschedules from the remainder.
         resumed.resumeRest(asOf: start.addingTimeInterval(100))
-        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(105)), 15)
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(105)), 6)
     }
 
     /// When a resumed player is presented while the app is already active, no scene-phase change fires,
@@ -1785,8 +1797,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let store = InMemoryActiveSessionStore()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
-        original.completeSet() // 30s rest, deadline start+30
-        original.pauseRest(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        original.completeSet() // 15s rest, deadline start+15
+        original.pauseRest(asOf: start.addingTimeInterval(4)) // freeze with 11s remaining
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -1799,7 +1811,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         resumed.resumeRest(asOf: start.addingTimeInterval(200))
 
         XCTAssertFalse(resumed.isRestPaused, "on-appear resume un-freezes the rest")
-        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(205)), 15, "countdown resumes rather than holding the frozen remainder")
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(205)), 6, "countdown resumes rather than holding the frozen remainder")
     }
 
     /// Completing the session clears the persisted snapshot - a finished session is not resumable.
@@ -1877,8 +1889,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// as the **max** station set count and `hasSet` gates each station by its own count, so an uneven
     /// block resolves deterministically - a shorter station simply drops out of the rounds beyond its
     /// own set count. The one piece of per-side state that survives is the *side*: the leg itself is
-    /// never persisted (US-O03), so the resumed training hold comes back **idle on side 2** awaiting a
-    /// deliberate Start-hold tap rather than a phantom running countdown.
+    /// never persisted (US-O03), so the resumed training hold comes back **idle on side 2**, starting
+    /// that side fresh once the player starts, rather than as a phantom running countdown.
     func testResumesAnOldUnevenPausedSnapshotPreservingWorkSkipsAndHoldSide() {
         // An old-shape strength block with genuinely uneven set counts (pre-US-CC03): push_up 3, the
         // per-side side_plank hold 3, squat 2 - bracketed by single-set bookends.
@@ -1947,7 +1959,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(resumed.completedSets[squatID], "a skipped exercise records no sets")
 
         // The per-side hold restores idle on the owed side (side 2), not as a running leg (US-O03): the
-        // training hold parks for a deliberate Start-hold tap rather than un-pausing a phantom countdown.
+        // training hold starts that side fresh once the player starts rather than un-pausing a phantom
+        // countdown.
         XCTAssertEqual(resumed.holdSide, 2)
         XCTAssertFalse(resumed.isHolding, "no running leg is ever restored")
         XCTAssertTrue(resumed.canStartHold, "the resumed leg is ready to begin fresh on side 2")
@@ -2023,6 +2036,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
             ratings.append((log.id, difficulty))
         }
+
+        func recordEarnedPhase() async throws {}
     }
 
     /// A session tagged as a single-focus Return at 20 requested minutes, so the completion log's
@@ -2476,10 +2491,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
     func testMoreTimeExtendsALiveHoldLeg() {
         var clock = start
         let vm = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { clock })
-        vm.start()
-        XCTAssertFalse(vm.canExtendActiveCountdown, "an idle Start-hold training step has nothing to extend")
+        XCTAssertFalse(vm.canExtendActiveCountdown, "before the start there is nothing to extend")
 
-        vm.startHold()
+        vm.start() // the training hold auto-starts (ADR-0010)
         XCTAssertTrue(vm.canExtendActiveCountdown, "+ More time is available on a running hold leg")
         XCTAssertEqual(vm.holdTotalSeconds, 20)
 
@@ -2570,17 +2584,18 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.workWindowSecondsPerSet)
         vm.start()
         XCTAssertFalse(vm.isRunningWorkWindow, "no work window auto-starts on a hold")
-        XCTAssertTrue(vm.canStartHold, "the manual Hold Timer path is untouched")
+        XCTAssertTrue(vm.isHolding, "the Hold Timer runs instead, started on its own (ADR-0010)")
     }
 
-    /// The gate is the block category, not just the movement kind: a rep-based movement placed in a
-    /// warm-up block keeps the manual path, so retiring "Complete set" for strength leaves the bookend
-    /// flow (US-CC05) alone. Completing the warm-up by hand then reaches the strength set, whose window
+    /// Since ADR-0010 a rep-based warm-up / cooldown move runs on the auto-advancing work window too, at
+    /// its unstretched pace, so no set in a session needs a "Complete set" tap: the warm-up window
+    /// counts down and records itself, the transition flows on, and the strength set's window
     /// auto-starts as the flow arrives.
-    func testWorkWindowIsGatedToTrainingBlocksNotBookends() {
+    func testRepBasedWarmUpMovesAutoAdvanceToo() throws {
+        var clock = start
         let warmup = WorkoutBlock(
             id: UUID(), title: "Warm-up", category: .warmup,
-            exercises: [repPrescription("reach", sets: 1, reps: 8)]
+            exercises: [repPrescription("reach", sets: 1, reps: 10)]
         )
         let strength = WorkoutBlock(
             id: UUID(), title: "Strength", category: .strength,
@@ -2590,16 +2605,20 @@ final class ActiveSessionViewModelTests: XCTestCase {
             id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
             requestedMinutes: 10, wasReturn: false, blocks: [warmup, strength]
         )
-        let vm = makeViewModel(workout, clock: { self.start })
+        let vm = makeViewModel(workout, clock: { clock })
 
-        XCTAssertFalse(vm.currentStepAutoAdvances, "a rep-based warm-up keeps the manual Complete set")
-        XCTAssertNil(vm.workWindowSecondsPerSet)
+        XCTAssertTrue(vm.currentStepAutoAdvances, "a rep-based warm-up move auto-advances")
+        let warmupWindow = try XCTUnwrap(vm.workWindowSecondsPerSet)
+        XCTAssertEqual(warmupWindow, SessionAssembly.workSecondsPerSet(of: workout.blocks[0].exercises[0]))
         vm.start()
-        XCTAssertFalse(vm.isRunningWorkWindow)
+        XCTAssertTrue(vm.isRunningWorkWindow)
 
-        // Bank the warm-up by hand, clear its rest, and arrive at the strength set.
-        vm.completeSet()
-        vm.skipRest()
+        clock = start.addingTimeInterval(TimeInterval(warmupWindow))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.completedSetCount, 1, "the warm-up set recorded itself at zero")
+        XCTAssertTrue(vm.isResting)
+        clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
         XCTAssertTrue(vm.currentStepAutoAdvances, "the strength set auto-advances")
         XCTAssertTrue(vm.isRunningWorkWindow, "and its work window auto-starts as the flow reaches it")
     }
@@ -2734,6 +2753,171 @@ final class ActiveSessionViewModelTests: XCTestCase {
                        "the end-of-session rating is the only adaptation signal into the Ramp")
     }
 
+    /// ADR-0010: a whole session - a rep-based warm-up move, a strength circuit with a per-side training
+    /// hold, a bilateral training hold and rep stations, and a cooldown stretch - plays from start to
+    /// finish with **zero taps**, driven only by the countdowns reaching zero; part-way through, the player
+    /// is torn down and resumed from its snapshot, and the resumed player carries on hands-free too. Every
+    /// rest along the way is at most 15 seconds.
+    func testWholeSessionWithTrainingHoldsPlaysWithZeroTapsAcrossAResume() async throws {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [PrescribedExercise(id: UUID(), exercise: repExercise(id: "arm_circles", pattern: .mobility, pillar: .mobility),
+                                           sets: 1, reps: 10, durationSeconds: nil, restSeconds: 15)]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "push_up"), sets: 2, reps: 10,
+                                   durationSeconds: nil, restSeconds: 15, stretchSeconds: 6),
+                PrescribedExercise(id: UUID(), exercise: perSide(holdExercise(id: "side_plank")), sets: 2,
+                                   reps: nil, durationSeconds: 20, restSeconds: 15),
+                PrescribedExercise(id: UUID(), exercise: holdExercise(id: "plank"), sets: 2,
+                                   reps: nil, durationSeconds: 30, restSeconds: 15)
+            ]
+        )
+        let cooldown = WorkoutBlock(
+            id: UUID(), title: "Cooldown", category: .cooldown,
+            exercises: [holdPrescription("forward_fold", sets: 1, seconds: 30)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 10, wasReturn: false, blocks: [warmup, strength, cooldown]
+        )
+
+        var clock = start
+        let store = InMemoryActiveSessionStore()
+        var vm = ActiveSessionViewModel(workout: workout, store: store, userId: "u1", now: { clock }, cuePlayer: SpyCuePlayer())
+        vm.start()
+
+        var ticks = 0
+        var resumed = false
+        var longestRest = 0
+        var sawTrainingHold = false
+        var pushUpWindow: Int?
+        while !vm.isComplete && ticks < 80 {
+            ticks += 1
+            // Tear the player down mid-circuit and resume it from the snapshot, as a relaunch would.
+            if !resumed, vm.currentStep?.prescription.exercise.id == "plank", !vm.isResting {
+                await vm.persistenceTask?.value
+                let loaded = try await store.load(for: "u1")
+                let saved = try XCTUnwrap(loaded)
+                vm = ActiveSessionViewModel(state: saved, store: store, userId: "u1", now: { clock }, cuePlayer: SpyCuePlayer())
+                vm.start()
+                resumed = true
+            }
+            if vm.isHolding {
+                if !vm.currentStepIsBookendHold { sawTrainingHold = true }
+                clock = clock.addingTimeInterval(TimeInterval(vm.holdTotalSeconds))
+                vm.completeHoldIfElapsed(asOf: clock)
+            } else if vm.isResting {
+                longestRest = max(longestRest, vm.restTotalSeconds)
+                clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+                vm.completeRestIfElapsed(asOf: clock)
+            } else if vm.isRunningWorkWindow {
+                if vm.currentStep?.prescription.exercise.id == "push_up" { pushUpWindow = vm.workWindowTotalSeconds }
+                clock = clock.addingTimeInterval(TimeInterval(vm.workWindowTotalSeconds))
+                vm.completeWorkWindowIfElapsed(asOf: clock)
+            } else {
+                XCTFail("the flow stalled waiting for a tap at \(vm.currentStep?.prescription.exercise.id ?? "nil")")
+                break
+            }
+        }
+
+        XCTAssertTrue(vm.isComplete, "the whole session finished with no tap")
+        XCTAssertTrue(resumed, "the session was resumed part-way through")
+        XCTAssertTrue(sawTrainingHold, "training holds ran on their own")
+        XCTAssertLessThanOrEqual(longestRest, SessionAssembly.maxRestSeconds, "every rest is at most 15 seconds")
+        let pushUp = strength.exercises[0]
+        XCTAssertEqual(pushUpWindow, SessionAssembly.paceSecondsPerSet(of: pushUp) + 6,
+                       "the stretched window counts down the pace plus the stretch")
+        let log = try XCTUnwrap(vm.completionLog())
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "side_plank" }?.completedSets.count, 2)
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "plank" }?.completedSets.count, 2)
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "push_up" }?.completedSets,
+                       [CompletedSet(reps: 10, durationSeconds: nil), CompletedSet(reps: 10, durationSeconds: nil)],
+                       "a stretched set still records what it asked for")
+    }
+
+    // MARK: - "Couldn't finish" follow-up (ADR-0011)
+
+    /// A finished session with two strength moves (one skipped), a warm-up hold and a rep station.
+    private func finishCheckWorkout() -> Workout {
+        Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false,
+            blocks: [
+                WorkoutBlock(id: UUID(), title: "Warm-up", category: .warmup,
+                             exercises: [holdPrescription("cat_cow", sets: 1, seconds: 30)]),
+                WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [
+                    repPrescription("push_up", sets: 1, reps: 10),
+                    repPrescription("squat", sets: 1, reps: 15),
+                    repPrescription("hinge", sets: 1, reps: 10)
+                ])
+            ]
+        )
+    }
+
+    func testTooHardAsksWhichWorkedTrainingMovesWereNotFinished() async throws {
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: finishCheckWorkout(), user: makeUser(), recentLogs: [], completionService: spy, now: { self.start }
+        )
+        vm.start()
+        while !vm.isComplete {
+            if vm.currentStep?.prescription.exercise.id == "hinge" { vm.skipExercise() } else { vm.completeSet() }
+        }
+        XCTAssertFalse(vm.asksWhichMovesWereNotFinished, "nothing is asked until the user rates")
+
+        vm.rate(.tooHard)
+        XCTAssertTrue(vm.asksWhichMovesWereNotFinished)
+        XCTAssertEqual(vm.finishCheckMoves.map(\.id), ["push_up", "squat"],
+                       "the worked strength moves, in order - not the warm-up, not the skipped hinge")
+
+        vm.toggleCouldNotFinish("push_up")
+        vm.toggleCouldNotFinish("cat_cow") // not listed: ignored
+        XCTAssertEqual(vm.couldNotFinishExerciseIds, ["push_up"])
+        let log = try XCTUnwrap(vm.completionLog())
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "push_up" }?.couldNotFinish, true)
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "squat" }?.couldNotFinish, false,
+                       "an untapped listed move records its answer")
+        XCTAssertNil(log.exercises.first { $0.exerciseId == "cat_cow" }?.couldNotFinish)
+        XCTAssertNil(log.exercises.first { $0.exerciseId == "hinge" }?.couldNotFinish)
+        XCTAssertEqual(log.perceivedDifficulty, .tooHard)
+
+        // The marks persist through the same chained re-save as the rating.
+        await vm.completionTask?.value
+        let ratings = await spy.ratings
+        XCTAssertEqual(ratings.last?.difficulty, .tooHard)
+        XCTAssertGreaterThanOrEqual(ratings.count, 2, "the rating and the mark were each re-saved")
+
+        // Tapping again unmarks; with nothing marked, "too hard" steps every move back and the session
+        // counts toward no move's advancement - recorded as answered, not as a log without marks.
+        vm.toggleCouldNotFinish("push_up")
+        XCTAssertTrue(vm.couldNotFinishExerciseIds.isEmpty)
+        let unmarked = try XCTUnwrap(vm.completionLog())
+        XCTAssertEqual(unmarked.exercises.filter { $0.couldNotFinish == false }.map(\.exerciseId), ["push_up", "squat"])
+        XCTAssertFalse(unmarked.exercises.contains { $0.couldNotFinish == true })
+        XCTAssertEqual(AdaptiveOverload.signal(for: unmarked.exercises[1], in: unmarked), .stepBack)
+        XCTAssertFalse(unmarked.exercises.contains { unmarked.countsTowardAdvancement($0) })
+    }
+
+    func testChangingTheRatingAwayFromTooHardClearsTheMarks() throws {
+        let vm = makeViewModel(finishCheckWorkout(), clock: { self.start })
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+        vm.rate(.tooHard)
+        vm.toggleCouldNotFinish("squat")
+        XCTAssertEqual(try XCTUnwrap(vm.completionLog()).exercises.first { $0.exerciseId == "squat" }?.couldNotFinish, true)
+
+        vm.rate(.justRight)
+        XCTAssertFalse(vm.asksWhichMovesWereNotFinished)
+        XCTAssertTrue(vm.couldNotFinishExerciseIds.isEmpty)
+        XCTAssertTrue(try XCTUnwrap(vm.completionLog()).exercises.allSatisfy { $0.couldNotFinish == nil },
+                      "a log never carries marks its rating does not explain")
+        vm.toggleCouldNotFinish("squat")
+        XCTAssertTrue(vm.couldNotFinishExerciseIds.isEmpty, "marking is only offered after too hard")
+    }
+
     /// A swap reshapes the slot the window was timing, so it drops the running window without a cue; the
     /// substitute - itself a rep training set - re-arms a fresh window sized to its own prescription.
     func testSwapClearsARunningWorkWindowAndReArmsForTheSubstitute() async {
@@ -2835,13 +3019,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(resumeSpy.count(of: .go), 1, "an in-session transition still fires the go cue")
     }
 
-    /// A natural rest ending is never silent at a boundary the user must act on (US-CC10): when a
-    /// transition/round rest reveals a manual strength/primal *training* hold - which keeps its US-O03
-    /// Start-hold tap and so self-cues on nothing - `completeRestIfElapsed` sounds `.go`, restoring
-    /// US-K02's "rest over" signal. The hold does *not* auto-start (it waits for the tap), and firing
-    /// `.go` adds no `.done`. The complementary rep case still fires a single, non-doubled `.go` from
-    /// its auto-starting window.
-    func testRestRevealingManualTrainingHoldFiresGoWithoutAutoStarting() throws {
+    /// ADR-0010: when a transition/round rest reveals a strength/primal *training* hold, the hold
+    /// auto-starts hands-free exactly as a bookend hold does (US-CC05) - no Start-hold tap, and the
+    /// rest ending sounds no extra cue (the rest already announced itself at its start). The
+    /// complementary rep case still fires a single, non-doubled `.go` from its auto-starting window.
+    func testRestRevealingTrainingHoldAutoStartsItWithNoTap() throws {
         var clock = start
         let spy = SpyCuePlayer()
         // A strength circuit: a rep station immediately followed by a manual training hold station.
@@ -2865,22 +3047,22 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeWorkWindowIfElapsed(asOf: clock)
         XCTAssertTrue(vm.isResting, "a transition rest opens before the hold station")
         XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "plank")
-        XCTAssertTrue(vm.currentStepIsManualTrainingHold, "the revealed station is a manual training hold")
+        XCTAssertFalse(vm.currentStepIsBookendHold, "the revealed station is a training hold")
         let doneAfterWindow = spy.completions
 
-        // Elapse the rest to zero: it reveals the manual training hold, which self-cues on nothing, so
-        // completeRestIfElapsed sounds .go.
+        // Elapse the rest to zero: it reveals the training hold, which auto-starts with no tap and sounds
+        // the same `.go` a rep-based work window does, so the user following by ear knows to begin.
         clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isResting, "the rest ended")
-        XCTAssertFalse(vm.isHolding, "a training hold waits for the manual Start-hold tap - it does not auto-start")
+        XCTAssertTrue(vm.isHolding, "a training hold auto-starts like a bookend hold - no Start-hold tap")
         XCTAssertFalse(vm.isRunningWorkWindow, "a hold is not a work window")
-        XCTAssertEqual(spy.count(of: .go), 2, "the rest ending sounds .go for the manual hold")
-        XCTAssertEqual(spy.completions, doneAfterWindow, "firing .go here adds no .done")
+        XCTAssertEqual(spy.count(of: .go), 2, "the auto-started training hold fires one .go")
+        XCTAssertEqual(spy.completions, doneAfterWindow, "starting the hold adds no .done")
 
-        // Idempotent: repeated ticks after the rest has already ended do not re-fire.
+        // Idempotent: repeated ticks after the rest has already ended do not re-fire or restart.
         vm.completeRestIfElapsed(asOf: clock)
-        XCTAssertEqual(spy.count(of: .go), 2, "the go cue fires once, not per tick")
+        XCTAssertEqual(spy.count(of: .go), 2, "no cue fires per tick")
 
         // Complementary case: a rest revealing a rep-based set fires a single, non-doubled .go from the
         // auto-starting window, not this rest-end path.
@@ -2895,6 +3077,34 @@ final class ActiveSessionViewModelTests: XCTestCase {
         repVM.completeRestIfElapsed(asOf: repClock)
         XCTAssertTrue(repVM.isRunningWorkWindow, "the next rep window auto-started")
         XCTAssertEqual(repSpy.count(of: .go), 2, "one .go on start and one from the auto-started window - not doubled")
+    }
+
+    /// A training hold's `.go` follows the work window's resume rule: a genuine first start sounds it, a
+    /// resume re-entry auto-starts the leg fresh but withholds the tone.
+    func testTrainingHoldResumeReEntryAutoStartsButFiresNoGoCue() async throws {
+        let plankCircuit = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false,
+            blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength,
+                                  exercises: [holdPrescription("plank", sets: 2, seconds: 30)])]
+        )
+        let store = InMemoryActiveSessionStore()
+        let freshSpy = SpyCuePlayer()
+        let original = ActiveSessionViewModel(
+            workout: plankCircuit, store: store, userId: "u1", now: { self.start }, cuePlayer: freshSpy
+        )
+        original.start()
+        XCTAssertTrue(original.isHolding, "the training hold auto-starts on a first start")
+        XCTAssertEqual(freshSpy.count(of: .go), 1, "and sounds the go cue")
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumeSpy = SpyCuePlayer()
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) }, cuePlayer: resumeSpy)
+        resumed.start()
+        XCTAssertTrue(resumed.isHolding, "the hold still auto-starts on resume")
+        XCTAssertEqual(resumeSpy.count(of: .go), 0, "but reopening the app fires no go tone")
     }
 
     /// The optional midpoint tone fires exactly once, at (or just past) the middle of a work window -
@@ -2991,10 +3201,10 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let afterLeg1 = spy.cues
         XCTAssertEqual(afterLeg1.filter { $0 == .done }.count, 1, "leg 1 fires exactly one done")
 
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock) // beat ends, side 2 auto-starts
         XCTAssertEqual(spy.cues, afterLeg1, "the switch-sides beat added no cue - not a done, not a transition")
-        XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a hold leg is not a work window")
+        XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a bookend hold starts silently")
     }
 
     /// VoiceOver coordination (US-CC10): when VoiceOver is running the audio tone is withheld so it
@@ -3066,21 +3276,22 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
-    /// The gate is the block category, matching the work-window gate's complement: a warm-up / cooldown
-    /// stretch hold is a *bookend* hold that auto-starts hands-free; a strength / primal timed hold is a
-    /// *training* hold that keeps the manual Start-hold path (US-CC02's circuit player, untouched here).
-    func testBookendHoldGateDistinguishesBookendFromTrainingHold() {
+    /// The block category still tells a warm-up / cooldown *bookend* hold from a strength / primal
+    /// *training* hold, but since ADR-0010 both auto-start hands-free: neither keeps a Start-hold tap.
+    func testBookendAndTrainingHoldsBothAutoStart() {
         let bookend = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { self.start })
         XCTAssertTrue(bookend.currentStepIsBookendHold, "a warm-up stretch hold is a bookend hold")
-        XCTAssertTrue(bookend.canAutoStartHold, "so it is eligible to auto-start hands-free")
+        XCTAssertFalse(bookend.canAutoStartHold, "nothing auto-starts before the session starts")
+        bookend.start()
+        XCTAssertTrue(bookend.isHolding, "it auto-starts hands-free")
 
         let training = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start })
         XCTAssertFalse(training.currentStepIsBookendHold, "a strength hold is a training hold, not a bookend")
-        XCTAssertFalse(training.canAutoStartHold, "so it keeps the manual Start-hold path")
+        training.start()
+        XCTAssertTrue(training.isHolding, "and it auto-starts hands-free too (ADR-0010)")
     }
 
-    /// A warm-up stretch hold auto-starts hands-free on `start()` - no Start-hold tap, unlike a timed
-    /// *training* hold, which stays parked until the user taps.
+    /// A warm-up stretch hold auto-starts hands-free on `start()` - no Start-hold tap.
     func testBookendHoldAutoStartsHandsFreeOnStart() throws {
         let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { self.start })
         XCTAssertTrue(vm.currentStepIsBookendHold)
@@ -3114,12 +3325,12 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(spy.completions, 1, "side 1 leg cues once")
         XCTAssertFalse(vm.isHolding, "the leg is down while the beat runs")
         XCTAssertTrue(vm.isSwitchingSides, "a Switch sides beat bridges the two legs")
-        XCTAssertEqual(vm.restTotalSeconds, ActiveSessionViewModel.switchSidesSeconds, "and it is brief")
+        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.switchSidesSeconds, "and it is brief")
         XCTAssertEqual(vm.holdSide, 2, "owing side 2")
         XCTAssertEqual(vm.completedSetCount, 0, "half a set is not a set")
 
         // The beat ends: side 2 auto-starts hands-free, and the beat itself fired no cue.
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isSwitchingSides)
         XCTAssertTrue(vm.isHolding, "side 2 auto-starts with no tap")
@@ -3156,20 +3367,18 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isHolding, "the next stretch's hold auto-starts as the transition ends")
     }
 
-    /// Scope guard: a timed *training* hold (strength / primal) is deliberately left on its manual path -
-    /// it does not auto-start on `start()`, and a per-side one parks on side 2 for a tap with no
-    /// switch-sides beat. US-CC05 owns only the bookends.
-    func testTrainingHoldStaysManualNotAutoStarted() {
+    /// ADR-0010: a timed *training* hold (strength / primal) auto-starts on `start()` exactly as a
+    /// bookend hold does, and a per-side one flows side 1 -> "Switch sides" -> side 2 with no tap.
+    func testTrainingHoldAutoStartsAndFlowsThroughSwitchSides() {
         let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start }) // strength block
         vm.start()
-        XCTAssertFalse(vm.isHolding, "a training hold keeps the manual Start-hold path - no auto-start")
+        XCTAssertTrue(vm.isHolding, "a training hold auto-starts - no Start-hold tap")
 
-        vm.startHold()
         vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done
         XCTAssertEqual(vm.holdSide, 2)
-        XCTAssertFalse(vm.isHolding, "parks on side 2 for a tap")
-        XCTAssertFalse(vm.isSwitchingSides, "and opens no switch-sides beat on a training hold")
-        XCTAssertFalse(vm.isResting)
+        XCTAssertTrue(vm.isSwitchingSides, "a switch-sides beat opens on a training hold too")
+        vm.completeRestIfElapsed(asOf: start.addingTimeInterval(20 + TimeInterval(SessionAssembly.switchSidesSeconds)))
+        XCTAssertTrue(vm.isHolding, "side 2 starts on its own")
     }
 
     /// A resumed bookend re-opens idle (a hold leg never survives a relaunch, US-O03) and then auto-starts
@@ -3281,11 +3490,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
         var clock = start
         let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
-        vm.completeSet() // 30s rest opens
+        vm.completeSet() // 15s rest opens (the cap)
         XCTAssertTrue(vm.isResting)
         XCTAssertTrue(vm.canUserPause)
 
-        clock = start.addingTimeInterval(10) // 20s left
+        clock = start.addingTimeInterval(5) // 10s left
         vm.pause(asOf: clock)
         XCTAssertTrue(vm.isUserPaused)
         XCTAssertTrue(vm.isRestPaused)
@@ -3296,7 +3505,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(spy.completions, 0, "and its cue is frozen too")
 
         vm.resume(asOf: clock)
-        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "resumes from the exact remainder")
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 10, "resumes from the exact remainder")
     }
 
     /// Pause also freezes a running hold leg and its cue.
@@ -3366,13 +3575,15 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isWorkWindowPaused, "a plain background pause resumes on return")
     }
 
-    /// Pause is offered only when there is a live countdown to freeze (US-CC06): not on an idle
-    /// Start-hold training step, and not once the session is complete.
+    /// Pause is offered only when there is a live countdown to freeze (US-CC06): not on a hold the user
+    /// deliberately stopped, and not once the session is complete.
     func testPauseIsUnavailableWithNoLiveCountdown() {
-        // An idle training hold - the user is getting into position, no countdown is running.
+        // A training hold auto-starts (ADR-0010); once the user taps Stop hold, nothing counts down.
         let holdVM = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { self.start })
         holdVM.start()
-        XCTAssertFalse(holdVM.isCountingDown, "a training hold waits for a Start-hold tap - nothing counts down")
+        XCTAssertTrue(holdVM.isHolding, "the training hold auto-started")
+        holdVM.cancelHold()
+        XCTAssertFalse(holdVM.isCountingDown, "a stopped hold waits for Start hold - nothing counts down")
         XCTAssertFalse(holdVM.canUserPause, "so Pause is not offered")
 
         // A completed session has no countdown either.
@@ -3382,37 +3593,67 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.canUserPause, "the completion screen offers no Pause")
     }
 
-    /// US-CC13: the first-run explainer holds the session on a user pause while it is up, so the
-    /// freshly-started first work window does not elapse, fire `.halfway`/`.done` cues, or auto-advance
-    /// behind the modal - then resumes from the exact remainder on "Got it". This mirrors what
-    /// `ActiveSessionView.presentExplainerIfNeeded` (pause) and `dismissExplainer` (resume) drive on the
-    /// production surface; the pause never gates the start (the session has already started).
-    func testExplainerPauseFreezesTheFirstWindowUntilDismiss() {
+    /// ADR-0010: the first-run explainer shows *before* the session starts and its button starts it, so
+    /// it never pauses a running session. Before `start()` nothing counts down - not even when the work
+    /// window's own view appears and asks for its window - so no cue fires and no set is banked however
+    /// long the card is read; `start()` then opens the first window at its full length.
+    func testNothingCountsDownBeforeTheSessionStartsSoTheExplainerHoldsTheStart() throws {
         var clock = start
         let spy = SpyCuePlayer()
         let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
 
-        // What the player's onAppear does: start the session (first window auto-starts), then present
-        // the explainer, which pauses.
-        vm.start()
-        vm.pause(asOf: clock)
-        XCTAssertTrue(vm.isUserPaused, "presenting the explainer holds the session on a user pause")
-        XCTAssertTrue(vm.isWorkWindowPaused)
-        let frozen = vm.workWindowRemaining(asOf: clock)
+        vm.startWorkWindow() // what `WorkWindowCountdownView.onAppear` does under the card
+        vm.autoStartHoldIfNeeded()
+        XCTAssertFalse(vm.isRunningWorkWindow, "no window before the session starts")
+        XCTAssertFalse(vm.isCountingDown)
+        XCTAssertNil(vm.startedAt, "the session clock has not started")
 
-        // The user reads the four points; well past where the window would have hit zero unpaused.
-        clock = start.addingTimeInterval(600)
+        clock = start.addingTimeInterval(600) // the user reads the four points
         vm.completeWorkWindowIfElapsed(asOf: clock)
-        XCTAssertTrue(vm.isRunningWorkWindow, "the first window never auto-advances behind the modal")
-        XCTAssertEqual(vm.completedSetCount, 0, "no set banked while the explainer is up")
-        XCTAssertEqual(spy.completions, 0, "no `.done` cue fires behind the modal")
-        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "the countdown stays frozen")
+        XCTAssertEqual(vm.completedSetCount, 0)
+        XCTAssertTrue(spy.cues.isEmpty, "no cue fires behind the card")
 
-        // "Got it" dismisses and resumes from the exact remainder.
-        vm.resume(asOf: clock)
-        XCTAssertFalse(vm.isUserPaused)
-        XCTAssertFalse(vm.isWorkWindowPaused)
-        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "resumes from where it was held")
+        vm.start() // the card's button
+        XCTAssertTrue(vm.isRunningWorkWindow)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), try XCTUnwrap(vm.workWindowSecondsPerSet),
+                       "the first window opens at its full length")
+        XCTAssertFalse(vm.isUserPaused, "the explainer never pauses a running session")
+    }
+
+    /// A resumed snapshot already carries its session's `startedAt`, but nothing counts down on this
+    /// screen until this player's own `start()` (ADR-0010): a restored rest that runs out behind the
+    /// one-time Trainer choice simply ends, opening no work window, firing no cue and banking no set, and
+    /// `start()` then opens the window at its full length with the resume's `.go` withheld.
+    func testARestoredRestEndingBeforeTheStartOpensNothing() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let fresh = ActiveSessionState(fresh: strengthWorkout(sets: 2, reps: 12))
+        let saved = ActiveSessionState(
+            workout: fresh.workout, slots: fresh.slots,
+            currentStepIndex: 1, currentSet: 1,
+            completedSets: [fresh.slots[0].prescription.id: [CompletedSet(reps: 12, durationSeconds: nil)]],
+            skippedStepIDs: [], startedAt: start.addingTimeInterval(-60),
+            rest: ActiveSessionState.Rest(totalSeconds: 15, deadline: start.addingTimeInterval(5), remainingWhenPaused: nil)
+        )
+        let vm = ActiveSessionViewModel(state: saved, now: { clock }, cuePlayer: spy)
+        XCTAssertTrue(vm.isResting, "the snapshot restores its running rest")
+
+        clock = start.addingTimeInterval(30) // the choice is read while the rest runs out
+        vm.completeRestIfElapsed(asOf: clock) // the rest overlay's ticker
+        vm.startWorkWindow() // the countdown view appearing under the choice
+        vm.autoStartHoldIfNeeded()
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting, "the restored rest simply ends")
+        XCTAssertFalse(vm.isRunningWorkWindow, "no window opens before this player's start")
+        XCTAssertFalse(vm.isCountingDown)
+        XCTAssertEqual(vm.completedSetCount, 1, "no set is banked behind the choice")
+        XCTAssertTrue(spy.cues.isEmpty, "no cue fires behind the choice")
+
+        vm.start() // choosing a Trainer starts the session
+        XCTAssertTrue(vm.isRunningWorkWindow)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), try XCTUnwrap(vm.workWindowSecondsPerSet),
+                       "the window opens at its full length")
+        XCTAssertFalse(spy.cues.contains(.go), "a resumed start withholds its go")
     }
 
     /// Taking an advancing escape hatch while paused (Done, Skip, Swap, Skip rest, Stop hold) clears the

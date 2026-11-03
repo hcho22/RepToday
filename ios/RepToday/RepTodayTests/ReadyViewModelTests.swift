@@ -34,6 +34,45 @@ final class ReadyViewModelTests: XCTestCase {
         )
     }
 
+    /// A Return older than the screen's 70-day log lookback leaves no Re-entry Ramp: the engine reads
+    /// the ramp from the logs it is given, so a stored policy still recording the ramp the Programmer
+    /// seeded at that Return holds nothing back, and a squat last worked at 30 is served at 30.
+    func testAReturnOlderThanTheLogLookbackLeavesNoRamp() async throws {
+        var user = onboardedUser(defaultMinutes: 60)
+        user.profile.fitnessLevel = .beginner
+        user.coldStart = User.ColdStart(sessionsLogged: 10, active: false)
+        func squatLog(daysAgo: Int, wasReturn: Bool) -> WorkoutLog {
+            WorkoutLog(
+                id: UUID(), workoutId: UUID(), completedAt: fixedDate.addingTimeInterval(TimeInterval(-daysAgo * 86_400)),
+                requestedMinutes: 20, durationMinutes: 20, wasReturn: wasReturn, shape: .blend, focusPillar: nil,
+                perceivedDifficulty: .justRight,
+                exercises: [LoggedExercise(
+                    id: UUID(), exerciseId: "squat_bodyweight", pillar: .strength, movementPattern: .squat,
+                    completedSets: Array(repeating: CompletedSet(reps: 30, durationSeconds: nil), count: 3), skipped: false
+                )]
+            )
+        }
+        var policy = SessionPolicy.default
+        policy.varietyWindow = 0
+        policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 3)
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: user),
+            sessionPolicyService: StubPolicyService(policy: policy),
+            workoutEngine: MockWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }),
+            workoutLogService: MockWorkoutLogService(logs: [
+                squatLog(daysAgo: 80, wasReturn: true),
+                squatLog(daysAgo: 2, wasReturn: false),
+            ]),
+            activeSessionStore: InMemoryActiveSessionStore(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+
+        let squat = try XCTUnwrap(vm.workout?.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
+        XCTAssertEqual(squat.reps, 30)
+    }
+
     /// A view model backed by a specific active-session store, so the resume/discard tests can
     /// pre-seed the store and inspect it (US-K04).
     private func makeViewModel(user: User?, store: any ActiveSessionStore) -> ReadyViewModel {

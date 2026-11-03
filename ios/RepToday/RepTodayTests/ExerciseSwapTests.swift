@@ -77,7 +77,7 @@ final class ExerciseSwapTests: XCTestCase {
         for exercise: Exercise,
         sets: Int = 3,
         perSet: Int? = nil,
-        rest: Int = SessionAssembly.strengthRestSeconds
+        rest: Int = SessionAssembly.roundRestSeconds
     ) -> PrescribedExercise {
         let value = perSet
             ?? (exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps)
@@ -230,7 +230,7 @@ final class ExerciseSwapTests: XCTestCase {
     func testSwapPreservesTheSlotsTimeBudget() async throws {
         let library = try await library()
         let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let slot = prescription(for: target, sets: 3, rest: SessionAssembly.strengthRestSeconds)
+        let slot = prescription(for: target, sets: 3, rest: SessionAssembly.roundRestSeconds)
 
         let result = try substitute(
             ExerciseSwap.swap(slot, in: workout([slot]), user: user(), library: library, recentLogs: [])
@@ -305,13 +305,29 @@ final class ExerciseSwapTests: XCTestCase {
         // below the offered catalog (73 since ADR-0007 withdrew the three version-2 crawls) because the hard phase-gated skills (US-SP02's one-arm push-up /
         // pistol / L-sit bridges and US-SP03's Nordic-curl hinge ladder) have no in-band peer once
         // grown that far - the honest answer is to decline, and the count records it.
-        for (growth, expectedSwapped) in [(1.0, 73), (1.25, 73), (1.5, 72), (2.0, 53)] {
+        //
+        // ADR-0011 moved the counts: every slot now carries a target on the grid of five from ten, so the
+        // hardest low-rep skills (authored at 3-5 reps) are served ten and their windows run far longer
+        // than any in-band peer's - six of them decline at every growth level, while the grid's ceiling
+        // keeps x2.0 from growing targets as far as it used to, so more of the catalog stays swappable there.
+        //
+        // A timed hold is priced at the seconds it plays, with no setup (ADR-0010), so at x1.0 and x1.25
+        // the two shortest beginner holds - `squat_wall_sit` (30s) and `pull_superman` (20s) - decline:
+        // every in-band peer is a rep set that would play well over a minute longer across the slot, past
+        // its tolerance. The old setup charge had hidden that drift rather than kept it in budget.
+        for (growth, expectedSwapped) in [(1.0, 65), (1.25, 65), (1.5, 67), (2.0, 62)] {
             var swapped = 0
             for movement in library {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
+                // A real slot always carries a target on the grid (ADR-0011), so the grown target is
+                // landed on it the way Step 6 would serve it.
                 let slot = prescription(
                     for: movement,
-                    perSet: max(1, Int((Double(baseline) * growth).rounded()))
+                    perSet: AdaptiveOverload.onGrid(
+                        max(1, Int((Double(baseline) * growth).rounded())),
+                        isHold: movement.isHold,
+                        sides: movement.sidesPerSet
+                    )
                 )
                 guard case let .substituted(result) = ExerciseSwap.swap(
                     slot, in: workout([slot]), user: user, library: library, recentLogs: []
@@ -695,7 +711,7 @@ final class ExerciseSwapTests: XCTestCase {
         return (
             prescription(for: target, sets: 1),
             peer,
-            [log([peer], sets: 3, perSet: 12, daysAgo: 3)]
+            [log([peer], sets: 3, perSet: 15, daysAgo: 3)]
         )
     }
 
@@ -742,12 +758,25 @@ final class ExerciseSwapTests: XCTestCase {
         )
     }
 
+    /// The peer's capacity before a Return, the Return, and the first two ramp sessions after it, so
+    /// the next session is the ramp's last (one session to go).
+    private func lastRampSessionLogs(peer: Exercise) -> [WorkoutLog] {
+        var returnLog = log([], sets: 3, perSet: 15, daysAgo: 5)
+        returnLog.wasReturn = true
+        return [
+            log([peer], sets: 3, perSet: 15, daysAgo: 10),
+            returnLog,
+            log([], sets: 3, perSet: 15, daysAgo: 4),
+            log([], sets: 3, perSet: 15, daysAgo: 3),
+        ]
+    }
+
     /// The Re-entry Ramp sessions that follow a Return are eased too, by the ramp's own partial scale.
     func testSwapDuringTheReentryRampCarriesThePartialEase() async throws {
         let library = try await library()
         let fixture = try leveredSwapFixture(library: library)
-        var ramping = SessionPolicy.default
-        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
+        let logs = lastRampSessionLogs(peer: fixture.peer)
+        XCTAssertEqual(ReturnOverride.rampSessionsRemaining(recentLogs: logs), 1)
 
         let result = try substitute(
             ExerciseSwap.swap(
@@ -755,19 +784,48 @@ final class ExerciseSwapTests: XCTestCase {
                 in: workout([fixture.slot], wasReturn: false),
                 user: user(),
                 library: [fixture.slot.exercise, fixture.peer],
-                recentLogs: fixture.logs,
-                sessionPolicy: ramping
+                recentLogs: logs
             )
         )
         XCTAssertEqual(
             result.reps,
             AdaptiveOverload.target(
                 for: result.exercise,
-                recentLogs: fixture.logs,
-                reentryScale: ReturnOverride.reentryScale(isReturn: false, reentry: ramping.reentry)
+                recentLogs: logs,
+                reentryScale: ReturnOverride.reentryScale(isReturn: false, recentLogs: logs)
             ).reps,
             "a swap mid-ramp must carry the ramp's partial ease, not the full capacity target"
         )
+        XCTAssertLessThan(try XCTUnwrap(result.reps), 15, "held below the 15 the user worked before the Return")
+    }
+
+    /// A swap mid-ramp follows the ramp's step-back rule too: held against the pre-Return capacity, but
+    /// never above a ramp session's number less 5 once that session stepped the move back.
+    func testSwapDuringTheReentryRampHonoursAStepBackInsideTheRamp() async throws {
+        let library = try await library()
+        let fixture = try leveredSwapFixture(library: library)
+        let slot = prescription(for: fixture.slot.exercise, sets: 1, perSet: 20)
+        var returnLog = log([fixture.peer], sets: 3, perSet: 20, daysAgo: 3)
+        returnLog.wasReturn = true
+
+        func reps(ramp1Difficulty: PerceivedDifficulty, tapped: Bool?) throws -> Int {
+            var ramp1 = log([fixture.peer], sets: 3, perSet: 20, daysAgo: 2)
+            ramp1.perceivedDifficulty = ramp1Difficulty
+            ramp1.exercises[0].couldNotFinish = tapped
+            let result = try substitute(
+                ExerciseSwap.swap(
+                    slot,
+                    in: workout([slot], wasReturn: false),
+                    user: user(),
+                    library: [slot.exercise, fixture.peer],
+                    recentLogs: [log([fixture.peer], sets: 3, perSet: 30, daysAgo: 20), returnLog, ramp1]
+                )
+            )
+            return try XCTUnwrap(result.reps)
+        }
+
+        XCTAssertEqual(try reps(ramp1Difficulty: .justRight, tapped: nil), 20, "30 held at 0.8, from before the Return")
+        XCTAssertEqual(try reps(ramp1Difficulty: .tooHard, tapped: true), 15, "too hard on the ramp session drops 5")
     }
 
     /// The general property the two tests above are instances of: *every* Step 6 lever the session was
@@ -778,14 +836,14 @@ final class ExerciseSwapTests: XCTestCase {
         let fixture = try leveredSwapFixture(library: library)
         let catalog = [fixture.slot.exercise, fixture.peer]
 
-        func reps(policy: SessionPolicy = .default, wasReturn: Bool = false) throws -> Int {
+        func reps(policy: SessionPolicy = .default, wasReturn: Bool = false, logs: [WorkoutLog]? = nil) throws -> Int {
             let result = try substitute(
                 ExerciseSwap.swap(
                     fixture.slot,
                     in: workout([fixture.slot], wasReturn: wasReturn),
                     user: user(),
                     library: catalog,
-                    recentLogs: fixture.logs,
+                    recentLogs: logs ?? fixture.logs,
                     sessionPolicy: policy
                 )
             )
@@ -800,26 +858,36 @@ final class ExerciseSwapTests: XCTestCase {
 
         XCTAssertLessThan(try reps(wasReturn: true), neutral, "the Return ease (US-E06) must reach the swap")
 
-        var ramping = SessionPolicy.default
-        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
-        XCTAssertLessThan(try reps(policy: ramping), neutral, "the Re-entry Ramp (US-E06) must reach the swap")
+        XCTAssertLessThan(try reps(logs: lastRampSessionLogs(peer: fixture.peer)), neutral,
+                          "the Re-entry Ramp (US-E06) must reach the swap")
 
-        // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on
-        // the untouched peer: a fresh advanced user's substitute opens above the movement's own default.
-        let fresh = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let freshSlot = prescription(for: fresh, sets: 1)
+        // "Too hard" at ten on push_standard steps the user down onto the peer (ADR-0011), which is then
+        // served at the floor rather than at the 15 it last logged.
+        var tooHardAtTen = log([fixture.slot.exercise], sets: 3, perSet: 10, daysAgo: 1)
+        tooHardAtTen.perceivedDifficulty = .tooHard
+        XCTAssertEqual(try reps(logs: fixture.logs + [tooHardAtTen]), AdaptiveOverload.minReps,
+                       "a step down at the floor (ADR-0011) must reach the swap")
+
+        // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on an
+        // untouched peer whose seed still shows under the cap one step below its criterion (ADR-0011) - a
+        // hold, as the cap holds every rep-based catalog move's advanced seed at its own default: a fresh
+        // advanced user's substitute opens above the movement's own default.
+        let hollow = try XCTUnwrap(library.first { $0.id == "core_hollow_hold" })
+        let plank = try XCTUnwrap(library.first { $0.id == "core_forearm_plank" })
+        let freshSlot = prescription(for: hollow, sets: 1, perSet: 30)
         let seeded = try substitute(
             ExerciseSwap.swap(
                 freshSlot,
                 in: workout([freshSlot]),
                 user: user(level: .advanced),
-                library: catalog,
+                library: [hollow, plank],
                 recentLogs: [],
                 sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
             )
         )
+        XCTAssertEqual(seeded.exercise.id, plank.id)
         XCTAssertGreaterThan(
-            try XCTUnwrap(seeded.reps), try XCTUnwrap(seeded.exercise.defaultReps),
+            try XCTUnwrap(seeded.durationSeconds), try XCTUnwrap(plank.defaultDurationSeconds),
             "the Start Seed (US-O02) must reach the swap"
         )
     }

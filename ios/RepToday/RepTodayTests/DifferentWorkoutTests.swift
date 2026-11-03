@@ -157,6 +157,8 @@ final class DifferentWorkoutTests: XCTestCase {
 
     func testEveryPressKeepsTheLengthShapeAccessInjuriesFrontiersRoundsAndTargets() async throws {
         let library = try await library()
+        var largestStretch = 0
+        defer { print("DIFFERENT WORKOUT LARGEST PER-SET STRETCH: \(largestStretch)s") }
         for scenario in scenarios(library: library) {
             let pool = ExercisePoolFilter.eligiblePool(from: library, user: scenario.user, recentLogs: scenario.recentLogs)
             let poolIds = Set(pool.map(\.id))
@@ -165,28 +167,22 @@ final class DifferentWorkoutTests: XCTestCase {
                 let presses = sequence(scenario, minutes: minutes, presses: pressCap, library: library)
                 let defaultShape = presses[0].blocks.map(\.category)
                 let cycle = cycleIndex(of: presses) ?? presses.count - 1
-                // A pool an injury flag has narrowed can leave even the default session short of a long
-                // request: the round cap stops it going deeper and there are too few movements left to go
-                // wider. That shortfall is the default session's and predates Different workout, so the
-                // ±60 s promise is checked wherever the default itself keeps it - and only an injured
-                // scenario may be exempt.
-                let defaultFits = abs(SessionAssembly.plannedSeconds(of: presses[0]) - minutes * 60)
-                    <= SessionAssembly.toleranceSeconds
-                if !defaultFits {
-                    XCTAssertFalse(
-                        scenario.user.profile.injuries.isEmpty,
-                        "\(scenario.name) \(minutes) min: the default session misses its length with an unnarrowed pool"
-                    )
-                }
+                // Every press - the default and each variation, injured scenarios included - lands within
+                // the ±60 s promise: when an injury flag narrows the pool so far that the round cap and the
+                // stations left cannot fill a long session, the stretched work windows do (ADR-0010).
                 for (index, workout) in presses.prefix(cycle + 1).enumerated() {
                     let label = "\(scenario.name) \(minutes) min press \(index)"
 
-                    if defaultFits {
-                        XCTAssertLessThanOrEqual(
-                            abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60),
-                            SessionAssembly.toleranceSeconds,
-                            "\(label): misses the requested length"
-                        )
+                    XCTAssertLessThanOrEqual(
+                        abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60),
+                        SessionAssembly.toleranceSeconds,
+                        "\(label): misses the requested length"
+                    )
+                    for block in workout.blocks {
+                        for item in block.exercises {
+                            XCTAssertLessThanOrEqual(item.stretchSeconds ?? 0, SessionAssembly.maxStretchSecondsPerSet, label)
+                            largestStretch = max(largestStretch, item.stretchSeconds ?? 0)
+                        }
                     }
                     XCTAssertEqual(workout.requestedMinutes, minutes, label)
                     XCTAssertEqual(workout.blocks.map(\.category), defaultShape, "\(label): changed the session shape")

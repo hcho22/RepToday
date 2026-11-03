@@ -3,7 +3,7 @@
 - Status: Accepted (decision made 2026-08-14); **fully implemented**. US-CC01 landed the first visible auto-advancing per-interval countdown - the rep-based strength/primal **work window** (`ActiveSessionViewModel.workWindow`), counting the set's planned work-seconds down and flowing on with no tap - alongside US-O03's tap-started Hold Timer. Both of this decision's pacer intervals exist: US-CC04 landed the engine's bounded **between-round rest**, and US-CC02 routes both circuit gaps (the between-station transition and that between-round rest) through the US-K02 rest overlay, which counts down - so the between-round rest is a visible per-interval pacer in the shipped player. US-CC14 has now landed the accessibility hardening the visible clock demanded (the shared `ActiveSessionView.CountdownRing` carries `.accessibilityAddTraits(.updatesFrequently)` so VoiceOver polls on demand rather than announcing every tick, and its sweep is dropped under Reduce Motion) plus a first-class **+ More time** on both auto-advancing countdowns, completing the continuous-circuit PRD, per `.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md`; the shipped player still shows no session-wide clock.
 - Date: 2026-08-14
 - Deciders: captain, via the "Continuous-Circuit Sessions" decision session (2026-08-14)
-- Relates to: [ADR-0003](0003-even-round-circuit-timing.md) (the timing model the pacer clock counts against); the domain term `CONTEXT.md` -> "Continuous Circuit (planned)".
+- Relates to: [ADR-0003](0003-even-round-circuit-timing.md) (the timing model the pacer clock counts against); the domain term `CONTEXT.md` -> "Continuous Circuit".
 
 ## Context
 

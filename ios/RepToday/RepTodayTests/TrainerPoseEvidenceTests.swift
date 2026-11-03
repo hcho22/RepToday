@@ -252,25 +252,33 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
-    /// An idle training hold (before Start hold): the poses, and no ring until the hold starts.
+    /// A training hold starts on its own (ADR-0010), so it opens with the poses and the compact ring;
+    /// after a deliberate Stop hold it is idle - the poses, no ring, and "Start hold" as the way back.
     func testIdleTrainingHoldShowsThePosesAndNoRing() throws {
         let session = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 2)])])
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
             assertPoseLabel("Forearm Plank, trainer showing start and end positions", exerciseName: "Forearm Plank")
-            XCTAssertFalse(labels().contains { $0.hasPrefix("Hold, ") || $0.hasPrefix("Work window, ") }, "no ring before Start hold")
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "the hold starts on its own: \(labels())")
+            XCTAssertNil(element { $0.hasPrefix("Start hold") }, "no Start-hold tap is needed")
+
+            // Stopping the hold leaves the poses, drops the ring, and offers Start hold.
+            activate("Stop hold")
+            XCTAssertTrue(pump(until: { !self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
+            XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
             XCTAssertNotNil(element { $0.hasPrefix("Start hold") })
             try capture("03-idle-training-hold", variant)
 
-            // Starting the hold keeps the poses and brings the compact ring in beside the name.
+            // Starting it again keeps the poses and brings the compact ring back beside the name.
             activate("Start hold")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
         }
     }
 
-    /// A rep-based warm-up stretch: the poses, no ring, the name at full width.
-    func testRepBasedStretchShowsThePosesAndNoRing() throws {
+    /// A rep-based warm-up stretch runs on the auto-advancing work window like a training set
+    /// (ADR-0010): the poses, and the compact ring beside the name with Done as the primary control.
+    func testRepBasedStretchShowsThePosesAndTheWorkWindow() throws {
         let session = workout([
             ("Warm-up", .warmup, [try prescription("mobility_cat_cow")]),
             ("Strength", .strength, [try prescription("push_wall")]),
@@ -278,7 +286,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .male)), variant)
             assertPoseLabel("Cat-Cow Flow, trainer showing start and end positions", exerciseName: "Cat-Cow Flow")
-            XCTAssertFalse(labels().contains { $0.hasPrefix("Hold, ") || $0.hasPrefix("Work window, ") }, "no ring on a rep stretch")
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "a rep stretch counts down on its own: \(labels())")
+            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("04-rep-based-stretch", variant)
         }
     }
@@ -346,7 +355,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         let posesLabel: String
         var exerciseName: String { String(posesLabel.prefix { $0 != "," }).replacingOccurrences(of: " demonstration", with: "") }
         let ready: (String) -> Bool
-        var startsHold = false
     }
 
     private func foldStates() throws -> [FoldState] {
@@ -369,19 +377,12 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 posesLabel: "Kneeling Hip-Flexor Stretch\(pair)",
                 ready: { $0.hasPrefix("Hold, ") }
             ),
-            // A per-side training hold before Start hold, then running with its ring and side line.
-            FoldState(
-                name: "pre-hold-per-side-training",
-                session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
-                posesLabel: "Side Plank\(pair)",
-                ready: { $0.hasPrefix("Start hold") }
-            ),
+            // A per-side training hold, running on its own (ADR-0010) with its ring and side line.
             FoldState(
                 name: "running-per-side-training-hold",
                 session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
                 posesLabel: "Side Plank\(pair)",
-                ready: { $0.hasPrefix("Start hold") },
-                startsHold: true
+                ready: { $0.hasPrefix("Hold, ") }
             ),
             FoldState(
                 name: "rep-based-stretch",
@@ -390,7 +391,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                     ("Strength", .strength, [try prescription("push_wall")]),
                 ]),
                 posesLabel: "Cat-Cow Flow\(pair)",
-                ready: { $0 == "Complete set" || $0 == "Finish exercise" }
+                ready: { $0.hasPrefix("Work window, ") }
             ),
             FoldState(
                 name: "single-pose",
@@ -419,10 +420,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 host(ActiveSessionView(workout: state.session, user: user(sex: .female)), variant)
                 XCTAssertTrue(pump(until: { self.labels().contains(where: state.ready) }, timeout: 10),
                               "\(state.name) \(variant.suffix) never became live; tree reads \(labels())")
-                if state.startsHold {
-                    activate(startHoldLabel())
-                    XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
-                }
                 HostedSurface.pump(for: 0.5) // let the card settle on its fitted height
                 XCTAssertTrue(labels().contains(state.posesLabel), "\(state.name): no \"\(state.posesLabel)\" in \(labels())")
                 // The card sits one column gap below the block line and one above the exercise title, so
@@ -480,11 +477,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 - 1.0 / 3, from: noisy.0), "one 3x pixel shorter counts")
     }
 
-    /// The idle hold's primary control: "Start hold", or its per-side spoken form.
-    private func startHoldLabel() -> String {
-        labels().first { $0.hasPrefix("Start hold") } ?? "Start hold"
-    }
-
     // MARK: - Rest overlay (US-TP08)
 
     /// The transition beat and the between-round rest show the upcoming movement's poses, and fit.
@@ -532,9 +524,9 @@ final class TrainerPoseEvidenceTests: XCTestCase {
 
     // MARK: - One-time choice (US-TP10)
 
-    /// An "other" user is asked before any Trainer art shows, with the session held on a pause and the
-    /// explainer waiting behind it; choosing shows that Trainer at once, stores it, resumes the session
-    /// and lets the explainer follow.
+    /// An "other" user is asked before any Trainer art shows and before the session starts, with the
+    /// explainer waiting behind it; choosing shows that Trainer at once, stores it and lets the
+    /// explainer follow, whose button starts the session.
     func testOtherUserChoosesATrainerBeforeAnyArtAndTheExplainerFollows() throws {
         let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
         for variant in variants {
@@ -549,8 +541,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains("Choose your Trainer") || self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Male Trainer") && labels().contains("Female Trainer"), "exactly the two options: \(labels())")
             XCTAssertFalse(labels().contains { $0.contains("trainer showing") }, "no Trainer art before the choice")
-            // Open Question 3: the session is held on a pause while the choice is up - the work window
-            // does not count down behind it.
+            // Open Question 3: nothing counts down behind the choice - the session has not started, since
+            // the choice and the first-run explainer that follows it both hold the start (ADR-0010).
             let before = labels().first { $0.hasPrefix("Work window, ") }
             HostedSurface.pump(for: 2.2)
             XCTAssertNotNil(before)
@@ -570,6 +562,14 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Your session drives itself") } }, timeout: 5),
                           "the explainer follows the choice: \(labels())")
             XCTAssertFalse(labels().contains("Choose your Trainer"))
+            // The explainer holds the start: the window still has not moved, and its button starts it.
+            HostedSurface.pump(for: 1.2)
+            XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before, "nothing runs behind the explainer")
+            activate("Got it")
+            XCTAssertTrue(
+                pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+                "the explainer's button starts the session: \(labels())"
+            )
             // The choice is stored in the background (`TrainerSessionModel.choose`), so the art and the
             // explainer can show before the write lands: read the store until it does, not once.
             let storedExpectation = expectation(description: "stored")
@@ -585,6 +585,146 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             }
             wait(for: [storedExpectation], timeout: 6)
         }
+    }
+
+    /// A user who has already seen the first-run explainer but whose Trainer is still unresolved is
+    /// asked again on a later arrival, and the choice holds the start rather than pausing a running
+    /// session - nothing counts down and `session_started` is not sent until the user chooses, and
+    /// choosing starts the session with no further tap (ADR-0010).
+    func testAnUnresolvedTrainerHoldsTheStartOnALaterArrival() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        try assertChoiceHoldsTheStart(session: session, service: MockUserService(user: user(sex: .other)), choosing: "Female Trainer")
+    }
+
+    /// A force-quit behind the Trainer choice, before choosing, leaves the first-run explainer unseen:
+    /// the next arrival asks for the Trainer again and the explainer still follows the choice.
+    func testAForceQuitBeforeChoosingKeepsTheExplainerForTheNextArrival() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        let suiteName = "TrainerPoseEvidence-\(UUID().uuidString)"
+        let service = MockUserService(user: user(sex: .other))
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), userService: service)
+                .environment(AppState(userDefaults: try XCTUnwrap(UserDefaults(suiteName: suiteName)))),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the first arrival asks for the Trainer: \(labels())")
+        XCTAssertFalse(labels().contains { $0.hasPrefix("Your session drives itself") }, "never stacked with the explainer")
+
+        // The app is killed with the choice still up, and the relaunch reads the same store afresh.
+        let relaunched = AppState(userDefaults: try XCTUnwrap(UserDefaults(suiteName: suiteName)))
+        XCTAssertTrue(relaunched.shouldShowContinuousCircuitExplainer, "nothing has shown the explainer yet")
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), userService: service)
+                .environment(relaunched),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the next arrival asks again: \(labels())")
+        activate("Female Trainer")
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Your session drives itself") } }, timeout: 5),
+                      "the explainer follows the choice on the next arrival: \(labels())")
+        XCTAssertFalse(relaunched.shouldShowContinuousCircuitExplainer, "once shown, it is never shown again")
+    }
+
+    /// A choice whose write failed leaves the Trainer unresolved (captain, Open Question 8), so the next
+    /// arrival asks again - before its start, never by pausing a running session.
+    func testAFailedTrainerWriteAsksAgainBeforeTheNextStart() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        let service = SaveFailingUserService(user: user(sex: .other))
+        try assertChoiceHoldsTheStart(session: session, service: service, choosing: "Male Trainer")
+        try assertChoiceHoldsTheStart(session: session, service: service, choosing: "Male Trainer")
+    }
+
+    /// A session left mid-rest by a user whose Trainer is still unresolved (a failed write, or a
+    /// force-quit before choosing) resumes with the choice holding the start too. The restored rest runs
+    /// out behind it and simply ends - no window runs and nothing is banked - and choosing starts it.
+    func testAResumedSessionsRestEndingBehindTheChoiceStartsNothing() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        var state = ActiveSessionState(fresh: session)
+        state.startedAt = Date().addingTimeInterval(-60)
+        state.currentSet = 2
+        state.completedSets = [state.slots[0].prescription.id: [CompletedSet(reps: 15, durationSeconds: nil)]]
+        state.rest = ActiveSessionState.Rest(totalSeconds: 15, deadline: Date().addingTimeInterval(3), remainingWhenPaused: nil)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "TrainerPoseEvidence-\(UUID().uuidString)"))
+        let appState = AppState(userDefaults: defaults)
+        appState.markContinuousCircuitExplainerSeen()
+        host(
+            ActiveSessionView(
+                resuming: state,
+                user: user(sex: .other),
+                userService: SaveFailingUserService(user: user(sex: .other))
+            )
+            .environment(appState),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the unresolved Trainer is asked on the resumed arrival: \(labels())")
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 8),
+                      "the restored rest ends behind the choice: \(labels())")
+        let before = labels().first { $0.hasPrefix("Work window, ") }
+        HostedSurface.pump(for: 2.2)
+        XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before, "no window runs behind the choice")
+
+        activate("Male Trainer")
+        XCTAssertTrue(
+            pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+            "choosing starts the session: \(labels())"
+        )
+    }
+
+    /// Hosts the player for an "other" user whose first-run explainer was already seen, and asserts the
+    /// Trainer choice is asked over a session that has not started and that choosing starts it.
+    private func assertChoiceHoldsTheStart(
+        session: Workout,
+        service: any UserServiceProtocol,
+        choosing option: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "TrainerPoseEvidence-\(UUID().uuidString)"))
+        let appState = AppState(userDefaults: defaults)
+        appState.markContinuousCircuitExplainerSeen()
+        let analytics = MockAnalyticsService()
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), analytics: analytics, userService: service)
+                .environment(appState),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the unresolved Trainer is asked: \(labels())", file: file, line: line)
+        let before = labels().first { $0.hasPrefix("Work window, ") }
+        XCTAssertNotNil(before, file: file, line: line)
+        HostedSurface.pump(for: 2.2)
+        XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before,
+                       "the window must not run behind the choice", file: file, line: line)
+        assertSessionStarted(false, analytics, "the session must not start before the choice", file: file, line: line)
+
+        activate(option, file: file, line: line)
+        XCTAssertTrue(
+            pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+            "choosing starts the session: \(labels())", file: file, line: line
+        )
+        assertSessionStarted(true, analytics, "choosing starts the session", file: file, line: line)
+        XCTAssertFalse(labels().contains { $0.hasPrefix("Your session drives itself") },
+                       "the explainer was already seen", file: file, line: line)
+    }
+
+    /// Whether `session_started` has been recorded, read off the actor-isolated mock.
+    private func assertSessionStarted(
+        _ expected: Bool,
+        _ analytics: MockAnalyticsService,
+        _ message: String,
+        file: StaticString,
+        line: UInt
+    ) {
+        let read = expectation(description: "recorded events")
+        Task {
+            let started = await analytics.recordedEvents.contains { $0.name == .sessionStarted }
+            XCTAssertEqual(started, expected, message, file: file, line: line)
+            read.fulfill()
+        }
+        wait(for: [read], timeout: 2)
     }
 
     /// A male- or female-answered user is never asked.

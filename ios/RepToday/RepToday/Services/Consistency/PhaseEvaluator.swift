@@ -143,7 +143,8 @@ enum PhaseEvaluator {
         line.entryExercises(in: library).contains { hasCleared($0, logs: logs) }
     }
 
-    /// Whether any logged, non-skipped performance of `entry` met its advancement criteria - the
+    /// Whether any logged performance of `entry` that counts toward advancement (one its session does not
+    /// step back, `WorkoutLog.countsTowardAdvancement(_:)`) met its advancement criteria - the
     /// same `AdvancementCriteria` check Step 5 uses to decide a chain advance, so competence and
     /// progression can never disagree about what "cleared a tier" means. Unparseable criteria are
     /// never met (the user simply stays on the tier), matching Step 5.
@@ -154,7 +155,7 @@ enum PhaseEvaluator {
         return logs.contains { log in
             log.exercises.contains { logged in
                 logged.exerciseId == entry.id
-                    && !logged.skipped
+                    && log.countsTowardAdvancement(logged)
                     && criteria.isMet(by: logged, isHold: entry.isHold)
             }
         }
