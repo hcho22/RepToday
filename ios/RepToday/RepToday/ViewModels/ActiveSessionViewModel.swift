@@ -466,6 +466,7 @@ final class ActiveSessionViewModel {
         // Captured before the `startedAt == nil` branch below sets it: a genuine first start enters with
         // no origin, a cold relaunch/resume into an already-started session enters with one.
         let isResumeEntry = startedAt != nil
+        hasStarted = true
         if startedAt == nil {
             startedAt = now()
             // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
@@ -488,6 +489,11 @@ final class ActiveSessionViewModel {
         // the work window's. Idempotent via `canAutoStartHold`.
         autoStartHoldIfNeeded(suppressGoCue: isResumeEntry)
     }
+
+    /// Whether this player's `start()` has run. Never persisted: a resumed snapshot carries the session's
+    /// `startedAt`, but nothing counts down on this screen until its own start (ADR-0010), so a restored
+    /// rest that runs out behind the one-time Trainer choice or the first-run explainer only ends.
+    private var hasStarted = false
 
     /// Elapsed whole seconds from the start to `date`, frozen at `finishedAt` once complete. A pure
     /// function of the injected clock so the view's per-second `TimelineView` reads it cheaply and the
@@ -1051,9 +1057,10 @@ final class ActiveSessionViewModel {
     /// Whether a hold leg should auto-start right now (US-CC05, ADR-0010): the session has started, a
     /// timed movement is on screen and nothing (rest, running hold, swap, completion) is in the way. The
     /// hold analogue of `canStartWorkWindow` - the idempotency guard that makes `autoStartHoldIfNeeded()`
-    /// safe to call after any transition that could reveal a hold. Before `start()` nothing counts down,
-    /// which is what lets the first-run explainer sit over a session that has not begun.
-    var canAutoStartHold: Bool { startedAt != nil && canStartHold }
+    /// safe to call after any transition that could reveal a hold. Before this player's `start()` nothing
+    /// counts down, a resumed session included, which is what lets the Trainer choice and the first-run
+    /// explainer sit over a session that has not begun on this screen.
+    var canAutoStartHold: Bool { hasStarted && canStartHold }
 
     /// Auto-start the current hold leg hands-free (US-CC05 for bookends, ADR-0010 for training holds),
     /// the mirror of `startWorkWindow()`: driven from every transition that reveals a hold (`start()`,
@@ -1213,10 +1220,11 @@ final class ActiveSessionViewModel {
     /// Whether a work window can start right now: the session has started, an auto-advancing set is on
     /// screen and no rest, hold, running window, swap, or completion is in the way. This makes
     /// `startWorkWindow()` idempotent and safe to call after any transition that could reveal a new set -
-    /// including the countdown view's own appearance, which must not start a window under the first-run
-    /// explainer before the session begins (ADR-0010).
+    /// including the countdown view's own appearance, which must not start a window under the Trainer
+    /// choice or the first-run explainer before this player's `start()`, a resumed session included
+    /// (ADR-0010).
     var canStartWorkWindow: Bool {
-        startedAt != nil && !isComplete && !isResting && !isHolding && !isSwapping && !isRunningWorkWindow
+        hasStarted && !isComplete && !isResting && !isHolding && !isSwapping && !isRunningWorkWindow
             && workWindowSecondsPerSet != nil
     }
 

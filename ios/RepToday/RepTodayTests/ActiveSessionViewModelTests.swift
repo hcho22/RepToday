@@ -3619,6 +3619,42 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isUserPaused, "the explainer never pauses a running session")
     }
 
+    /// A resumed snapshot already carries its session's `startedAt`, but nothing counts down on this
+    /// screen until this player's own `start()` (ADR-0010): a restored rest that runs out behind the
+    /// one-time Trainer choice simply ends, opening no work window, firing no cue and banking no set, and
+    /// `start()` then opens the window at its full length with the resume's `.go` withheld.
+    func testARestoredRestEndingBeforeTheStartOpensNothing() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let fresh = ActiveSessionState(fresh: strengthWorkout(sets: 2, reps: 12))
+        let saved = ActiveSessionState(
+            workout: fresh.workout, slots: fresh.slots,
+            currentStepIndex: 1, currentSet: 1,
+            completedSets: [fresh.slots[0].prescription.id: [CompletedSet(reps: 12, durationSeconds: nil)]],
+            skippedStepIDs: [], startedAt: start.addingTimeInterval(-60),
+            rest: ActiveSessionState.Rest(totalSeconds: 15, deadline: start.addingTimeInterval(5), remainingWhenPaused: nil)
+        )
+        let vm = ActiveSessionViewModel(state: saved, now: { clock }, cuePlayer: spy)
+        XCTAssertTrue(vm.isResting, "the snapshot restores its running rest")
+
+        clock = start.addingTimeInterval(30) // the choice is read while the rest runs out
+        vm.completeRestIfElapsed(asOf: clock) // the rest overlay's ticker
+        vm.startWorkWindow() // the countdown view appearing under the choice
+        vm.autoStartHoldIfNeeded()
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting, "the restored rest simply ends")
+        XCTAssertFalse(vm.isRunningWorkWindow, "no window opens before this player's start")
+        XCTAssertFalse(vm.isCountingDown)
+        XCTAssertEqual(vm.completedSetCount, 1, "no set is banked behind the choice")
+        XCTAssertTrue(spy.cues.isEmpty, "no cue fires behind the choice")
+
+        vm.start() // choosing a Trainer starts the session
+        XCTAssertTrue(vm.isRunningWorkWindow)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), try XCTUnwrap(vm.workWindowSecondsPerSet),
+                       "the window opens at its full length")
+        XCTAssertFalse(spy.cues.contains(.go), "a resumed start withholds its go")
+    }
+
     /// Taking an advancing escape hatch while paused (Done, Skip, Swap, Skip rest, Stop hold) clears the
     /// user pause, because the frozen countdown is being torn down and a fresh one re-arms un-paused -
     /// so the flow never lands running-but-showing-Resume.

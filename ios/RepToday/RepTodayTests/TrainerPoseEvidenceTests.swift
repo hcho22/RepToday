@@ -605,6 +605,43 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         try assertChoiceHoldsTheStart(session: session, service: service, choosing: "Male Trainer")
     }
 
+    /// A session left mid-rest by a user whose Trainer is still unresolved (a failed write, or a
+    /// force-quit before choosing) resumes with the choice holding the start too. The restored rest runs
+    /// out behind it and simply ends - no window runs and nothing is banked - and choosing starts it.
+    func testAResumedSessionsRestEndingBehindTheChoiceStartsNothing() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        var state = ActiveSessionState(fresh: session)
+        state.startedAt = Date().addingTimeInterval(-60)
+        state.currentSet = 2
+        state.completedSets = [state.slots[0].prescription.id: [CompletedSet(reps: 15, durationSeconds: nil)]]
+        state.rest = ActiveSessionState.Rest(totalSeconds: 15, deadline: Date().addingTimeInterval(3), remainingWhenPaused: nil)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "TrainerPoseEvidence-\(UUID().uuidString)"))
+        let appState = AppState(userDefaults: defaults)
+        appState.markContinuousCircuitExplainerSeen()
+        host(
+            ActiveSessionView(
+                resuming: state,
+                user: user(sex: .other),
+                userService: SaveFailingUserService(user: user(sex: .other))
+            )
+            .environment(appState),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the unresolved Trainer is asked on the resumed arrival: \(labels())")
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 8),
+                      "the restored rest ends behind the choice: \(labels())")
+        let before = labels().first { $0.hasPrefix("Work window, ") }
+        HostedSurface.pump(for: 2.2)
+        XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before, "no window runs behind the choice")
+
+        activate("Male Trainer")
+        XCTAssertTrue(
+            pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+            "choosing starts the session: \(labels())"
+        )
+    }
+
     /// Hosts the player for an "other" user whose first-run explainer was already seen, and asserts the
     /// Trainer choice is asked over a session that has not started and that choosing starts it.
     private func assertChoiceHoldsTheStart(

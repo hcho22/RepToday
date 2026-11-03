@@ -75,9 +75,11 @@ enum AdaptiveOverload {
     /// The neutral Start Seed volume multiplier (US-O02): `1.0` scales nothing, so the no-history
     /// default target is exactly the exercise's own (grid-rounded) default. A cold-start user at a
     /// higher self-reported fitness level passes a larger multiplier
-    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) so their *first* prescription of a
-    /// movement carries proportionate volume; it is landed on the grid and clamped to the same per-set
-    /// rails as every other target, and it never touches a capacity-derived one.
+    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) to lift their *first* prescription of a
+    /// movement; it is landed on the grid, clamped to the same per-set rails as every other target, and
+    /// never touches a capacity-derived one. The lift stops one `step` below the movement's advancement
+    /// criterion (ADR-0011), so in today's catalog it lifts timed holds but no rep-based move's first
+    /// number; the Start Seed still sets the first set count (`startingSets`) and the tier band.
     ///
     /// Aliased from the policy contract's own neutral rather than restated, so the value the
     /// Programmer writes and the value this step falls back to cannot drift apart.

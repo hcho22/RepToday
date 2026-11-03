@@ -540,7 +540,9 @@ extension SessionPolicy.ColdStartContract {
     /// The Start Seed's per-set **volume multiplier** for a self-reported fitness level (US-O02):
     /// **beginner x1.0, intermediate x1.15, advanced x1.30**. It scales only the *no-history* default
     /// target (an exercise the user has never logged); once there is demonstrated capacity, Step 6 is
-    /// capacity-relative and the seed no longer applies.
+    /// capacity-relative and the seed no longer applies. Step 6 never lifts a first prescription past one
+    /// step below the movement's advancement criterion (ADR-0011), so in today's catalog the multiplier
+    /// lifts timed holds and leaves every rep-based move's first number at its own default.
     static func startingRepMultiplier(for level: FitnessLevel) -> Double {
         switch level {
         case .beginner: return 1.0
