@@ -293,13 +293,21 @@ enum ProgressionChainSelection {
     /// withheld - the pool has been capped beneath the band by a Return or an injury filter - the
     /// band is unreachable rather than violated, every candidate comes back into scope, and the
     /// variety window applies over them normally instead of silently switching itself off.
+    ///
+    /// `offered` are the moves a Ready Screen **Different workout** press already showed
+    /// (`SessionVariation`). They sort behind the candidates that press has not shown - after the
+    /// withheld key, so a press never reaches for a tier the Start Seed band held back, and ahead of the
+    /// variety window, since the user has just asked for something else. Each candidate is still its own
+    /// chain's honest frontier, so a press never serves a harder tier than the user has earned. Empty,
+    /// the default, changes nothing.
     static func selectAll(
         pattern: MovementPattern,
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
         varietyWindow: Int = recentSessionWindow,
-        withheldByStartSeed: Set<String> = []
+        withheldByStartSeed: Set<String> = [],
+        offered: Set<String> = []
     ) -> [ChainSelection] {
         let eligibleIds = Set(pool.map(\.id))
         let chains = Dictionary(
@@ -336,6 +344,9 @@ enum ProgressionChainSelection {
             let lhsWithheld = withheldByStartSeed.contains(lhs.exercise.id)
             let rhsWithheld = withheldByStartSeed.contains(rhs.exercise.id)
             if lhsWithheld != rhsWithheld { return !lhsWithheld }
+            let lhsOffered = offered.contains(lhs.exercise.id)
+            let rhsOffered = offered.contains(rhs.exercise.id)
+            if lhsOffered != rhsOffered { return !lhsOffered }
             let lhsFresh = !recentlyUsed.contains(lhs.exercise.id)
             let rhsFresh = !recentlyUsed.contains(rhs.exercise.id)
             if lhsFresh != rhsFresh { return lhsFresh }

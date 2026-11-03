@@ -6,7 +6,7 @@ import XCTest
 /// the session-generation benchmark record (2026-08-10).
 ///
 /// **What it measures.** The exact call the marketing/telemetry number straddles:
-/// `WorkoutEngineProtocol.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:)` on the
+/// `WorkoutEngineProtocol.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:variation:)` on the
 /// production conformer `MockWorkoutEngine` (misleadingly named; it is the real deterministic engine
 /// wired in both `ServiceContainer.live()` and `.mock()`), which runs the full Steps 1-7 pipeline
 /// through `SessionAssembly.assemble`. This is the same await `ReadyViewModel.generate()` times to
@@ -164,7 +164,8 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
             requestedMinutes: minutes,
             user: user,
             recentLogs: logs,
-            sessionPolicy: .default
+            sessionPolicy: .default,
+            variation: .none
         )
         return Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
     }
@@ -279,7 +280,7 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
         let mem = Double(info.physicalMemory) / 1_073_741_824
         var out = "\nBENCH_BEGIN\n"
         out += "## Session-generation latency benchmark (proxy run)\n\n"
-        out += "- Measured call: `MockWorkoutEngine.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:)` -> `SessionAssembly.assemble` (Steps 1-7)\n"
+        out += "- Measured call: `MockWorkoutEngine.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:variation:)` -> `SessionAssembly.assemble` (Steps 1-7)\n"
         out += "- OS/runtime: \(info.operatingSystemVersionString)\n"
         out += "- Host physical memory: \(String(format: "%.1f", mem)) GiB\n"
         out += "- Warm iterations/duration: \(warmIterations); cold iterations/duration: \(coldIterations)\n"

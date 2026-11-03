@@ -1207,7 +1207,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         }
 
         func generateWorkout(
-            requestedMinutes: Int, user: User, recentLogs: [WorkoutLog], sessionPolicy: SessionPolicy
+            requestedMinutes: Int, user: User, recentLogs: [WorkoutLog], sessionPolicy: SessionPolicy,
+            variation: SessionVariation
         ) async throws -> Workout {
             fatalError("the swap tests never generate")
         }

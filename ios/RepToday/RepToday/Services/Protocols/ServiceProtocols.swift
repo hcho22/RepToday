@@ -34,12 +34,15 @@ protocol WorkoutEngineProtocol {
     /// Assembles a complete session. `sessionPolicy` is the per-user program the engine runs
     /// on (US-D04 seam): `SessionPolicy.default` reproduces pre-policy behavior exactly, and
     /// the policy's levers are threaded into the pipeline's Steps 2/5/6 by
-    /// `SessionAssembly.assemble` (US-E03).
+    /// `SessionAssembly.assemble` (US-E03). `variation` is the Ready Screen's **Different workout**
+    /// request: the moves earlier presses already showed, ranked behind their alternatives
+    /// (`SessionVariation`). `.none` is the default session.
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout
 
     /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
