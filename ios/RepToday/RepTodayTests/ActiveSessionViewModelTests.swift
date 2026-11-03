@@ -434,9 +434,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.circuitRoundCount)
     }
 
-    /// The rotation crosses two distinct rest gaps (US-CC04): a short between-station transition inside a
-    /// round, and the longer between-round rest at a round boundary. Both flow through the US-K02 rest
-    /// overlay so the session stays hands-free.
+    /// The rotation crosses two distinct rest gaps (US-CC04): a between-station transition inside a
+    /// round, and the between-round rest at a round boundary - both at most 15 seconds, told apart by
+    /// their cue. Both flow through the US-K02 rest overlay so the session stays hands-free.
     func testCircuitCrossesTransitionBetweenStationsAndRoundRestBetweenRounds() {
         let strength = WorkoutBlock(
             id: UUID(), title: "Strength", category: .strength,
@@ -490,7 +490,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.skipRest()
         XCTAssertFalse(vm.isTransitionBeat, "skipping the rest ends the beat")
 
-        // squat round 1 -> push_up round 2 crosses the longer between-round rest, not a transition.
+        // squat round 1 -> push_up round 2 crosses the between-round rest, not a transition.
         vm.completeSet()
         XCTAssertTrue(vm.isResting, "a between-round rest is running")
         XCTAssertFalse(vm.isTransitionBeat, "a between-round rest is not a transition beat")
@@ -1889,8 +1889,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// as the **max** station set count and `hasSet` gates each station by its own count, so an uneven
     /// block resolves deterministically - a shorter station simply drops out of the rounds beyond its
     /// own set count. The one piece of per-side state that survives is the *side*: the leg itself is
-    /// never persisted (US-O03), so the resumed training hold comes back **idle on side 2** awaiting a
-    /// deliberate Start-hold tap rather than a phantom running countdown.
+    /// never persisted (US-O03), so the resumed training hold comes back **idle on side 2**, starting
+    /// that side fresh once the player starts, rather than as a phantom running countdown.
     func testResumesAnOldUnevenPausedSnapshotPreservingWorkSkipsAndHoldSide() {
         // An old-shape strength block with genuinely uneven set counts (pre-US-CC03): push_up 3, the
         // per-side side_plank hold 3, squat 2 - bracketed by single-set bookends.
@@ -1959,7 +1959,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(resumed.completedSets[squatID], "a skipped exercise records no sets")
 
         // The per-side hold restores idle on the owed side (side 2), not as a running leg (US-O03): the
-        // training hold parks for a deliberate Start-hold tap rather than un-pausing a phantom countdown.
+        // training hold starts that side fresh once the player starts rather than un-pausing a phantom
+        // countdown.
         XCTAssertEqual(resumed.holdSide, 2)
         XCTAssertFalse(resumed.isHolding, "no running leg is ever restored")
         XCTAssertTrue(resumed.canStartHold, "the resumed leg is ready to begin fresh on side 2")

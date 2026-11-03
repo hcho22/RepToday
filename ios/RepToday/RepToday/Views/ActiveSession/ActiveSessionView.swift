@@ -1210,8 +1210,8 @@ private struct RingSize: ViewModifier {
 /// A compact ring beside the exercise name while a hold runs (ADR-0008: the card keeps the Trainer's
 /// poses rather than giving way to a full-size ring), counting one side of the prescribed hold down. At
 /// zero the view model fires the same accessible haptic/audio cue the rest timer uses - exactly once -
-/// and either parks on the next side (a per-side movement is two legs per set) or records the set and
-/// opens the rest. The ticker lives here rather than in the player, so it exists only while a hold is
+/// and either opens the brief "Switch sides" beat, after which the next side starts on its own (a
+/// per-side movement is two legs per set), or records the set and opens the rest. The ticker lives here rather than in the player, so it exists only while a hold is
 /// actually running, and it drives a *pure* check (`completeHoldIfElapsed`) that is a no-op until the
 /// deadline passes, so the cue can never fire early or per tick.
 private struct HoldCountdownView: View {

@@ -186,8 +186,9 @@ final class ActiveSessionViewModel {
     private(set) var restContext: RestContext = .rest
 
     /// The cue the running rest announced at its start (US-CC10), retained so the overlay can tell a
-    /// short between-station **transition beat** (`.transition`) apart from a longer between-round rest
-    /// (`.roundRest`) and give the transition its dedicated "Next: <exercise>" prominence (US-CC11).
+    /// between-station **transition beat** (`.transition`) apart from a between-round rest
+    /// (`.roundRest`) - both at most 15 seconds, so their cue rather than their length tells them apart
+    /// - and give the transition its dedicated "Next: <exercise>" prominence (US-CC11).
     /// In-memory only, exactly like `restContext`: a rest restored on resume comes back with no cue, so
     /// it reads as a plain rest - no schema change and no migration owed.
     private(set) var restCue: SessionCue?
@@ -535,7 +536,7 @@ final class ActiveSessionViewModel {
         if let next = nextPosition(fromIndex: currentStepIndex, set: currentSet) {
             moveTo(index: next.index, set: next.set)
             // US-CC10: the rest announces its kind at its start - `.transition` or `.roundRest` - so the
-            // user can tell a short station change from a longer round break by ear.
+            // user can tell a station change from a round break by ear.
             startRest(seconds: next.gap, cue: next.cue)
             // When the just-completed set opened no rest (a `restSeconds == 0` round rest), the next
             // effort is already on screen, so its work window (US-CC01) or bookend hold leg (US-CC05)
@@ -1501,8 +1502,8 @@ final class ActiveSessionViewModel {
             }
             let nextRound = round + 1
             if nextRound <= span.roundCount, let station = firstStation(in: span.range, round: nextRound) {
-                // Round boundary: the longer between-round rest, cued distinctly so it is tellable from a
-                // transition by ear (US-CC10).
+                // Round boundary: the between-round rest, no longer than a transition (ADR-0010) but cued
+                // distinctly so it is tellable from one by ear (US-CC10).
                 return (station, nextRound, roundRestSeconds(for: span.range), .roundRest)
             }
             return positionAfterBlock(span.range.upperBound, gap: SessionAssembly.transitionSeconds, cue: .transition)

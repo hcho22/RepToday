@@ -93,7 +93,7 @@ struct SystemSessionCuePlayer: SessionCuePlayer {
         case .go:         return 1113 // begin-recording: a rising "start now"
         case .halfway:    return 1105 // a soft, unobtrusive midpoint tock
         case .transition: return 1057 // "Tink": the short between-station beat
-        case .roundRest:  return 1075 // a lower, longer tone for the longer round break
+        case .roundRest:  return 1075 // a lower, longer tone for the round break
         case .done:       return 1114 // end-recording: a settling "that's the set"
         }
     }
