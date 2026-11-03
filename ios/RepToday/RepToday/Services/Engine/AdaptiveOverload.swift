@@ -126,12 +126,10 @@ enum AdaptiveOverload {
     /// rest; a session that marked none (and every log written before the marks existed) steps every
     /// move back, as "too hard" always has.
     static func signal(for logged: LoggedExercise, in log: WorkoutLog) -> Signal {
-        if logged.skipped { return .stepBack }
+        if log.stepsBack(logged) { return .stepBack }
         switch log.perceivedDifficulty {
         case .tooHard:
-            let anyMarked = log.exercises.contains { $0.couldNotFinish == true }
-            guard anyMarked else { return .stepBack }
-            return logged.couldNotFinish == true ? .stepBack : .hold
+            return .hold
         case .tooEasy:
             return .climbNow
         case .justRight, .none:

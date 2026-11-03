@@ -2035,6 +2035,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
             ratings.append((log.id, difficulty))
         }
+
+        func recordEarnedPhase() async throws {}
     }
 
     /// A session tagged as a single-focus Return at 20 requested minutes, so the completion log's
@@ -3042,18 +3044,19 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.currentStepIsBookendHold, "the revealed station is a training hold")
         let doneAfterWindow = spy.completions
 
-        // Elapse the rest to zero: it reveals the training hold, which auto-starts with no tap.
+        // Elapse the rest to zero: it reveals the training hold, which auto-starts with no tap and sounds
+        // the same `.go` a rep-based work window does, so the user following by ear knows to begin.
         clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isResting, "the rest ended")
         XCTAssertTrue(vm.isHolding, "a training hold auto-starts like a bookend hold - no Start-hold tap")
         XCTAssertFalse(vm.isRunningWorkWindow, "a hold is not a work window")
-        XCTAssertEqual(spy.count(of: .go), 1, "the rest ending adds no cue of its own")
+        XCTAssertEqual(spy.count(of: .go), 2, "the auto-started training hold fires one .go")
         XCTAssertEqual(spy.completions, doneAfterWindow, "starting the hold adds no .done")
 
         // Idempotent: repeated ticks after the rest has already ended do not re-fire or restart.
         vm.completeRestIfElapsed(asOf: clock)
-        XCTAssertEqual(spy.count(of: .go), 1, "no cue fires per tick")
+        XCTAssertEqual(spy.count(of: .go), 2, "no cue fires per tick")
 
         // Complementary case: a rest revealing a rep-based set fires a single, non-doubled .go from the
         // auto-starting window, not this rest-end path.
@@ -3068,6 +3071,34 @@ final class ActiveSessionViewModelTests: XCTestCase {
         repVM.completeRestIfElapsed(asOf: repClock)
         XCTAssertTrue(repVM.isRunningWorkWindow, "the next rep window auto-started")
         XCTAssertEqual(repSpy.count(of: .go), 2, "one .go on start and one from the auto-started window - not doubled")
+    }
+
+    /// A training hold's `.go` follows the work window's resume rule: a genuine first start sounds it, a
+    /// resume re-entry auto-starts the leg fresh but withholds the tone.
+    func testTrainingHoldResumeReEntryAutoStartsButFiresNoGoCue() async throws {
+        let plankCircuit = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false,
+            blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength,
+                                  exercises: [holdPrescription("plank", sets: 2, seconds: 30)])]
+        )
+        let store = InMemoryActiveSessionStore()
+        let freshSpy = SpyCuePlayer()
+        let original = ActiveSessionViewModel(
+            workout: plankCircuit, store: store, userId: "u1", now: { self.start }, cuePlayer: freshSpy
+        )
+        original.start()
+        XCTAssertTrue(original.isHolding, "the training hold auto-starts on a first start")
+        XCTAssertEqual(freshSpy.count(of: .go), 1, "and sounds the go cue")
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumeSpy = SpyCuePlayer()
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) }, cuePlayer: resumeSpy)
+        resumed.start()
+        XCTAssertTrue(resumed.isHolding, "the hold still auto-starts on resume")
+        XCTAssertEqual(resumeSpy.count(of: .go), 0, "but reopening the app fires no go tone")
     }
 
     /// The optional midpoint tone fires exactly once, at (or just past) the middle of a work window -
@@ -3167,7 +3198,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock) // beat ends, side 2 auto-starts
         XCTAssertEqual(spy.cues, afterLeg1, "the switch-sides beat added no cue - not a done, not a transition")
-        XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a hold leg is not a work window")
+        XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a bookend hold starts silently")
     }
 
     /// VoiceOver coordination (US-CC10): when VoiceOver is running the audio tone is withheld so it

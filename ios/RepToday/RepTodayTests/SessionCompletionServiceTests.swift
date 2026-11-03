@@ -108,10 +108,10 @@ final class SessionCompletionServiceTests: XCTestCase {
 
     // MARK: - Earned-phase transition
 
-    /// The real completion lifecycle hands the evaluator the durable history including the session it
-    /// just wrote, then persists the newly earned phase on the same user aggregate downstream session
-    /// generation reads.
-    func testRecordEvaluatesFullHistoryAndPersistsNewlyEarnedStrengthPhase() async throws {
+    /// Completion evaluates the settled history *before* the session it just wrote - that session's own
+    /// log waits for its rating and "couldn't finish" marks (ADR-0011) - and persists a phase that
+    /// history earned on the same user aggregate downstream session generation reads.
+    func testRecordEvaluatesTheSettledHistoryAndPersistsNewlyEarnedStrengthPhase() async throws {
         let priorLog = makeLog()
         let completedLog = makeLog()
         let logService = MockWorkoutLogService(logs: [priorLog])
@@ -129,7 +129,128 @@ final class SessionCompletionServiceTests: XCTestCase {
         let saved = try await userService.currentUser()
         XCTAssertEqual(saved?.phase, .strength, "the earned phase is durable on the user aggregate")
         let evaluatedLogs = await phaseService.evaluatedLogs
+        XCTAssertEqual(evaluatedLogs.map(\.id), [priorLog.id], "the just-completed session is not evaluated yet")
+    }
+
+    /// Once the completion screen closes, `recordEarnedPhase` evaluates the full history - now including
+    /// the session with its final rating and marks - and persists a newly earned phase.
+    func testRecordEarnedPhaseEvaluatesTheFullHistoryIncludingTheSession() async throws {
+        let priorLog = makeLog()
+        let completedLog = makeLog()
+        let logService = MockWorkoutLogService(logs: [priorLog])
+        let userService = MockUserService(user: makeUser())
+        let phaseService = RecordingPhaseService(earned: .strength)
+        let service = makeService(
+            logService: logService,
+            userService: userService,
+            store: InMemorySessionPolicyStore(),
+            phaseService: phaseService
+        )
+        try await logService.save(completedLog)
+
+        try await service.recordEarnedPhase()
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.phase, .strength)
+        let evaluatedLogs = await phaseService.evaluatedLogs
         XCTAssertEqual(Set(evaluatedLogs.map(\.id)), Set([priorLog.id, completedLog.id]))
+    }
+
+    /// ADR-0011 end to end, through the real player, completion service and `PhaseEvaluatorService`: a
+    /// sustained Discipline user clears their last Foundation entry rung this session, rates it "too
+    /// hard" and taps that move as not finished, so the Strength Phase is not earned - neither at
+    /// completion nor when the completion screen closes. The control plays the same session rated "just
+    /// right" and earns it, so the fixture really is one cleared rung away.
+    func testTappedLastFoundationRungDoesNotEarnStrength() async throws {
+        let tapped = try await phaseAfterClearingLastFoundationRung { player, rungId in
+            player.rate(.tooHard)
+            player.toggleCouldNotFinish(rungId)
+        }
+        XCTAssertEqual(tapped, .discipline, "a move marked couldn't finish never clears its Foundation line")
+
+        let control = try await phaseAfterClearingLastFoundationRung { player, _ in
+            player.rate(.justRight)
+        }
+        XCTAssertEqual(control, .strength, "the same session, finished, earns the Strength Phase")
+    }
+
+    /// Plays one session of the push line's entry rung at its own advancement target for a user whose
+    /// history already clears every other Foundation line with sustained consistency, runs
+    /// `onCompletionScreen` on the finished player, closes the completion screen, and returns the
+    /// persisted phase once every write has landed.
+    private func phaseAfterClearingLastFoundationRung(
+        onCompletionScreen: (ActiveSessionViewModel, String) -> Void
+    ) async throws -> Phase {
+        let exerciseService = try MockExerciseService()
+        let library = try await exerciseService.exercises()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let asOf = now
+
+        let pushLine = try XCTUnwrap(StrengthFoundation.push.lines.first)
+        let rung = try XCTUnwrap(pushLine.entryExercises(in: library).first { !$0.isHold })
+        let criteria = try XCTUnwrap(AdvancementCriteria(parsing: rung.advancementCriteria))
+
+        let sustained = (0..<10).flatMap { week in
+            (0..<3).map { day in
+                WorkoutLog(
+                    id: UUID(), workoutId: UUID(),
+                    completedAt: calendar.date(byAdding: .day, value: -(week * 7 + day + 1), to: asOf)!,
+                    requestedMinutes: 15, durationMinutes: 15, wasReturn: false,
+                    shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil, exercises: []
+                )
+            }
+        }
+        let otherLinesCleared = StrengthFoundation.allLines.filter { $0.foundation != .push }.compactMap { line -> WorkoutLog? in
+            guard let entry = line.entryExercises(in: library).first else { return nil }
+            return WorkoutLog(
+                id: UUID(), workoutId: UUID(),
+                completedAt: calendar.date(byAdding: .day, value: -1, to: asOf)!,
+                requestedMinutes: 20, durationMinutes: 20, wasReturn: false,
+                shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil,
+                exercises: [LoggedExercise(
+                    id: UUID(), exerciseId: entry.id, pillar: entry.pillar, movementPattern: line.pattern,
+                    completedSets: Array(repeating: CompletedSet(reps: 1000, durationSeconds: 1000), count: 5),
+                    skipped: false
+                )]
+            )
+        }
+
+        var user = MockPersistence.sampleUser
+        user.phase = .discipline
+        let userService = MockUserService(user: user)
+        let service = SessionCompletionService(
+            workoutLogService: MockWorkoutLogService(logs: sustained + otherLinesCleared),
+            userService: userService,
+            consistencyService: ConsistencyScoreService(now: { asOf }),
+            phaseService: PhaseEvaluatorService(exerciseService: exerciseService, now: { asOf }, calendar: calendar),
+            policyStore: InMemorySessionPolicyStore()
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: asOf, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 15, wasReturn: false,
+            blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [
+                PrescribedExercise(
+                    id: UUID(), exercise: rung, sets: criteria.sets, reps: criteria.target,
+                    durationSeconds: nil, restSeconds: 15
+                )
+            ])]
+        )
+        let player = ActiveSessionViewModel(
+            workout: workout, user: user, completionService: service, now: { asOf },
+            cuePlayer: SilentCuePlayer(), voiceOverActive: { false }
+        )
+        player.start()
+        while !player.isComplete { player.completeSet() }
+        await player.completionTask?.value
+        let atCompletion = try await userService.currentUser()
+        XCTAssertEqual(atCompletion?.phase, .discipline, "the session's own log is not evaluated before its rating")
+
+        onCompletionScreen(player, rung.id)
+        player.recordSessionEnd()
+        await player.completionTask?.value
+        let afterClose = try await userService.currentUser()
+        return try XCTUnwrap(afterClose?.phase)
     }
 
     /// Strength is an earned milestone, not a rolling label: later completion processing skips phase
@@ -376,6 +497,10 @@ final class SessionCompletionServiceTests: XCTestCase {
         let saved = try await logService.workoutLogs(from: nil, to: nil)
         XCTAssertEqual(saved.count, 1)
     }
+}
+
+private struct SilentCuePlayer: SessionCuePlayer {
+    func play(_ cue: SessionCue, suppressAudio: Bool) {}
 }
 
 private actor RecordingPhaseService: PhaseServiceProtocol {

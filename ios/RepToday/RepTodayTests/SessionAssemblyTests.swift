@@ -1223,6 +1223,49 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertLessThan(ramp3, normal, "the ramp holds difficulty below normal, then walks it back up")
     }
 
+    /// The Return and its Re-entry Ramp are each held against the user's last capacity from *before* the
+    /// Return, never against the previous held session's log, so the ramp walks difficulty back up rather
+    /// than compounding each hold onto the last. Traced end to end: a beginner last at 30 squats (sumo is
+    /// out of their reach, so squat_bodyweight stays served) returns after a gap, and the Return session
+    /// and the three ramp sessions after it - each logged at what it prescribed - never decrease.
+    func testReturnAndReentryRampHoldAgainstPreReturnCapacityAndNeverDecrease() async throws {
+        let library = try await library()
+        let beginner = user(level: .beginner)
+        var history = [log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)]
+
+        func squatReps(rampRemaining: Int) throws -> Int {
+            var policy = SessionPolicy.default
+            // Every chain counts as fresh, so the squat pattern keeps the chain the user is progressing.
+            policy.varietyWindow = 0
+            policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining)
+            let workout = assemble(minutes: 60, user: beginner, library: library, logs: history, policy: policy)
+            let squat = try XCTUnwrap(
+                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
+                "squat_bodyweight should be served in every session of the trace"
+            )
+            return try XCTUnwrap(squat.reps)
+        }
+
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a 20-day gap is a Return")
+        // The Programmer seeds the ramp on the Return trigger before the Return session is generated.
+        let returned = try squatReps(rampRemaining: ReturnOverride.rampSessions)
+        var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
+        returnLog.wasReturn = true
+        history.append(returnLog)
+
+        var targets = [returned]
+        for (remaining, daysAgo) in [(3, 2), (2, 1), (1, 0)] {
+            XCTAssertFalse(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar))
+            let reps = try squatReps(rampRemaining: remaining)
+            targets.append(reps)
+            if remaining > 1 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
+        }
+
+        // 30 held at 0.7, 0.7, 0.8, 0.9 on the grid, each at least one step below 30.
+        XCTAssertEqual(targets, [20, 20, 20, 25], "each held session is relative to the pre-Return 30")
+        XCTAssertEqual(targets, targets.sorted(), "the ramp never takes the target down from one session to the next")
+    }
+
     /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
     /// capped, strength-led sessions, so a "Return" during the First-Week window defers to the
     /// cold-start strength lead. Both now lead strength (US-004/US-005), so the guard is that the

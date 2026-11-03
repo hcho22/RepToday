@@ -27,9 +27,10 @@ Round numbers move in steps of five, so a step is a big change for a small numbe
   The logs themselves are never rewritten.
 - **"Couldn't finish".** The completion screen keeps its rating.
   After "too hard" it lists the session's worked strength and primal moves, and the user taps any they could not finish.
-  A tapped move steps back and that session never counts toward its advancement (`LoggedExercise.countsTowardAdvancement`), including a Foundation line.
-  An untapped move in that session neither steps back nor counts as a "just right" session toward its climb.
-  "Too hard" with nothing tapped steps every move back, as "too hard" always has.
+  A tapped move steps back and that session never counts toward its advancement (`WorkoutLog.countsTowardAdvancement(_:)`), including a Foundation line and so the earned Strength Phase.
+  An untapped move in that session neither steps back nor counts as a "just right" session toward its climb, and still counts toward its advancement.
+  "Too hard" with nothing tapped steps every move back, as "too hard" always has, and, as the completion screen says everything eases off, that session counts toward no move's advancement, the same as if every move were tapped.
+  Because an earned phase is never revoked (ADR-0006), a session's own log is evaluated for the earned phase only once the completion screen closes, after its rating and marks are saved (`SessionCompletionService.recordEarnedPhase()`); a session whose completion screen never closes is evaluated as it was left, no later than the next session completion or app open.
   The mark is one optional flag per move on the stored log (`LoggedExercise.couldNotFinish`), so older logs and older app versions read unchanged.
   It is post-session and per move, never per set: `CompletedSet` still carries only `reps` and `durationSeconds`, and `NoPerSetCompletionTrackingGuardTests` is narrowed only to name this one flag on `LoggedExercise`.
 - **Advancement criteria.** Every catalog rep criterion at or below 10 per set is raised to 15, keeping its set count and per-side wording (for example "3x5 clean reps per side" and "3x10 clean reps" become "3x15 clean reps per side" and "3x15 clean reps"; 21 criteria in all); criteria above 10 stay as they are, and no hold criterion changed.
@@ -46,14 +47,14 @@ Each lever keeps its direction and stays within its rails.
 | Lever | Before | On the grid |
 | --- | --- | --- |
 | Session Policy `progressionRate` (0.5-2.0) | scaled the percentage of each upward step | sets how many "just right" sessions a climb takes: `ceil(3 / rate)`, so 0.5 asks for 6, 1.0 for 3, 2.0 for 2; a step is always 5, and "too easy" and the step back are unchanged by it |
-| Return / Re-entry Ramp scale (0.7-1.0) | scaled the target, at least 1 below the un-held target | scales the target, rounds down onto the grid, and lands at least one step (5) below the un-held target, never under 10 |
+| Return / Re-entry Ramp scale (0.7-1.0) | scaled the target, at least 1 below the un-held target | scales the target, rounds down onto the grid, and lands at least one step (5) below the un-held target, never under 10; the un-held target is read from the user's last capacity before the Return (`ReturnOverride.capacityLogs`), never from a held session's log, so the ramp walks back up instead of compounding to the floor |
 | Cold-start Start Seed `startingRepMultiplier` (x1.0, x1.15, x1.30) | scaled the catalog default | scales the grid-rounded default and lands on the nearest grid number, so a larger multiplier never serves less |
 | Start Seed volume easing after a cold-start down-signal | `x0.8` per signal, through the ramp's old back-off constant | the same `x0.8` per signal, now `ColdStartOverride.volumeEaseFactor` |
 
 ## Considered Options
 
 - **Multiples of five from 5** - rejected by the captain: the floor is 10.
-- **"Too hard" steps everything back** - kept only for "too hard" with nothing tapped; the captain chose to ask which moves were not finished so only those step back and lose the session toward moving up.
+- **"Too hard" steps everything back** - kept only for "too hard" with nothing tapped, where every move also loses the session toward moving up; the captain chose to ask which moves were not finished so only those step back and lose the session toward moving up.
 - **Climb after one good session** - rejected: a step of five is large for a small number, so the climb waits for three.
 
 ## Consequences / Trade-offs

@@ -171,6 +171,11 @@ enum ExerciseSwap {
             isReturn: workout.wasReturn,
             reentry: sessionPolicy.reentry
         )
+        let capacityLogs = ReturnOverride.capacityLogs(
+            recentLogs,
+            isReturn: workout.wasReturn,
+            reentry: sessionPolicy.reentry
+        )
 
         // The slot's window includes any stretch the timing fit gave it (ADR-0010). A rep-based
         // substitute inherits the same stretch, so the session still lands where it was fitted; a hold
@@ -205,7 +210,7 @@ enum ExerciseSwap {
 
             let overload = overloadTarget(
                 for: candidate,
-                recentLogs: recentLogs,
+                recentLogs: capacityLogs,
                 sessionPolicy: sessionPolicy,
                 reentryScale: reentryScale,
                 startVolume: startVolume

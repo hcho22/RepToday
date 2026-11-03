@@ -472,7 +472,6 @@ final class PersistenceTests: XCTestCase {
         let legacyMove = Data(#"{"id":"\#(UUID().uuidString)","exerciseId":"push_up","pillar":"strength","movementPattern":"push","completedSets":[{"reps":12}],"skipped":false}"#.utf8)
         let move = try PersistenceCoder.decoder.decode(LoggedExercise.self, from: legacyMove)
         XCTAssertNil(move.couldNotFinish, "a log written before the mark decodes with no mark")
-        XCTAssertTrue(move.countsTowardAdvancement)
 
         var marked = move
         marked.couldNotFinish = true

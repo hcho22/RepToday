@@ -9,9 +9,12 @@ import Foundation
 /// - **Consistency Score refresh (US-H01).** The forgiving score is recomputed over the full
 ///   persisted history (including the just-saved log) and stored back on the user aggregate, so the
 ///   all-time `longestChain` stays honest and is never understated by a bounded log window.
-/// - **Earned-phase transition.** The existing `PhaseEvaluatorService` runs over that same full
-///   history after each completion. A newly earned Strength Phase is persisted on the user aggregate
-///   in the same write as the other bookkeeping; an earned phase is never downgraded.
+/// - **Earned-phase transition.** The existing `PhaseEvaluatorService` runs over the full history. A
+///   session's own log is evaluated only once its rating and any "couldn't finish" marks have landed
+///   (`recordEarnedPhase()`, when the completion screen closes), so a move the user marks never counts
+///   toward the phase first (ADR-0011); each completion evaluates the logs before it, so a session whose
+///   completion screen never closed is evaluated no later than the next completion (or the app-open
+///   reconciliation). An earned phase is never downgraded.
 /// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
 ///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, recording
 ///   the Start Seed floor the week actually ran at, then reconciles the policy (clearing the now-inert
@@ -59,6 +62,12 @@ protocol SessionCompletionServiceProtocol {
     /// send, silently missing from the record of their own week. Only `bandFloorAtHandoff` moves; the
     /// counter is untouched, so this can never double-advance cold start.
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws
+
+    /// Evaluate and persist the earned phase over the full history once the completion screen closes,
+    /// after the session's rating and any "couldn't finish" marks have been saved (ADR-0011). Ratchets
+    /// only `.discipline -> .strength` through `UserServiceProtocol.advancePhase(to:for:)`, so it never
+    /// downgrades and writes nothing unless the phase was newly earned.
+    func recordEarnedPhase() async throws
 }
 
 /// The real `SessionCompletionServiceProtocol` backing the app. Every dependency is a protocol/seam,
@@ -153,12 +162,15 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
             weeklyGoal: latest.consistency.weeklyGoal
         )
 
-        // 6. Evaluate a still-Discipline user's earned phase over the same full history. The guard is
-        //    both the no-downgrade rule and the no-op fast path: once Strength is persisted, no catalog
-        //    read or phase-specific mutation is needed on later completions. The transition piggybacks
-        //    on the bookkeeping save below rather than adding a second user write.
+        // 6. Evaluate a still-Discipline user's earned phase over the history *before* this session. This
+        //    session's own log waits for its rating and any "couldn't finish" marks (`recordEarnedPhase()`,
+        //    when the completion screen closes), so a move the user marks never counts toward the phase
+        //    first (ADR-0011); the earlier logs are settled, so one whose completion screen never closed
+        //    is evaluated here at the latest. The guard is both the no-downgrade rule and the no-op fast
+        //    path, and the transition piggybacks on the bookkeeping save below.
         if updatedUser.phase == .discipline {
-            let earnedPhase = try await phaseService.phase(for: updatedUser, recentLogs: allLogs)
+            let settledLogs = allLogs.filter { $0.id != log.id }
+            let earnedPhase = try await phaseService.phase(for: updatedUser, recentLogs: settledLogs)
             updatedUser = updatedUser.advancingPhase(to: earnedPhase)
         }
 
@@ -252,5 +264,13 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         if revised != latest {
             try? await userService.save(revised)
         }
+    }
+
+    func recordEarnedPhase() async throws {
+        guard let user = try await userService.currentUser(), user.phase == .discipline else { return }
+        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
+        let earnedPhase = try await phaseService.phase(for: user, recentLogs: allLogs)
+        guard earnedPhase != user.phase else { return }
+        try await userService.advancePhase(to: earnedPhase, for: user.id)
     }
 }

@@ -346,15 +346,19 @@ final class AdaptiveOverloadTests: XCTestCase {
                      "an unmarked move at ten holds rather than stepping down")
     }
 
-    func testAMarkedMoveNeverCountsTowardAdvancement() {
-        let marked = LoggedExercise(id: UUID(), exerciseId: "a", pillar: .strength, movementPattern: .squat,
-                                    completedSets: [], skipped: false, couldNotFinish: true)
-        XCTAssertFalse(marked.countsTowardAdvancement)
-        var unmarked = marked
-        unmarked.couldNotFinish = nil
-        XCTAssertTrue(unmarked.countsTowardAdvancement)
-        unmarked.skipped = true
-        XCTAssertFalse(unmarked.countsTowardAdvancement)
+    func testOnlyAMoveTheSessionStepsBackIsKeptFromAdvancement() {
+        let marked = multiLog([("a", 15, true), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)
+        XCTAssertFalse(marked.countsTowardAdvancement(marked.exercises[0]), "the tapped move never counts")
+        XCTAssertTrue(marked.countsTowardAdvancement(marked.exercises[1]), "an untapped move beside it still counts")
+
+        let noneMarked = multiLog([("a", 15, nil), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)
+        XCTAssertFalse(noneMarked.exercises.contains { noneMarked.countsTowardAdvancement($0) },
+                       "too hard with nothing tapped eases every move, so none counts")
+
+        var justRight = multiLog([("a", 15, nil)], daysAgo: 1, difficulty: .justRight)
+        XCTAssertTrue(justRight.countsTowardAdvancement(justRight.exercises[0]))
+        justRight.exercises[0].skipped = true
+        XCTAssertFalse(justRight.countsTowardAdvancement(justRight.exercises[0]), "a skip never counts")
     }
 
     // MARK: - Levers mapped onto five-steps

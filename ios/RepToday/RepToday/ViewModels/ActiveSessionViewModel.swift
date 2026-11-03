@@ -484,9 +484,9 @@ final class ActiveSessionViewModel {
         // user reopening the app must not be dropped straight into a "go" tone (US-CC10).
         startWorkWindow(suppressGoCue: isResumeEntry)
         // US-CC05 / ADR-0010: a hold likewise auto-starts hands-free (never a Start-hold tap), including
-        // on a resume, where the leg re-opens idle and begins fresh (US-O03). Idempotent via
-        // `canAutoStartHold`.
-        autoStartHoldIfNeeded()
+        // on a resume, where the leg re-opens idle and begins fresh (US-O03) with its `.go` withheld like
+        // the work window's. Idempotent via `canAutoStartHold`.
+        autoStartHoldIfNeeded(suppressGoCue: isResumeEntry)
     }
 
     /// Elapsed whole seconds from the start to `date`, frozen at `finishedAt` once complete. A pure
@@ -751,6 +751,19 @@ final class ActiveSessionViewModel {
         completionTask = Task {
             _ = await previous?.value
             try? await completionService.recordPerceivedDifficulty(difficulty, forLog: log)
+        }
+    }
+
+    /// Evaluate the earned phase now that the completion screen has closed (ADR-0011): chained behind
+    /// the completion write and every rating re-save, so the evaluation reads the session's final rating
+    /// and "couldn't finish" marks. Fire-and-forget like the writes it follows; a session whose
+    /// completion screen never closes is evaluated at the next completion or app open instead.
+    private func recordEarnedPhase() {
+        guard let completionService, user != nil, completedLog != nil else { return }
+        let previous = completionTask
+        completionTask = Task {
+            _ = await previous?.value
+            try? await completionService.recordEarnedPhase()
         }
     }
 
@@ -1045,9 +1058,16 @@ final class ActiveSessionViewModel {
     /// session ever needs a Start-hold tap. Idempotent via `canAutoStartHold`, so repeated calls are
     /// safe no-ops. A user who deliberately taps **Stop hold** is *not* re-armed here (nothing
     /// re-triggers it), so stopping stays a real escape - the Start-hold control is the way back.
-    func autoStartHoldIfNeeded() {
+    ///
+    /// A strength / primal **training** hold starting is the `.go` state, exactly as a rep-based work
+    /// window's is (US-CC10), so its first leg fires `.go`; `suppressGoCue` withholds that tone on a
+    /// resume re-entry as `startWorkWindow(suppressGoCue:)` does. A bookend hold and side 2 of a
+    /// per-side hold (which follows the silent "Switch sides" beat) stay silent, and each leg still
+    /// lands exactly one `.done`.
+    func autoStartHoldIfNeeded(suppressGoCue: Bool = false) {
         guard canAutoStartHold else { return }
         startHold()
+        if !suppressGoCue, !currentStepIsBookendHold, holdSide == 1 { fireCue(.go) }
     }
 
     /// Whether the user can start a hold leg right now: there is a timed exercise on screen and no
@@ -1566,12 +1586,16 @@ final class ActiveSessionViewModel {
     /// celebration screen *before* tapping Done emits no `session_completed`, even though its
     /// `WorkoutLog` still persists - a known, rare blind spot in the >=80% session-completion-rate
     /// metric, recorded here and in `docs/test-coverage.md` rather than left silent.
+    ///
+    /// Closing the completion screen is also when the rating and any "couldn't finish" marks are final,
+    /// so this is where the session's earned phase is evaluated (`recordEarnedPhase()`, ADR-0011).
     func recordSessionEnd() {
         guard !hasEmittedTerminalEvent else { return }
         // Only a completed session emits a terminal event from the player; a resumable pause emits
         // nothing (its abandonment, if it ever comes, fires from the give-up path in ReadyViewModel).
         guard isComplete, let log = completedLog else { return }
         hasEmittedTerminalEvent = true
+        recordEarnedPhase()
         var properties: [String: AnalyticsValue] = [
             "requested_minutes": .int(log.requestedMinutes),
             "completed_minutes": .int(log.durationMinutes),

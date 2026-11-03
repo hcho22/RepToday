@@ -479,6 +479,7 @@ enum SessionAssembly {
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
+            capacityLogs: ReturnOverride.capacityLogs(recentLogs, isReturn: isReturn, reentry: sessionPolicy.reentry),
             startVolume: startVolume,
             withheldByStartSeed: withheldByStartSeed,
             // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -
@@ -973,7 +974,8 @@ struct PlannedItem: Equatable {
     /// and only ever set on a rep-based set in a circuit training block.
     var stretchSeconds: Int = 0
     /// The set count. On a circuit training block this is the block's uniform round count; the timing
-    /// fit moves it only via the block-level `setRoundsAndRest` move, so it stays equal across the block.
+    /// fit moves it only via the block-level `setRounds`/`addReserveWithRounds` moves, so it stays equal
+    /// across the block.
     var sets: Int
     /// On a circuit training block this is the between-round rest (`SessionAssembly.roundRestSeconds`,
     /// equal across the block); on a bookend it is the (uncharged) one-set rest.
@@ -1052,6 +1054,10 @@ private struct Builder {
     /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
     /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
     let reentryScale: Double
+    /// The logs Step 6 reads capacity from (`ReturnOverride.capacityLogs`): during a Re-entry Ramp only
+    /// those before the Return, so each held session is held against the user's pre-Return capacity;
+    /// `recentLogs` otherwise.
+    let capacityLogs: [WorkoutLog]
     /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
     /// matched to the self-reported fitness level. Applied only to the strength and primal training
     /// blocks - the mobility bookends are one set of a stretch at every level, so the warm-up and
@@ -1288,7 +1294,7 @@ private struct Builder {
         guard !usedIds.contains(selection.exercise.id) else { return }
         let target = AdaptiveOverload.target(
             for: selection.exercise,
-            recentLogs: recentLogs,
+            recentLogs: capacityLogs,
             progressionRate: progressionRate,
             reentryScale: reentryScale,
             startingRepMultiplier: startVolume.repMultiplier,
@@ -1359,7 +1365,7 @@ private struct Builder {
         exercises.prefix(cap).map { exercise in
             let target = AdaptiveOverload.target(
                 for: exercise,
-                recentLogs: recentLogs,
+                recentLogs: capacityLogs,
                 progressionRate: progressionRate,
                 reentryScale: reentryScale
             )
