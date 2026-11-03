@@ -1771,4 +1771,3 @@ What landed:
 Found while testing, and left alone here: for a user with an injury flag, the default 60-minute session (and with two flags the 45-minute one) already lands several minutes short, because the narrowed pool runs out of movements once every station is at the four-round cap.
 That shortfall is the default session's, not this change's; `DifferentWorkoutTests` checks the ±60 s promise wherever the default keeps it and allows the exemption only to an injured user.
 How the button feels on a physical iPhone is untested.
-

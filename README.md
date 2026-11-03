@@ -54,6 +54,9 @@ After each completed session, Rep Today persists a newly earned Strength Phase a
 ### Core Workout Loop
 
 - **Deterministic session generation** - select a duration (5-60 min) and the engine assembles a structured session (warm-up, main work, cooldown over 10 min) on-device, with no network and no LLM.
+- **A different workout before you start** - not into the session on offer? "Different workout" on the Ready Screen rebuilds it at the same length with other moves, and pressing it again gives another, until the alternatives run out and the first one comes back.
+  It never bends the rules that pick your movements, and a press on its own counts toward nothing - not variety, not progression, not the Consistency Score.
+  See [Different workout](CONTEXT.md#different-workout) for the full contract.
 - **Smart movement selection** - leads every session with strength, rotates the stalest movement pattern, filters by the movements you get, injuries, and recent skips, and never repeats yesterday's primary pattern.
   Beginner and intermediate users get staple movements only (the classics most people know by name), advanced users the full variety, and earning the Strength Phase opens every movement.
 - **Adaptive Overload** - prescribes capacity-relative reps/sets/holds (never a fixed heroic number); an asymmetric ramp adjusts within one cycle - a `too_hard` or a skip backs off fast, `too_easy` climbs slow.
