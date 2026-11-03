@@ -1238,11 +1238,10 @@ final class ActiveSessionViewModel {
     func workWindowRemaining(asOf date: Date) -> Int { workWindow?.remaining(asOf: date) ?? 0 }
 
     /// Start the current rep-based training set's auto-advancing work window, scheduled against the
-    /// injected clock (US-CC01). Unlike the US-O03 hold - which waits for a deliberate Start-hold tap so
-    /// the user gets into position - a rep-based set counts down hands-free, so this is driven
-    /// automatically from every transition that reveals such a set (`start()`, the rest ending, a
-    /// set/exercise advance with no rest). Idempotent via `canStartWorkWindow`, so repeated calls (the
-    /// view re-appearing, a resume) are safe no-ops.
+    /// injected clock (US-CC01). Like a hold (`autoStartHoldIfNeeded`), a rep-based set counts down
+    /// hands-free, so this is driven automatically from every transition that reveals such a set
+    /// (`start()`, the rest ending, a set/exercise advance with no rest). Idempotent via
+    /// `canStartWorkWindow`, so repeated calls (the view re-appearing, a resume) are safe no-ops.
     ///
     /// `suppressGoCue` withholds only the `.go` tone on this one call while the window still auto-starts:
     /// a resume/relaunch re-entry re-opens the window fresh (it is never persisted), but reopening the app
