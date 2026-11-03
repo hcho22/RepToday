@@ -36,7 +36,8 @@ struct ActiveSessionView: View {
     @State private var trainerSession: TrainerSessionModel
 
     /// Drives the one-time Trainer choice overlay (US-TP10) for a user whose effective Trainer is
-    /// unresolved. Shown before any Trainer art and before the US-CC13 explainer, never stacked with it.
+    /// unresolved. Shown before the session starts, before any Trainer art and before the US-CC13
+    /// explainer, never stacked with it.
     @State private var showTrainerChoice = false
 
     /// Drives the first-run explainer overlay (US-CC13). Set once, on first arrival at the player, and
@@ -153,8 +154,8 @@ struct ActiveSessionView: View {
     }
 
     /// Start the session: its clock, its first window or hold, and the resume of a rest a snapshot
-    /// restored paused. Idempotent (`start()` keeps the original origin), so a re-appearing view or the
-    /// explainer's button can call it safely.
+    /// restored paused. Idempotent (`start()` keeps the original origin), so a re-appearing view, the
+    /// Trainer choice or the explainer's button can call it safely.
     ///
     /// A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a scene-phase
     /// change when the resumed player is presented on an already-active app, so it is resumed here too.
@@ -187,36 +188,43 @@ struct ActiveSessionView: View {
         }
     }
 
-    /// Decide, on each arrival, what to show before the session plays on (US-TP10, decision 15): the
-    /// one-time Trainer choice first when the user's Trainer is unresolved, then the first-run explainer
-    /// when this arrival is holding the start for it - never both at once.
+    /// Decide, on each arrival, what to show before the session starts (US-TP10, decision 15; ADR-0010):
+    /// the one-time Trainer choice first when the user's Trainer is unresolved, then the first-run
+    /// explainer when this arrival is holding the start for it - never both at once, and the last one
+    /// shown starts the session, so no tap is ever asked of a running session.
     ///
-    /// A user whose snapshot is unresolved is held on a user pause (US-CC06) straight away, while the
-    /// freshest stored profile is read: a Trainer chosen in Settings or on an earlier arrival then
-    /// resolves it with no prompt, and only a still-unresolved user is asked. While the choice is up the
-    /// session stays paused (captain, Open Question 3), and choosing resumes it from the exact remainder.
-    /// When the explainer is holding the start there is nothing running yet, so the pause and resume
-    /// are no-ops. Everyone else goes straight on, and the re-read runs behind it so a Trainer switched
-    /// in Settings since the Ready Screen loaded is the one this session shows.
+    /// A user whose snapshot is unresolved is held before the start while the freshest stored profile
+    /// is read: a Trainer chosen in Settings or on an earlier arrival then resolves it with no prompt,
+    /// and only a still-unresolved user is asked. That holds on every arrival the Trainer is still
+    /// unresolved, including after a force-quit before choosing or a choice whose write failed (captain,
+    /// Open Question 8). Everyone else goes straight on, and the re-read runs behind it so a Trainer
+    /// switched in Settings since the Ready Screen loaded is the one this session shows.
     private func handleArrival() {
         if trainerSession.needsChoice {
-            viewModel.pause(asOf: Date())
             Task { @MainActor in
                 if await trainerSession.refreshOnArrival() {
                     presentTrainerChoice()
                 } else {
-                    viewModel.resume(asOf: Date())
-                    if startsAfterExplainer { presentExplainer() }
+                    startOrPresentExplainer()
                 }
             }
         } else {
-            if startsAfterExplainer { presentExplainer() }
+            startOrPresentExplainer()
             Task { @MainActor in _ = await trainerSession.refreshOnArrival() }
         }
     }
 
-    /// Show the Trainer choice over the (already paused, or not yet started) player, stilled under
-    /// Reduce Motion.
+    /// The last step before the session plays: the first-run explainer when this arrival is holding the
+    /// start for it (its button then starts the session), otherwise the start itself.
+    private func startOrPresentExplainer() {
+        if startsAfterExplainer {
+            presentExplainer()
+        } else {
+            startSession()
+        }
+    }
+
+    /// Show the Trainer choice over the not-yet-started player, stilled under Reduce Motion.
     private func presentTrainerChoice() {
         if reduceMotion {
             showTrainerChoice = true
@@ -225,19 +233,18 @@ struct ActiveSessionView: View {
         }
     }
 
-    /// Use the chosen Trainer at once, dismiss the choice, resume the session, then let the explainer
-    /// follow if it is holding the start. The write runs in the background: if it fails the session
-    /// keeps the chosen Trainer and, since nothing was stored, the next arrival asks again (captain,
-    /// Open Question 8).
+    /// Use the chosen Trainer at once, dismiss the choice, then start the session - or let the
+    /// explainer follow if it is holding the start, and start it from there. The write runs in the
+    /// background: if it fails the session keeps the chosen Trainer and, since nothing was stored, the
+    /// next arrival asks again before its start (captain, Open Question 8).
     private func chooseTrainer(_ trainer: Trainer) {
         trainerSession.choose(trainer)
-        viewModel.resume(asOf: Date())
         if reduceMotion {
             showTrainerChoice = false
         } else {
             withAnimation(.easeIn(duration: 0.2)) { showTrainerChoice = false }
         }
-        if startsAfterExplainer { presentExplainer() }
+        startOrPresentExplainer()
     }
 
     /// The explainer's button: dismiss it, honoring Reduce Motion the same way the entrance does, and
@@ -285,8 +292,9 @@ struct ActiveSessionView: View {
                     .zIndex(1)
             }
 
-            // The one-time Trainer choice (US-TP10), layered the same way. `handleArrival` never shows
-            // it together with the explainer: the choice comes first and the explainer follows it.
+            // The one-time Trainer choice (US-TP10), layered the same way and likewise shown before the
+            // session starts. `handleArrival` never shows it together with the explainer: the choice
+            // comes first and the explainer follows it.
             if showTrainerChoice {
                 TrainerChoiceView(
                     exerciseId: viewModel.currentStep?.prescription.exercise.id ?? "",
@@ -300,16 +308,13 @@ struct ActiveSessionView: View {
         .environment(\.trainer, trainerSession.trainer)
         .onAppear {
             // The first time, the explainer holds the start: the card shows over the not-yet-started
-            // session and its button starts it (ADR-0010). Every other arrival starts at once. A
-            // re-appearing view while the card is still up keeps holding.
+            // session and its button starts it (ADR-0010). An unresolved Trainer holds it the same way
+            // on every arrival (`handleArrival`). Every other arrival starts at once. A re-appearing view
+            // while the card is still up keeps holding. In-session backgrounding pauses and resumes every
+            // countdown through `scenePhase` below.
             if !startsAfterExplainer, !showExplainer {
                 startsAfterExplainer = claimExplainer()
             }
-            if !startsAfterExplainer { startSession() }
-            // Present the Trainer choice or the first-run explainer last, after the session is live (or
-            // deliberately held), so the pause the choice takes freezes a running countdown rather than
-            // racing `start()`/`resumeRest` to set one up. In-session backgrounding pauses and resumes
-            // every countdown through `scenePhase` below.
             handleArrival()
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and

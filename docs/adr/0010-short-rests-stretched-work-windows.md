@@ -37,6 +37,7 @@ Capping every rest at 15 seconds removes that lever, and the minutes it held hav
   Every timed hold auto-starts after its get-ready beat the way a bookend hold already did (US-CC05), on a natural reveal and on a resumed session, and a per-side hold flows side 1, "Switch sides", side 2.
   A rep-based warm-up or cooldown move runs on the same auto-advancing window as a training set, at its generous pace.
   The first-run explainer shows before the session starts and its button starts it, so it never pauses a running session.
+  The one-time Trainer choice (US-TP10) does the same on every arrival whose Trainer is still unresolved, including after a force-quit before choosing or a choice whose write failed: it shows before the start, and choosing starts the session, or hands on to the explainer when that is due.
   Pause, Done, Skip, Swap, Stop hold and **+ More time** stay optional; **Start hold** survives only as the way back after a deliberate Stop hold.
 
 ## Considered Options

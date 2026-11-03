@@ -18,8 +18,9 @@ import Foundation
 ///   never offered to a user who cannot yet receive it.
 /// - **Step down at the floor (ADR-0011)** - "too hard" (or a skip) on a tier already at the
 ///   10-rep / 10-second floor cannot take the number lower, so the tier one rung down the chain is
-///   offered instead, and the user climbs back only when a *later* session clears that lower tier's
-///   criteria again. A session that steps a move back - a skip, or "too hard" on a move marked
+///   offered instead - served at the floor by Step 6 (`stepDownDate(onto:library:recentLogs:)`) - and
+///   the user climbs back only when a *later* session clears that lower tier's criteria again. A
+///   session that steps a move back - a skip, or "too hard" on a move marked
 ///   "couldn't finish" (or on every move when none was marked) - never counts toward its advancement
 ///   (`WorkoutLog.countsTowardAdvancement(_:)`).
 /// - **Variety** - across the chains available for a pattern, an exercise used in the last
@@ -391,6 +392,21 @@ enum ProgressionChainSelection {
     ) -> Exercise? {
         let workedIds = workedExerciseIds(recentLogs: recentLogs)
         return sorted.last { workedIds.contains($0.id) }
+    }
+
+    /// When `exercise` is the rung a step back at the floor moved the user down onto (the rung directly
+    /// above it on its chain last ended in a step back at the floor, `AdaptiveOverload.floorStepBackDate`),
+    /// the date of that step back, else `nil`. It is the date `selectInChain` steps down from, and Step 6
+    /// serves the rung at the floor from it, climbing only on the sessions after it
+    /// (`AdaptiveOverload.target(steppedDownSince:)`, ADR-0011), so an old clear of the easier rung
+    /// cannot send the user straight back up to the move they just found too hard.
+    static func stepDownDate(onto exercise: Exercise, library: [Exercise], recentLogs: [WorkoutLog]) -> Date? {
+        guard let above = library
+            .filter({ $0.progressionChainId == exercise.progressionChainId })
+            .filter({ $0.progressionOrder > exercise.progressionOrder })
+            .min(by: { $0.progressionOrder < $1.progressionOrder })
+        else { return nil }
+        return AdaptiveOverload.floorStepBackDate(for: above, recentLogs: recentLogs)
     }
 
     /// The tier the user is currently on, starting from the rung they are `served`: while that tier's

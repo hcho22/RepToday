@@ -179,7 +179,8 @@ final class SessionCompletionServiceTests: XCTestCase {
     /// down). A beginner last at 30 squats (sumo is out of their reach) returns after a 20-day gap; each
     /// day the engine assembles a session from the stored logs, the player plays it to the end, the user
     /// rates it too easy, and the completion service writes the log. The Return and the three ramp
-    /// sessions are held against the pre-Return 30, and the next session climbs by the normal rules.
+    /// sessions are held against the pre-Return 30, and never count as capacity themselves, so the
+    /// session after the ramp is back at 30; that one counts again, and the climb resumes from it.
     func testReentryRampRunsItsSessionsThroughCompletionThenTheClimbResumes() async throws {
         let library = try await MockExerciseService().exercises()
         var calendar = Calendar(identifier: .gregorian)
@@ -204,7 +205,7 @@ final class SessionCompletionServiceTests: XCTestCase {
 
         var served: [Int] = []
         var returns: [Bool] = []
-        for day in 0..<5 {
+        for day in 0..<6 {
             let asOf = calendar.date(byAdding: .day, value: day, to: now)!
             let logs = try await logService.workoutLogs(from: nil, to: nil)
             let workout = SessionAssembly.assemble(
@@ -226,9 +227,9 @@ final class SessionCompletionServiceTests: XCTestCase {
             await player.completionTask?.value
         }
 
-        XCTAssertEqual(returns, [true, false, false, false, false])
-        XCTAssertEqual(served, [20, 20, 20, 25, 30],
-                       "30 held at 0.7, 0.7, 0.8 and 0.9, then the ramp ends and too easy adds 5")
+        XCTAssertEqual(returns, [true, false, false, false, false, false])
+        XCTAssertEqual(served, [20, 20, 20, 25, 30, 35],
+                       "30 held at 0.7, 0.7, 0.8 and 0.9, back at 30 once the ramp ends, then too easy adds 5")
     }
 
     /// Plays one session of the push line's entry rung at its own advancement target for a user whose

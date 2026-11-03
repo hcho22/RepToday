@@ -192,7 +192,25 @@ final class ReturnOverrideTests: XCTestCase {
         let finished = [returnLog(daysAgo: 4), log(daysAgo: 3), log(daysAgo: 2), log(daysAgo: 1)]
         XCTAssertEqual(ReturnOverride.reentryScale(isReturn: false, recentLogs: finished),
                        AdaptiveOverload.neutralReentryScale, "a finished ramp is neutral")
-        XCTAssertNil(ReturnOverride.heldSince(finished, isReturn: false), "and holds nothing")
+    }
+
+    /// A held session - a Return, and the ramp sessions completed after it - never counts as capacity.
+    /// A later Return cuts the earlier ramp short and starts its own, and once a ramp is over the
+    /// sessions after it count as capacity again. The split reads the logs in time order, whatever
+    /// order they arrive in.
+    func testSplitHeldMarksEveryReturnAndItsRampSessions() {
+        let preReturn = log(daysAgo: 40)
+        let return1 = returnLog(daysAgo: 30)
+        let ramp1 = log(daysAgo: 29)
+        let return2 = returnLog(daysAgo: 20)
+        let ramp2 = [19, 18, 17].map { log(daysAgo: $0) }
+        let after = log(daysAgo: 16)
+
+        let split = ReturnOverride.splitHeld([after, return2, preReturn] + ramp2 + [ramp1, return1])
+        XCTAssertEqual(split.capacity.map(\.id), [preReturn.id, after.id])
+        XCTAssertEqual(split.held.map(\.id), [return1.id, ramp1.id, return2.id] + ramp2.map(\.id))
+        XCTAssertEqual(ReturnOverride.splitHeld([log(daysAgo: 2), log(daysAgo: 1)]).held.count, 0,
+                       "with no Return in the logs nothing is held")
     }
 
     func testRampScaleClampsOutOfRange() {

@@ -168,7 +168,6 @@ enum ExerciseSwap {
         // assembler already made rather than re-derived against a fresh clock, so a substitute is held
         // back exactly as much as the slot it replaces.
         let reentryScale = ReturnOverride.reentryScale(isReturn: workout.wasReturn, recentLogs: recentLogs)
-        let heldSince = ReturnOverride.heldSince(recentLogs, isReturn: workout.wasReturn)
 
         // The slot's window includes any stretch the timing fit gave it (ADR-0010). A rep-based
         // substitute inherits the same stretch, so the session still lands where it was fitted; a hold
@@ -203,10 +202,10 @@ enum ExerciseSwap {
 
             let overload = overloadTarget(
                 for: candidate,
+                library: library,
                 recentLogs: recentLogs,
                 sessionPolicy: sessionPolicy,
                 reentryScale: reentryScale,
-                heldSince: heldSince,
                 startVolume: startVolume
             )
             let workPerSet = SessionAssembly.workSecondsPerSet(
@@ -302,16 +301,18 @@ enum ExerciseSwap {
     /// (US-E03) and the Return / Re-entry Ramp ease (US-E06) reach every pillar, while the cold-start
     /// Start Seed's volume (US-O02) reaches only strength and primal - `Builder.mobilityItems` sizes a
     /// stretch with the first two levers alone, so the warm-up and cooldown bookends are identical
-    /// for a beginner and an advanced user, and a swapped stretch must be too. It is the single place the
-    /// swap seam talks to `AdaptiveOverload`, so the budget check and the materialized prescription are
-    /// sized identically and a lever cannot go missing - or be scoped differently - in one but not the
-    /// other.
+    /// for a beginner and an advanced user, and a swapped stretch must be too. A substitute that a step
+    /// down at the floor moved the user onto is served from the floor, as a training station is
+    /// (`ProgressionChainSelection.stepDownDate`, ADR-0011; no stretch has a rung below it). It is the
+    /// single place the swap seam talks to `AdaptiveOverload`, so the budget check and the materialized
+    /// prescription are sized identically and a lever cannot go missing - or be scoped differently - in
+    /// one but not the other.
     private static func overloadTarget(
         for exercise: Exercise,
+        library: [Exercise],
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         reentryScale: Double,
-        heldSince: Date?,
         startVolume: ColdStartOverride.VolumeSeed
     ) -> OverloadTarget {
         let volume = exercise.pillar == .mobility ? .neutral : startVolume
@@ -320,7 +321,7 @@ enum ExerciseSwap {
             recentLogs: recentLogs,
             progressionRate: sessionPolicy.progressionRate,
             reentryScale: reentryScale,
-            heldSince: heldSince,
+            steppedDownSince: ProgressionChainSelection.stepDownDate(onto: exercise, library: library, recentLogs: recentLogs),
             startingRepMultiplier: volume.repMultiplier,
             startingSets: volume.sets
         )

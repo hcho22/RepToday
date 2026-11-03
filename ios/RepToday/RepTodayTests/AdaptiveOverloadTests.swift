@@ -29,20 +29,21 @@ final class AdaptiveOverloadTests: XCTestCase {
     }
 
     /// A rep-based exercise with the given defaults; everything else is filler the step ignores.
-    private func repsExercise(id: String = "ex", defaultReps: Int = 10) -> Exercise {
-        exercise(id: id, isHold: false, defaultReps: defaultReps, defaultDurationSeconds: nil)
+    private func repsExercise(id: String = "ex", defaultReps: Int = 10, criteria: String = "3x15 clean reps") -> Exercise {
+        exercise(id: id, isHold: false, defaultReps: defaultReps, defaultDurationSeconds: nil, criteria: criteria)
     }
 
     /// A hold exercise with the given default duration.
-    private func holdExercise(id: String = "ex", defaultDurationSeconds: Int = 20) -> Exercise {
-        exercise(id: id, isHold: true, defaultReps: nil, defaultDurationSeconds: defaultDurationSeconds)
+    private func holdExercise(id: String = "ex", defaultDurationSeconds: Int = 20, criteria: String = "3x15 clean reps") -> Exercise {
+        exercise(id: id, isHold: true, defaultReps: nil, defaultDurationSeconds: defaultDurationSeconds, criteria: criteria)
     }
 
     private func exercise(
         id: String,
         isHold: Bool,
         defaultReps: Int?,
-        defaultDurationSeconds: Int?
+        defaultDurationSeconds: Int?,
+        criteria: String
     ) -> Exercise {
         Exercise(
             id: id,
@@ -62,7 +63,7 @@ final class AdaptiveOverloadTests: XCTestCase {
             progressionOrder: 0,
             regressionId: nil,
             progressionId: nil,
-            advancementCriteria: "3x15 clean reps",
+            advancementCriteria: criteria,
             apartmentFriendly: true
         )
     }
@@ -417,11 +418,11 @@ final class AdaptiveOverloadTests: XCTestCase {
     }
 
     func testStartSeedScalesTheGridDefaultToTheNearestGridNumber() {
-        let squat = repsExercise(defaultReps: 15)
+        let squat = repsExercise(defaultReps: 15, criteria: "3x30 clean reps")
         XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.0).reps, 15)
         XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.15).reps, 15)
         XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.30).reps, 20)
-        let hold = holdExercise(defaultDurationSeconds: 30)
+        let hold = holdExercise(defaultDurationSeconds: 30, criteria: "3x60s hold")
         XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [], startingRepMultiplier: 1.15).durationSeconds, 35)
         XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [], startingRepMultiplier: 1.30).durationSeconds, 40)
         // A larger multiplier never serves less.
@@ -430,6 +431,22 @@ final class AdaptiveOverloadTests: XCTestCase {
             let high = AdaptiveOverload.target(for: repsExercise(defaultReps: base), recentLogs: [], startingRepMultiplier: 1.30).reps!
             XCTAssertGreaterThanOrEqual(high, low)
         }
+    }
+
+    /// The seed is capped one step below the move's advancement criterion, never below the default and
+    /// never below the floor (ADR-0011), so a seeded first prescription cannot clear the move.
+    func testStartSeedNeverLiftsPastOneStepBelowTheCriterion() {
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 15, criteria: "3x20 clean reps"),
+                                               recentLogs: [], startingRepMultiplier: 1.30).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 10, criteria: "3x12 clean reps"),
+                                               recentLogs: [], startingRepMultiplier: 1.30).reps, 10,
+                       "one step below 12 rounds onto the floor")
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 15, criteria: "3x30 clean reps"),
+                                               recentLogs: [], startingRepMultiplier: 1.30).reps, 20,
+                       "a criterion well above the seeded number leaves it alone")
+        XCTAssertEqual(AdaptiveOverload.target(for: holdExercise(defaultDurationSeconds: 30, criteria: "3x35s hold"),
+                                               recentLogs: [], startingRepMultiplier: 1.30).durationSeconds, 30,
+                       "the cap never takes a seeded hold below its own default")
     }
 
     func testStartSeedNeverTouchesACapacityDerivedTarget() {

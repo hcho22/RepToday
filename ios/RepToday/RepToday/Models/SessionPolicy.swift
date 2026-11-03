@@ -87,8 +87,10 @@ struct SessionPolicy: Codable, Equatable {
     /// (US-G04), after which Step 0 is a no-op.
     var coldStartContract: ColdStartContract?
 
-    /// The Re-entry Ramp state, present only while walking a user back up after a Return
-    /// (US-E06). `nil` in the steady state.
+    /// The Re-entry Ramp the Programmer recorded at the user's most recent Return (US-E06), `nil` before
+    /// any Return. Nothing clears or counts it down, and the engine does not read it: the ramp's position
+    /// comes from the logs (`ReturnOverride.rampSessionsRemaining(recentLogs:)`). It stays so older data
+    /// and older app versions still load.
     var reentry: Reentry?
 
     /// An honest note about the last real change (US-F04/US-G03), or `nil` when there is

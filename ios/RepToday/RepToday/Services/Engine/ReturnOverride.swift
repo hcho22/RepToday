@@ -24,7 +24,9 @@ import Foundation
 ///   sessions are done. Its position is read from the logs (`rampSessionsRemaining(recentLogs:)`), not
 ///   from the stored `SessionPolicy.reentry` the Programmer seeds after a Return (US-F03), which nothing
 ///   counts down and the engine no longer reads. Only Step 6's volume is held - the tier and pillar
-///   selection resume normally, exactly as the PRD's "Step 6 holds difficulty below normal" describes.
+///   selection resume normally, exactly as the PRD's "Step 6 holds difficulty below normal" describes -
+///   and the held sessions never count as capacity (`splitHeld`), so each is held against the user's
+///   real level rather than the hold before it.
 ///
 /// The Return and the cold-start override are mutually exclusive by construction: the caller gates the
 /// Return off while cold-start is active (`ColdStartOverride.isActive`), since cold-start already
@@ -120,26 +122,34 @@ enum ReturnOverride {
     /// `recentLogs` holds no Return session, so a Return older than the logs the engine is given leaves
     /// no ramp. Pure over the logs, like the Return detection it follows.
     static func rampSessionsRemaining(recentLogs: [WorkoutLog]) -> Int {
-        activeRamp(recentLogs)?.remaining ?? 0
+        guard let returnedAt = recentLogs.filter(\.wasReturn).map(\.completedAt).max() else { return 0 }
+        return max(0, rampSessions - recentLogs.filter { $0.completedAt > returnedAt }.count)
     }
 
-    /// When this session's held run began, for Step 6 (`AdaptiveOverload.target(heldSince:)`): during an
-    /// active **Re-entry Ramp** the most recent Return session (`wasReturn`), so the Return and every
-    /// ramp session are held against the user's last capacity from before the Return rather than the
-    /// previous held session's own number (which would compound each hold onto the last until the
-    /// floor), while a step back inside the run still takes the move down. `nil` on the **Return**
-    /// itself (every log comes from before it) and outside a ramp, so the steady state is unchanged.
-    static func heldSince(_ recentLogs: [WorkoutLog], isReturn: Bool) -> Date? {
-        guard !isReturn else { return nil }
-        return activeRamp(recentLogs)?.returnedAt
-    }
-
-    /// The most recent Return session and the ramp sessions still to come after it, or `nil` when the
-    /// logs hold no Return session or its ramp is already done.
-    private static func activeRamp(_ recentLogs: [WorkoutLog]) -> (returnedAt: Date, remaining: Int)? {
-        guard let returnedAt = recentLogs.filter(\.wasReturn).map(\.completedAt).max() else { return nil }
-        let remaining = rampSessions - recentLogs.filter { $0.completedAt > returnedAt }.count
-        return remaining > 0 ? (returnedAt, remaining) : nil
+    /// `recentLogs` split into the sessions that show the user's capacity and the **held** ones: every
+    /// Return session (`wasReturn`) and the `rampSessions` sessions completed after it (fewer when a
+    /// later Return cuts its ramp short). A held session logged what the Return or its Re-entry Ramp
+    /// served, not what the user can do, so Step 6 never reads it as capacity
+    /// (`AdaptiveOverload.target`): the Return and every ramp session are held against the latest
+    /// session that was not held, a user who lapses twice is held against the capacity from before the
+    /// first Return, and once a ramp is over the sessions after it count as capacity again. Pure over the
+    /// logs, and judged within them, so a Return older than the logs the engine is given holds nothing.
+    static func splitHeld(_ recentLogs: [WorkoutLog]) -> (capacity: [WorkoutLog], held: [WorkoutLog]) {
+        var capacity: [WorkoutLog] = []
+        var held: [WorkoutLog] = []
+        var rampLeft = 0
+        for log in recentLogs.sorted(by: { $0.completedAt < $1.completedAt }) {
+            if log.wasReturn {
+                rampLeft = rampSessions
+                held.append(log)
+            } else if rampLeft > 0 {
+                rampLeft -= 1
+                held.append(log)
+            } else {
+                capacity.append(log)
+            }
+        }
+        return (capacity, held)
     }
 
     /// The climbing volume scale for a Re-entry Ramp session: the gentle floor when `remaining` is

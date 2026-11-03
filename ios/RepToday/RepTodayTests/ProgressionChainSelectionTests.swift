@@ -337,13 +337,53 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
     }
 
-    func testTheOldClearOfTheLowerRungDoesNotClimbStraightBack() {
-        // c1 was cleared before the user reached c2; after stepping down, only a later clear counts.
-        let logs = [
-            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
-            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 5),
-        ]
-        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    /// On the real catalog: a user climbs push_standard 10, 10, 10, then 15, clearing its "3x12" and
+    /// reaching push_diamond at 10, which they rate too hard. The step down serves push_standard at the
+    /// floor (10), not at the 15 it last logged - that 15 would clear "3x12" again and send them
+    /// straight back to diamond every other session. The user holds on standard and climbs back by the
+    /// normal rules: three "just right" sessions at 10, then 15, which clears it again (ADR-0011).
+    func testTheOldClearOfTheLowerRungDoesNotClimbStraightBack() async throws {
+        let library = try await MockExerciseService().exercises()
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let chain = library.filter { $0.progressionChainId == standard.progressionChainId }
+        var logs = [10, 10, 10, 15].enumerated().map { index, reps in
+            repsLog(id: "push_standard", reps: [reps, reps, reps], daysAgo: 20 - index, difficulty: .justRight)
+        }
+
+        // What Step 5 serves and the number Step 6 serves it at, the way every caller sizes a station.
+        func served() throws -> (id: String, reps: Int) {
+            let selection = try XCTUnwrap(selectInChain(chain, logs: logs))
+            let target = AdaptiveOverload.target(
+                for: selection.exercise,
+                recentLogs: logs,
+                steppedDownSince: ProgressionChainSelection.stepDownDate(
+                    onto: selection.exercise,
+                    library: library,
+                    recentLogs: logs
+                )
+            )
+            return (selection.exercise.id, try XCTUnwrap(target.reps))
+        }
+        func record(_ session: (id: String, reps: Int), daysAgo: Int, _ difficulty: PerceivedDifficulty) {
+            let reps = Array(repeating: session.reps, count: 3)
+            logs.append(repsLog(id: session.id, reps: reps, daysAgo: daysAgo, difficulty: difficulty))
+        }
+
+        let diamond = try served()
+        XCTAssertEqual(diamond.id, "push_diamond")
+        XCTAssertEqual(diamond.reps, 10)
+        record(diamond, daysAgo: 15, .tooHard)
+
+        var trace: [(id: String, reps: Int)] = []
+        for daysAgo in [14, 13, 12, 11] {
+            let session = try served()
+            trace.append(session)
+            record(session, daysAgo: daysAgo, .justRight)
+        }
+        XCTAssertEqual(trace.map(\.id), Array(repeating: "push_standard", count: 4),
+                       "the user holds on the easier rung instead of alternating")
+        XCTAssertEqual(trace.map(\.reps), [10, 10, 10, 15], "served at the floor, then the normal climb")
+        XCTAssertEqual(try served().id, "push_diamond", "a later clear of the lower rung earns the way back")
     }
 
     func testClearingTheLowerRungAfterTheStepDownClimbsBack() {

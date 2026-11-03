@@ -480,7 +480,6 @@ enum SessionAssembly {
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
-            heldSince: ReturnOverride.heldSince(recentLogs, isReturn: isReturn),
             startVolume: startVolume,
             withheldByStartSeed: withheldByStartSeed,
             // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -
@@ -1055,9 +1054,6 @@ private struct Builder {
     /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
     /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
     let reentryScale: Double
-    /// When a Re-entry Ramp's held run began (`ReturnOverride.heldSince`), so Step 6 holds each ramp
-    /// session against the user's pre-Return capacity; `nil` otherwise.
-    let heldSince: Date?
     /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
     /// matched to the self-reported fitness level. Applied only to the strength and primal training
     /// blocks - the mobility bookends are one set of a stretch at every level, so the warm-up and
@@ -1297,7 +1293,11 @@ private struct Builder {
             recentLogs: recentLogs,
             progressionRate: progressionRate,
             reentryScale: reentryScale,
-            heldSince: heldSince,
+            steppedDownSince: ProgressionChainSelection.stepDownDate(
+                onto: selection.exercise,
+                library: library,
+                recentLogs: recentLogs
+            ),
             startingRepMultiplier: startVolume.repMultiplier,
             startingSets: startVolume.sets
         )
@@ -1368,8 +1368,7 @@ private struct Builder {
                 for: exercise,
                 recentLogs: recentLogs,
                 progressionRate: progressionRate,
-                reentryScale: reentryScale,
-                heldSince: heldSince
+                reentryScale: reentryScale
             )
             usedIds.insert(exercise.id)
             return PlannedItem(

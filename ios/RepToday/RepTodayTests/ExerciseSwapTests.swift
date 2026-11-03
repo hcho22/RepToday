@@ -787,8 +787,7 @@ final class ExerciseSwapTests: XCTestCase {
             AdaptiveOverload.target(
                 for: result.exercise,
                 recentLogs: logs,
-                reentryScale: ReturnOverride.reentryScale(isReturn: false, recentLogs: logs),
-                heldSince: ReturnOverride.heldSince(logs, isReturn: false)
+                reentryScale: ReturnOverride.reentryScale(isReturn: false, recentLogs: logs)
             ).reps,
             "a swap mid-ramp must carry the ramp's partial ease, not the full capacity target"
         )
@@ -857,22 +856,33 @@ final class ExerciseSwapTests: XCTestCase {
         XCTAssertLessThan(try reps(logs: lastRampSessionLogs(peer: fixture.peer)), neutral,
                           "the Re-entry Ramp (US-E06) must reach the swap")
 
-        // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on
-        // the untouched peer: a fresh advanced user's substitute opens above the movement's own default.
-        let fresh = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let freshSlot = prescription(for: fresh, sets: 1)
+        // "Too hard" at ten on push_standard steps the user down onto the peer (ADR-0011), which is then
+        // served at the floor rather than at the 15 it last logged.
+        var tooHardAtTen = log([fixture.slot.exercise], sets: 3, perSet: 10, daysAgo: 1)
+        tooHardAtTen.perceivedDifficulty = .tooHard
+        XCTAssertEqual(try reps(logs: fixture.logs + [tooHardAtTen]), AdaptiveOverload.minReps,
+                       "a step down at the floor (ADR-0011) must reach the swap")
+
+        // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on an
+        // untouched peer whose seed still shows under the cap one step below its criterion (ADR-0011) - a
+        // hold, as the cap holds every rep-based catalog move's advanced seed at its own default: a fresh
+        // advanced user's substitute opens above the movement's own default.
+        let hollow = try XCTUnwrap(library.first { $0.id == "core_hollow_hold" })
+        let plank = try XCTUnwrap(library.first { $0.id == "core_forearm_plank" })
+        let freshSlot = prescription(for: hollow, sets: 1, perSet: 30)
         let seeded = try substitute(
             ExerciseSwap.swap(
                 freshSlot,
                 in: workout([freshSlot]),
                 user: user(level: .advanced),
-                library: catalog,
+                library: [hollow, plank],
                 recentLogs: [],
                 sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
             )
         )
+        XCTAssertEqual(seeded.exercise.id, plank.id)
         XCTAssertGreaterThan(
-            try XCTUnwrap(seeded.reps), try XCTUnwrap(seeded.exercise.defaultReps),
+            try XCTUnwrap(seeded.durationSeconds), try XCTUnwrap(plank.defaultDurationSeconds),
             "the Start Seed (US-O02) must reach the swap"
         )
     }

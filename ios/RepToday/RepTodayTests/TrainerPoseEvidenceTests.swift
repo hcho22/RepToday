@@ -524,9 +524,9 @@ final class TrainerPoseEvidenceTests: XCTestCase {
 
     // MARK: - One-time choice (US-TP10)
 
-    /// An "other" user is asked before any Trainer art shows, with the session held on a pause and the
-    /// explainer waiting behind it; choosing shows that Trainer at once, stores it, resumes the session
-    /// and lets the explainer follow.
+    /// An "other" user is asked before any Trainer art shows and before the session starts, with the
+    /// explainer waiting behind it; choosing shows that Trainer at once, stores it and lets the
+    /// explainer follow, whose button starts the session.
     func testOtherUserChoosesATrainerBeforeAnyArtAndTheExplainerFollows() throws {
         let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
         for variant in variants {
@@ -541,8 +541,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains("Choose your Trainer") || self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Male Trainer") && labels().contains("Female Trainer"), "exactly the two options: \(labels())")
             XCTAssertFalse(labels().contains { $0.contains("trainer showing") }, "no Trainer art before the choice")
-            // Open Question 3: nothing counts down behind the choice - here the session has not even
-            // started, since the first-run explainer that follows holds the start (ADR-0010).
+            // Open Question 3: nothing counts down behind the choice - the session has not started, since
+            // the choice and the first-run explainer that follows it both hold the start (ADR-0010).
             let before = labels().first { $0.hasPrefix("Work window, ") }
             HostedSurface.pump(for: 2.2)
             XCTAssertNotNil(before)
@@ -585,6 +585,78 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             }
             wait(for: [storedExpectation], timeout: 6)
         }
+    }
+
+    /// A user who force-quit before choosing comes back with the first-run explainer already claimed:
+    /// the choice is asked again, and it holds the start rather than pausing a running session -
+    /// nothing counts down and `session_started` is not sent until the user chooses, and choosing
+    /// starts the session with no further tap (ADR-0010).
+    func testAnUnresolvedTrainerHoldsTheStartOnALaterArrival() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        try assertChoiceHoldsTheStart(session: session, service: MockUserService(user: user(sex: .other)), choosing: "Female Trainer")
+    }
+
+    /// A choice whose write failed leaves the Trainer unresolved (captain, Open Question 8), so the next
+    /// arrival asks again - before its start, never by pausing a running session.
+    func testAFailedTrainerWriteAsksAgainBeforeTheNextStart() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        let service = SaveFailingUserService(user: user(sex: .other))
+        try assertChoiceHoldsTheStart(session: session, service: service, choosing: "Male Trainer")
+        try assertChoiceHoldsTheStart(session: session, service: service, choosing: "Male Trainer")
+    }
+
+    /// Hosts the player for an "other" user whose first-run explainer was already seen, and asserts the
+    /// Trainer choice is asked over a session that has not started and that choosing starts it.
+    private func assertChoiceHoldsTheStart(
+        session: Workout,
+        service: any UserServiceProtocol,
+        choosing option: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "TrainerPoseEvidence-\(UUID().uuidString)"))
+        let appState = AppState(userDefaults: defaults)
+        appState.markContinuousCircuitExplainerSeen()
+        let analytics = MockAnalyticsService()
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), analytics: analytics, userService: service)
+                .environment(appState),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the unresolved Trainer is asked: \(labels())", file: file, line: line)
+        let before = labels().first { $0.hasPrefix("Work window, ") }
+        XCTAssertNotNil(before, file: file, line: line)
+        HostedSurface.pump(for: 2.2)
+        XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before,
+                       "the window must not run behind the choice", file: file, line: line)
+        assertSessionStarted(false, analytics, "the session must not start before the choice", file: file, line: line)
+
+        activate(option, file: file, line: line)
+        XCTAssertTrue(
+            pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+            "choosing starts the session: \(labels())", file: file, line: line
+        )
+        assertSessionStarted(true, analytics, "choosing starts the session", file: file, line: line)
+        XCTAssertFalse(labels().contains { $0.hasPrefix("Your session drives itself") },
+                       "the explainer was already seen", file: file, line: line)
+    }
+
+    /// Whether `session_started` has been recorded, read off the actor-isolated mock.
+    private func assertSessionStarted(
+        _ expected: Bool,
+        _ analytics: MockAnalyticsService,
+        _ message: String,
+        file: StaticString,
+        line: UInt
+    ) {
+        let read = expectation(description: "recorded events")
+        Task {
+            let started = await analytics.recordedEvents.contains { $0.name == .sessionStarted }
+            XCTAssertEqual(started, expected, message, file: file, line: line)
+            read.fulfill()
+        }
+        wait(for: [read], timeout: 2)
     }
 
     /// A male- or female-answered user is never asked.

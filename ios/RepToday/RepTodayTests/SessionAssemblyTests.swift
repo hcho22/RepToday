@@ -1266,6 +1266,45 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(targets, targets.sorted(), "the ramp never takes the target down from one session to the next")
     }
 
+    /// A held session never counts as capacity, so a user who lapses twice is held against the capacity
+    /// from before the *first* Return, not against the held number the first Return served. Last at 30
+    /// squats, the user is served 20 on Return 1 and lapses again straight away: Return 2 is 30 held at
+    /// 0.7 again (20, not 20 held down to 10), and its ramp walks back up from 30 as a single lapse does.
+    func testASecondLapseIsHeldAgainstTheCapacityFromBeforeTheFirstReturn() async throws {
+        let library = try await library()
+        let beginner = user(level: .beginner)
+        var history = [log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 40, difficulty: .justRight)]
+
+        func squatReps() throws -> Int {
+            var policy = SessionPolicy.default
+            policy.varietyWindow = 0
+            let workout = assemble(minutes: 60, user: beginner, library: library, logs: history, policy: policy)
+            let squat = try XCTUnwrap(
+                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
+                "squat_bodyweight should be served in every session of the trace"
+            )
+            return try XCTUnwrap(squat.reps)
+        }
+
+        let first = try squatReps()
+        var return1 = log([("squat_bodyweight", .strength, .squat, first)], daysAgo: 30)
+        return1.wasReturn = true
+        history.append(return1)
+
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a second lapse")
+        var targets = [first, try squatReps()]
+        var return2 = log([("squat_bodyweight", .strength, .squat, targets[1])], daysAgo: 3)
+        return2.wasReturn = true
+        history.append(return2)
+        for daysAgo in [2, 1, 0] {
+            let reps = try squatReps()
+            targets.append(reps)
+            if daysAgo > 0 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
+        }
+
+        XCTAssertEqual(targets, [20, 20, 20, 20, 25], "both Returns and the ramp are relative to the pre-lapse 30")
+    }
+
     /// "Too hard" still drops 5 during a Re-entry Ramp: the ramp keeps its pre-Return base, but once a
     /// ramp session steps a move back the move is never served above that session's number less 5 until
     /// the normal climb earns it back. A beginner last at 30 squats is served 20 on the Return and 20 on

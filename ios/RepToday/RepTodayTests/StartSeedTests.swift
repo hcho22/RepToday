@@ -71,7 +71,8 @@ final class StartSeedTests: XCTestCase {
         difficulty: Int = 2,
         isHold: Bool = false,
         defaultReps: Int? = 10,
-        defaultDurationSeconds: Int? = nil
+        defaultDurationSeconds: Int? = nil,
+        advancementCriteria: String = "3x15 clean reps"
     ) -> Exercise {
         Exercise(
             id: id,
@@ -91,7 +92,7 @@ final class StartSeedTests: XCTestCase {
             progressionOrder: 0,
             regressionId: nil,
             progressionId: nil,
-            advancementCriteria: "3x15 clean reps",
+            advancementCriteria: advancementCriteria,
             apartmentFriendly: true
         )
     }
@@ -815,7 +816,7 @@ final class StartSeedTests: XCTestCase {
 
     func testNoHistoryTargetScalesRepsAndSetsByTheSeed() {
         let target = AdaptiveOverload.target(
-            for: exercise(id: "ex", defaultReps: 10),
+            for: exercise(id: "ex", defaultReps: 10, advancementCriteria: "3x50 clean reps"),
             recentLogs: [],
             startingRepMultiplier: 1.30,
             startingSets: 4
@@ -827,7 +828,8 @@ final class StartSeedTests: XCTestCase {
     func testNoHistoryHoldTargetScalesByTheSeed() {
         let target = AdaptiveOverload.target(
             for: exercise(
-                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 20
+                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 20,
+                advancementCriteria: "3x60s hold"
             ),
             recentLogs: [],
             startingRepMultiplier: 1.15,
@@ -856,7 +858,7 @@ final class StartSeedTests: XCTestCase {
     /// A runaway seed can never produce an absurd prescription: the existing rep/hold/set rails hold.
     func testSeededTargetIsClampedToTheRails() {
         let reps = AdaptiveOverload.target(
-            for: exercise(id: "ex", defaultReps: 40),
+            for: exercise(id: "ex", defaultReps: 40, advancementCriteria: "3x99 clean reps"),
             recentLogs: [],
             startingRepMultiplier: 10,
             startingSets: 9
@@ -865,7 +867,10 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(reps.sets, AdaptiveOverload.maxSets)
 
         let hold = AdaptiveOverload.target(
-            for: exercise(id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 90),
+            for: exercise(
+                id: "hold", isHold: true, defaultReps: nil, defaultDurationSeconds: 90,
+                advancementCriteria: "3x999s hold"
+            ),
             recentLogs: [],
             startingRepMultiplier: 10,
             startingSets: 9
@@ -890,13 +895,61 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(seeded.sets, 3, "the set count tracks what the user sustained, not the seed")
     }
 
+    /// A seed never lifts a first prescription past one step below the move's advancement criterion,
+    /// and never below the floor of 10, so an advanced user cannot clear a new move in its first
+    /// session (ADR-0011). These are the moves whose x1.30 seed used to land on their own criterion:
+    /// push_diamond and push_archer (per side), 10 seeded to 15 against "3x15", and squat_bodyweight,
+    /// 15 seeded to 20 against "3x20".
+    func testASeededFirstPrescriptionStopsOneStepBelowTheMovesCriterion() async throws {
+        let library = try await library()
+        let seed = SessionPolicy.ColdStartContract.startingRepMultiplier(for: .advanced)
+        let sets = SessionPolicy.ColdStartContract.startingSets(for: .advanced)
+        for (id, expected) in [("push_diamond", 10), ("push_archer", 10), ("squat_bodyweight", 15)] {
+            let movement = try XCTUnwrap(library.first { $0.id == id })
+            let target = AdaptiveOverload.target(
+                for: movement, recentLogs: [], startingRepMultiplier: seed, startingSets: sets
+            )
+            XCTAssertEqual(target.reps, expected, "\(id): one step below its \"\(movement.advancementCriteria)\"")
+            XCTAssertEqual(target.sets, sets, id)
+        }
+        XCTAssertEqual(try XCTUnwrap(library.first { $0.id == "push_archer" }).isPerSide, true, "the archer's 10 is per side")
+    }
+
+    /// No catalog movement's first prescription, at any fitness level's Start Seed, clears its own
+    /// advancement criterion when performed as prescribed: every move takes more than one session.
+    func testNoFirstPrescriptionClearsItsMoveInOneSession() async throws {
+        for movement in try await library() {
+            let criteria = try XCTUnwrap(AdvancementCriteria(parsing: movement.advancementCriteria), movement.id)
+            for level in FitnessLevel.allCases {
+                let target = AdaptiveOverload.target(
+                    for: movement,
+                    recentLogs: [],
+                    startingRepMultiplier: SessionPolicy.ColdStartContract.startingRepMultiplier(for: level),
+                    startingSets: SessionPolicy.ColdStartContract.startingSets(for: level)
+                )
+                let performed = LoggedExercise(
+                    id: UUID(),
+                    exerciseId: movement.id,
+                    pillar: movement.pillar,
+                    movementPattern: movement.movementPattern,
+                    completedSets: Array(
+                        repeating: CompletedSet(reps: target.reps, durationSeconds: target.durationSeconds),
+                        count: target.sets
+                    ),
+                    skipped: false
+                )
+                XCTAssertFalse(criteria.isMet(by: performed, isHold: movement.isHold), "\(movement.id) at \(level)")
+            }
+        }
+    }
+
     // MARK: - The safety net: the Asymmetric Ramp still backs off fast
 
     /// An over-reported fitness level is corrected downward within one cycle: after a seeded first
     /// session rated `too_hard`, the next target drops below demonstrated capacity - and drops by more
     /// than a `too_easy` would climb, so the seed can never trap a user at an unsustainable volume.
     func testOverReportedLevelSelfCorrectsWithinOneCycle() {
-        let movement = exercise(id: "ex", defaultReps: 10)
+        let movement = exercise(id: "ex", defaultReps: 10, advancementCriteria: "3x50 clean reps")
 
         // The seeded advanced first prescription, which the user then works and rates.
         let seeded = AdaptiveOverload.target(
@@ -1142,7 +1195,7 @@ final class StartSeedTests: XCTestCase {
         let defaultReps = try XCTUnwrap(substitute.exercise.defaultReps)
         XCTAssertEqual(
             substitute.reps,
-            Self.gridSeeded(defaultReps, by: seed.repMultiplier),
+            try Self.gridSeeded(substitute.exercise, by: seed.repMultiplier),
             "the substitute must carry the session's Start Seed, not the neutral seed"
         )
 
@@ -1157,7 +1210,7 @@ final class StartSeedTests: XCTestCase {
         // slot's time budget best. What must hold either way is that the seeded run opens above the
         // movement's default and the unseeded run opens exactly at it.
         XCTAssertEqual(
-            neutral.reps, Self.gridSeeded(try XCTUnwrap(neutral.exercise.defaultReps), by: 1.0),
+            neutral.reps, try Self.gridSeeded(neutral.exercise, by: 1.0),
             "the neutral seed opens at the movement's own default, on the grid"
         )
         XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), defaultReps)
@@ -1428,15 +1481,14 @@ final class StartSeedTests: XCTestCase {
 
         // Volume: 4 sets at ~x1.3 the movement's own default reps.
         XCTAssertEqual(advanced.sets, SessionPolicy.ColdStartContract.startingSets(for: .advanced))
-        let defaultReps = try XCTUnwrap(advanced.exercise.defaultReps)
         XCTAssertEqual(
             advanced.reps,
-            Self.gridSeeded(defaultReps, by: 1.30),
+            try Self.gridSeeded(advanced.exercise, by: 1.30),
             "the advanced first prescription carries the x1.30 volume seed"
         )
 
         // The beginner is untouched: their own default reps (on the grid) over the default set count.
-        XCTAssertEqual(beginner.reps, Self.gridSeeded(try XCTUnwrap(beginner.exercise.defaultReps), by: 1.0))
+        XCTAssertEqual(beginner.reps, try Self.gridSeeded(beginner.exercise, by: 1.0))
         XCTAssertEqual(beginner.sets, AdaptiveOverload.defaultSets)
 
         // The bookends are never seeded: the same number of movements for both levels, one set each at the
@@ -1657,11 +1709,14 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(signature(), signature())
     }
 
-    /// A rep default seeded by `multiplier` the way Step 6 serves it (ADR-0011): the default rounded down
-    /// onto the grid of five (never below ten), scaled, and landed on the nearest grid number.
-    private static func gridSeeded(_ defaultReps: Int, by multiplier: Double) -> Int {
-        let base = AdaptiveOverload.onGrid(defaultReps, isHold: false, sides: 1)
-        let nearest = Int((Double(base) * multiplier / 5).rounded()) * 5
-        return AdaptiveOverload.onGrid(nearest, isHold: false, sides: 1)
+    /// A rep-based movement's default seeded by `multiplier` the way Step 6 serves it (ADR-0011): the
+    /// default rounded down onto the grid of five (never below ten), scaled, landed on the nearest grid
+    /// number, and never lifted past one step below the movement's advancement criterion.
+    private static func gridSeeded(_ movement: Exercise, by multiplier: Double) throws -> Int {
+        let base = AdaptiveOverload.onGrid(try XCTUnwrap(movement.defaultReps), isHold: false, sides: 1)
+        let nearest = AdaptiveOverload.onGrid(Int((Double(base) * multiplier / 5).rounded()) * 5, isHold: false, sides: 1)
+        let criteria = try XCTUnwrap(AdvancementCriteria(parsing: movement.advancementCriteria))
+        let belowCriterion = AdaptiveOverload.onGrid(criteria.target - AdaptiveOverload.step, isHold: false, sides: 1)
+        return min(nearest, max(base, belowCriterion))
     }
 }

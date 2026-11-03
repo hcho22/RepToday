@@ -163,30 +163,42 @@ enum AdaptiveOverload {
     /// `step` below the un-held target (down to the floor), so the ease is never lost to rounding. A
     /// no-history default is already the gentle starting value and is left untouched.
     ///
-    /// `heldSince` is when a Re-entry Ramp's held run began (`ReturnOverride.heldSince`, the Return
-    /// session), `nil` otherwise. The held target is then read from the capacity the user demonstrated
-    /// *before* it, so each held session is not held against the previous one's held number; but once a
-    /// session in the held run steps this move back ("too hard", "couldn't finish" or a skip), the move
-    /// is never served above the climb's own target over every log - that session's number less one
-    /// `step` - until a later session earns it back by the normal climb (ADR-0011).
+    /// A **held** session - a Return or a Re-entry Ramp session (`ReturnOverride.splitHeld`) - logged
+    /// what the hold served, not what the user can do, so it never counts as capacity: the target is
+    /// read from the latest session that was not held, and with none the default applies. So a held
+    /// session is never held against the previous one's held number, and a user who lapses twice is held
+    /// against the capacity from before the first Return. Once a held session steps this move back ("too
+    /// hard", "couldn't finish" or a skip) after that capacity, though, the move is never served above
+    /// the climb's own target over every log - that session's number less one `step` - until a later
+    /// session earns it back by the normal climb (ADR-0011).
+    ///
+    /// `steppedDownSince` is the date a step back at the floor moved the user down onto this rung
+    /// (`ProgressionChainSelection.stepDownDate(onto:library:recentLogs:)`), `nil` otherwise. The rung is
+    /// then served at the floor and climbs by the normal rules from the sessions after it alone, so a
+    /// user who keeps finding the harder move too hard holds on the easier one (ADR-0011).
     ///
     /// `startingRepMultiplier` / `startingSets` are the cold-start **Start Seed** (US-O02), and they
     /// apply *only* to the no-history default target - the very first prescription of a movement. The
     /// multiplier scales the grid-rounded default and lands on the nearest grid number (never below
     /// the default for a multiplier above one), and both are clamped to the existing rails and ignored
-    /// the moment the user has logged the movement. The neutral values reproduce the default precisely.
+    /// the moment the user has logged the movement. The seed never lifts the default past one `step`
+    /// below the movement's advancement criterion, so no move can clear in its first session. The
+    /// neutral values reproduce the default precisely.
     static func target(
         for exercise: Exercise,
         recentLogs: [WorkoutLog],
         progressionRate: Double = neutralProgressionRate,
         reentryScale: Double = neutralReentryScale,
-        heldSince: Date? = nil,
+        steppedDownSince: Date? = nil,
         startingRepMultiplier: Double = neutralStartingRepMultiplier,
         startingSets: Int = defaultSets
     ) -> OverloadTarget {
-        let baseLogs = heldSince.map { since in recentLogs.filter { $0.completedAt < since } } ?? recentLogs
+        let split = ReturnOverride.splitHeld(recentLogs)
+        let sinceStepDown: (WorkoutLog) -> Bool = { log in steppedDownSince.map { log.completedAt > $0 } ?? true }
+        let capacityLogs = split.capacity.filter(sinceStepDown)
+        let heldLogs = split.held.filter(sinceStepDown)
         let target: OverloadTarget
-        if let capacity = demonstratedCapacity(for: exercise, recentLogs: baseLogs) {
+        if let capacity = demonstratedCapacity(for: exercise, recentLogs: capacityLogs) {
             let perSet = adjusted(
                 capacity,
                 isHold: exercise.isHold,
@@ -199,6 +211,13 @@ enum AdaptiveOverload {
                 reps: exercise.isHold ? nil : perSet,
                 durationSeconds: exercise.isHold ? perSet : nil
             )
+        } else if steppedDownSince != nil {
+            let atFloor = floor(isHold: exercise.isHold, sides: exercise.sidesPerSet)
+            target = OverloadTarget(
+                sets: clampSets(startingSets),
+                reps: exercise.isHold ? nil : atFloor,
+                durationSeconds: exercise.isHold ? atFloor : nil
+            )
         } else {
             target = defaultTarget(
                 for: exercise,
@@ -207,13 +226,16 @@ enum AdaptiveOverload {
             )
         }
 
+        let capacitySince = capacityLogs
+            .filter { log in log.exercises.contains { $0.exerciseId == exercise.id } }
+            .map(\.completedAt)
+            .max()
         guard
-            let heldSince,
-            recentLogs.contains(where: { log in
-                log.completedAt >= heldSince
+            heldLogs.contains(where: { log in
+                capacitySince.map { log.completedAt > $0 } ?? true
                     && log.exercises.contains { $0.exerciseId == exercise.id && log.stepsBack($0) }
             }),
-            let latest = demonstratedCapacity(for: exercise, recentLogs: recentLogs)
+            let latest = demonstratedCapacity(for: exercise, recentLogs: capacityLogs + heldLogs)
         else { return target }
         let ceiling = adjusted(
             latest,
@@ -327,8 +349,11 @@ enum AdaptiveOverload {
 
     /// The starting target when there is no usable history: the exercise's own per-set default rounded
     /// down onto the grid, scaled by the Start Seed's `startingRepMultiplier` (landing on the nearest
-    /// grid number) over `startingSets` (US-O02), clamped to the safety rails. The neutral seed (`x1.0`,
-    /// `defaultSets`) is the grid-rounded default exactly.
+    /// grid number) over `startingSets` (US-O02), clamped to the safety rails. A seed never lifts the
+    /// default past one `step` below the movement's advancement criterion (rounded down onto the grid,
+    /// never below the floor), so a seeded first prescription cannot clear the move in one session
+    /// (ADR-0011). The neutral seed (`x1.0`, `defaultSets`) is the grid-rounded default exactly, and no
+    /// catalog default reaches its own criterion.
     private static func defaultTarget(
         for exercise: Exercise,
         startingRepMultiplier: Double,
@@ -340,7 +365,10 @@ enum AdaptiveOverload {
             ? (exercise.defaultDurationSeconds ?? minHoldSeconds)
             : (exercise.defaultReps ?? minReps)
         let gridBase = onGrid(base, isHold: exercise.isHold, sides: sides)
-        let seeded = nearestOnGrid(Double(gridBase) * max(0, startingRepMultiplier), isHold: exercise.isHold, sides: sides)
+        let nearest = nearestOnGrid(Double(gridBase) * max(0, startingRepMultiplier), isHold: exercise.isHold, sides: sides)
+        let seeded = AdvancementCriteria(parsing: exercise.advancementCriteria).map { criteria in
+            min(nearest, max(gridBase, onGrid(criteria.target - step, isHold: exercise.isHold, sides: sides)))
+        } ?? nearest
         return OverloadTarget(
             sets: sets,
             reps: exercise.isHold ? nil : seeded,

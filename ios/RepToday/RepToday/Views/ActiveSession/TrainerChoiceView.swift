@@ -24,8 +24,9 @@ enum TrainerChoiceCopy {
 /// none (captain, Open Question 4) - so the user picks the demonstrator they are about to see.
 ///
 /// Presentation is owned by `ActiveSessionView`, which layers this over the player in the style of the
-/// US-CC13 explainer (an overlay, not a sheet, so Reduce Motion can still its entrance) and holds the
-/// session on a user pause while it is up (captain, Open Question 3). Controls meet the 60pt
+/// US-CC13 explainer (an overlay, not a sheet, so Reduce Motion can still its entrance) and shows it
+/// before the session starts, so nothing counts down behind it (captain, Open Question 3; ADR-0010):
+/// choosing starts the session, or hands on to the explainer when that is due. Controls meet the 60pt
 /// active-screen touch target; the card is VoiceOver-modal and scrolls under large Dynamic Type.
 struct TrainerChoiceView: View {
     /// The movement the user is about to see, whose start pose previews each Trainer.
