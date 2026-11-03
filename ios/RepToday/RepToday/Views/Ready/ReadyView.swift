@@ -13,6 +13,8 @@ import SwiftUI
 /// forgiving Consistency Score ("how I'm doing", always identity-framed), and the policy note ("what
 /// the app changed") - all rendered from the existing policy with no spinner ever blocking Start,
 /// while an on-open Re-program runs in the background. The Start action opens the player in US-K01.
+/// A secondary **Different workout** control rebuilds the session at the same length with other moves,
+/// in place like a chip, as often as the user likes before they start.
 struct ReadyView: View {
     /// Optional so the hosted evidence surfaces that mount `ReadyView` without an `AppState` still
     /// render (production, reached from the tab tree, always has one). It is read for exactly one
@@ -149,6 +151,10 @@ struct ReadyView: View {
 
                     durationChips
 
+                    DifferentWorkoutButton(minutes: viewModel.requestedMinutes) {
+                        Task { await viewModel.showDifferentWorkout() }
+                    }
+
                     ForEach(workout.blocks) { block in
                         BlockCard(block: block)
                     }
@@ -283,6 +289,45 @@ private struct DurationChip: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(minutes) minute session")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// MARK: - Different workout
+
+/// The secondary control that rebuilds today's session at the same length with other moves. Styled like
+/// the duration chips rather than like Start, so Start stays the one dominant action; it regenerates in
+/// place with no spinner and no animation, and its label wraps under large Dynamic Type sizes.
+struct DifferentWorkoutButton: View {
+    let minutes: Int
+    let action: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Button(action: action) {
+            // At the accessibility text sizes the icon moves above the label, so the label gets the full
+            // width and breaks between words rather than inside them.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: Theme.Spacing.xs))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            layout {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(Theme.Colors.accent)
+                    .accessibilityHidden(true)
+                Text("Different workout")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget)
+            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Different workout")
+        .accessibilityHint("Builds another \(minutes) minute workout with other moves.")
     }
 }
 

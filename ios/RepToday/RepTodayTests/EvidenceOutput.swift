@@ -38,6 +38,7 @@ enum EvidenceOutput {
         static let trialConversionSubscribe = "trial-conversion-subscribe"
         static let profileRowAlignment = "profile-row-alignment"
         static let statusBarBacking = "status-bar-backing"
+        static let differentWorkout = "different-workout"
     }
 
     /// The directory `story`'s evidence is written to for this run.

@@ -69,6 +69,12 @@ final class ReadyViewModel {
     /// ascending chip vocabulary the learned Default Duration always snaps to.
     let durationChips = DefaultDurationLearning.chipValues
 
+    /// The **Different workout** request the shown session was built with: the moves earlier presses
+    /// already showed at this length (`SessionVariation`). `.none` until the first press; a length change
+    /// starts over from `.none`. In memory only - nothing is logged or persisted until the user starts a
+    /// session, so a press never counts toward variety, progression or the Consistency Score.
+    private(set) var variation: SessionVariation = .none
+
     private let userService: any UserServiceProtocol
     private let sessionPolicyService: any SessionPolicyServiceProtocol
     private let workoutEngine: any WorkoutEngineProtocol
@@ -285,7 +291,10 @@ final class ReadyViewModel {
     func selectDuration(_ minutes: Int) async {
         guard let cached = user, minutes != selectedMinutes else { return }
         let previous = selectedMinutes
+        let previousVariation = variation
         selectedMinutes = minutes
+        // A new length starts the Different workout sequence over: its first session is the default one.
+        variation = .none
         errorMessage = nil
         do {
             // Unlike the load path, this tap can arrive long after the profile was read - and the
@@ -299,8 +308,36 @@ final class ReadyViewModel {
             // the header and highlighted chip stay consistent with it, rather than surfacing an
             // error the session screen never renders while a workout is present. Only roll back if
             // this tap is still the current selection, so a later tap's choice is never clobbered.
-            if selectedMinutes == minutes {
+            if selectedMinutes == minutes, variation == .none {
                 selectedMinutes = previous
+                variation = previousVariation
+            }
+        }
+    }
+
+    /// The **Different workout** press: rebuild the session at the same length with other moves, in place
+    /// and on-device exactly like a duration chip. Non-blocking - the current session and Start stay put
+    /// while the engine produces the next one. Each press asks the engine to rank every move shown so far
+    /// in this sequence behind its alternatives (`SessionVariation.advanced(past:)`); once the alternatives
+    /// run out the engine serves the default session again and the sequence starts over. It only ever
+    /// changes the fresh session on screen: a paused session waiting to be resumed is left exactly as it
+    /// is. A no-op before a session has loaded.
+    func showDifferentWorkout() async {
+        guard let cached = user, let shown = workout else { return }
+        let previous = variation
+        let next = variation.advanced(past: shown)
+        variation = next
+        errorMessage = nil
+        do {
+            // Re-read the profile for the same reason a chip tap does: its injury flags can change while
+            // this screen is alive, and a press must never build against stale safety filters.
+            let user = (try? await userService.currentUser()) ?? cached
+            try await generate(user: user)
+        } catch {
+            // Keep the still-displayed session and roll the request back to the one that built it, unless
+            // a later press or chip tap has already moved on.
+            if variation == next {
+                variation = previous
             }
         }
     }
@@ -420,9 +457,12 @@ final class ReadyViewModel {
     /// a stale profile would still offer movements the user has just asked to work around. The
     /// requested minutes are captured before the engine await so a superseded, slower generation (an
     /// older chip tap still in flight) can never overwrite the session the latest selection produced.
+    /// The Different workout request is captured the same way, so a slower press never lands over a
+    /// newer one.
     private func generate(user: User) async throws {
         self.user = user
         let requested = selectedMinutes
+        let requestedVariation = variation
         // Measure the generation call specifically (US-T09) - the injected clock read straddles only
         // the engine await, not the surrounding view work, so `generation_ms` stays planning-honest.
         // Clamped at 0 defensively, mirroring US-T08's `elapsed_seconds`, so a non-monotonic clock read
@@ -432,10 +472,11 @@ final class ReadyViewModel {
             requestedMinutes: requested,
             user: user,
             recentLogs: recentLogs,
-            sessionPolicy: policy
+            sessionPolicy: policy,
+            variation: requestedVariation
         )
         let generationMs = max(0, Int(now().timeIntervalSince(generationStart) * 1000))
-        guard requested == selectedMinutes else { return }
+        guard requested == selectedMinutes, requestedVariation == variation else { return }
         workout = generated
         lastGenerationMs = generationMs
 
@@ -444,7 +485,7 @@ final class ReadyViewModel {
         // does not produce. Re-check the guard after the resolver await so a superseded, slower
         // generation cannot overwrite a newer selection's note.
         let note = await varietyLanguageResolver.note(for: generated, recentLogs: recentLogs, user: user)
-        guard requested == selectedMinutes else { return }
+        guard requested == selectedMinutes, requestedVariation == variation else { return }
         varietyNote = note
     }
 

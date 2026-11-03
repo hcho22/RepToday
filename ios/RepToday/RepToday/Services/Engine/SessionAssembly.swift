@@ -262,14 +262,58 @@ enum SessionAssembly {
     /// engine reads: the `coldStartContract` for a brand-new user (US-E04) and the `reentry` ramp for a
     /// returning one (US-E06). It defaults to `SessionPolicy.default` (every lever neutral, no
     /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
+    ///
+    /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
+    /// earlier presses already showed are ranked behind their alternatives at every choice point, while
+    /// every filter, frontier and fit rule above still decides each pick. When that leaves nothing new -
+    /// every alternative has been shown - the default session is returned instead, which is how a
+    /// sequence of presses cycles back. `.none`, the default, is the session exactly as before.
     static func assemble(
         requestedMinutes: Int,
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
+        variation: SessionVariation = .none,
         asOf: Date,
         calendar: Calendar = .current
+    ) -> Workout {
+        if !variation.isNone {
+            let varied = assemblePass(
+                requestedMinutes: requestedMinutes,
+                user: user,
+                library: library,
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
+                offered: variation.offeredExerciseIds,
+                asOf: asOf,
+                calendar: calendar
+            )
+            if variation.offersSomethingNew(varied) { return varied }
+        }
+        return assemblePass(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            library: library,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            offered: [],
+            asOf: asOf,
+            calendar: calendar
+        )
+    }
+
+    /// One assembly pass, with `offered` (a `SessionVariation`'s moves) ranked behind their
+    /// alternatives; empty for the default session.
+    private static func assemblePass(
+        requestedMinutes: Int,
+        user: User,
+        library: [Exercise],
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        offered: Set<String>,
+        asOf: Date,
+        calendar: Calendar
     ) -> Workout {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
 
@@ -279,6 +323,7 @@ enum SessionAssembly {
             library: library,
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
+            offered: offered,
             asOf: asOf,
             calendar: calendar
         )
@@ -327,13 +372,15 @@ enum SessionAssembly {
     /// extended session's per-block time targets prior to the global fit consuming them. `sessionPolicy`
     /// threads the US-E03 levers into Steps 5/6 (see `assemble`) and the situational Step 0 cold-start
     /// (US-E04) and Step 0.5 Return (US-E06) gentleness rails; it defaults to `SessionPolicy.default`
-    /// (neutral, no regression).
+    /// (neutral, no regression). `offered` are the moves a **Different workout** press ranks behind their
+    /// alternatives (see `assemble`); empty, the default, changes nothing.
     static func planBlocks(
         requestedMinutes: Int,
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
+        offered: Set<String> = [],
         asOf: Date,
         calendar: Calendar = .current
     ) -> [PlannedBlock] {
@@ -433,6 +480,7 @@ enum SessionAssembly {
             // order-preserving positive multiplier - an out-of-range coach write can never act as a
             // filter or invert the ordering.
             patternEmphasis: sessionPolicy.patternEmphasis.mapValues(SessionPolicy.clampedEmphasis),
+            offered: offered,
             asOf: asOf,
             calendar: calendar
         )
@@ -1028,6 +1076,12 @@ private struct Builder {
     /// reintroduces a mobility middle block. Neutral (`1.0` for every pattern) reproduces the pre-US-AC05
     /// ordering exactly. Shaped like `sitsLong`: a reorder layered on the existing ordering, never a filter.
     let patternEmphasis: [MovementPattern: Double]
+    /// The moves a **Different workout** press asks the session to avoid (`SessionVariation`): ranked
+    /// behind their alternatives in the strength pattern order (`orderedStrengthPatterns`), each pattern's
+    /// chain ranking (`ProgressionChainSelection.selectAll`) and the bookend pools (`orderedMobility`).
+    /// A preference, never a filter, exactly like the variety window it sits in front of. Empty for the
+    /// default session, which is then unchanged.
+    let offered: Set<String>
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -1188,7 +1242,8 @@ private struct Builder {
                 pool: pool,
                 recentLogs: recentLogs,
                 varietyWindow: varietyWindow,
-                withheldByStartSeed: withheldByStartSeed
+                withheldByStartSeed: withheldByStartSeed,
+                offered: offered
             )
         }
 
@@ -1267,7 +1322,8 @@ private struct Builder {
             pool: pool,
             recentLogs: recentLogs,
             varietyWindow: varietyWindow,
-            withheldByStartSeed: withheldByStartSeed
+            withheldByStartSeed: withheldByStartSeed,
+            offered: offered
         ).filter { $0.exercise.pillar == .primal }
 
         var items: [PlannedItem] = []
@@ -1335,6 +1391,9 @@ private struct Builder {
             calendar: calendar,
             emphasis: patternEmphasis
         )
+        if !offered.isEmpty {
+            return patternsLeadingWithUnoffered(ranked: ranked, candidatePatterns: patterns)
+        }
         guard
             let lead = PatternFocus.select(
                 candidatePatterns: patterns,
@@ -1349,7 +1408,8 @@ private struct Builder {
 
     /// Eligible, not-yet-claimed mobility movements ordered for variety: never-worked and longest-ago
     /// first, movements used in the last few sessions pushed back, then shortest (finest timing
-    /// granularity) and id as deterministic tie-breaks.
+    /// granularity) and id as deterministic tie-breaks. Ahead of all of that, a stretch a **Different
+    /// workout** press already showed (`offered`) goes behind every stretch that press has not.
     ///
     /// `complementing` biases the result prefer-then-fill (US-M02): when the day's lead strength
     /// pattern is supplied, the single best-variety stretch that complements it is promoted to the
@@ -1377,6 +1437,12 @@ private struct Builder {
                     && (!holdsOnly || $0.isHold)
             }
             .sorted { lhs, rhs in
+                // A Different workout press: a stretch an earlier press already showed goes behind every
+                // other, ahead of the variety window, since the user has just asked for other moves.
+                let lhsOffered = offered.contains(lhs.id)
+                let rhsOffered = offered.contains(rhs.id)
+                if lhsOffered != rhsOffered { return !lhsOffered }
+
                 let lhsRecent = recent.contains(lhs.id)
                 let rhsRecent = recent.contains(rhs.id)
                 if lhsRecent != rhsRecent { return !lhsRecent }
@@ -1440,6 +1506,36 @@ private struct Builder {
         guard apply else { return ordered }
         return ordered.filter(SessionAssembly.isPostureHipOpener)
             + ordered.filter { !SessionAssembly.isPostureHipOpener($0) }
+    }
+
+    /// The strength pattern order for a **Different workout** press: a pattern that still has a move the
+    /// press has not shown leads ahead of a pattern whose every candidate was already shown, each group
+    /// keeping its stalest-first order, so once a pattern's chains are used up the next press leads with
+    /// another pattern. Step 3's no-repeat rule still holds: the previous session's lead pattern takes the
+    /// lead slot only when no other pattern can, exactly as `PatternFocus.select` falls back.
+    private func patternsLeadingWithUnoffered(
+        ranked: [MovementPattern],
+        candidatePatterns: [MovementPattern]
+    ) -> [MovementPattern] {
+        let unoffered = ranked.filter { pattern in
+            ProgressionChainSelection.selectAll(
+                pattern: pattern,
+                library: library,
+                pool: pool,
+                recentLogs: recentLogs,
+                varietyWindow: varietyWindow,
+                withheldByStartSeed: withheldByStartSeed
+            ).contains { !offered.contains($0.exercise.id) }
+        }
+        let ordered = unoffered + ranked.filter { !unoffered.contains($0) }
+        let blocked = PatternFocus.recentLeadPattern(
+            among: candidatePatterns,
+            recentLogs: recentLogs,
+            asOf: asOf,
+            calendar: calendar
+        )
+        guard let lead = ordered.first(where: { $0 != blocked }) ?? ordered.first else { return ordered }
+        return [lead] + ordered.filter { $0 != lead }
     }
 
     /// The day's lead strength pattern (Step 3) the bookends bias toward (US-M02): the stalest
