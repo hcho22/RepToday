@@ -1038,13 +1038,6 @@ final class ActiveSessionViewModel {
     /// so the timer cannot ask for less work than the session was planned around.
     var holdSidesPerSet: Int { currentStep?.prescription.exercise.sidesPerSet ?? 1 }
 
-    /// The brief hands-free "Switch sides" beat between the two legs of a per-side hold (US-CC05,
-    /// ADR-0010) - a get-ready pause, deliberately short, run on the shared rest countdown so it
-    /// pauses/resumes and auto-flows like every other interval. It is a runtime pacing beat only, not
-    /// part of the engine's planned wall-clock (the plan prices a per-side hold as two legs with no gap
-    /// between them); its runtime calibration is US-CC08's job.
-    static let switchSidesSeconds = 5
-
     /// Whether the current step is a **warm-up / cooldown bookend** timed hold, as opposed to a timed
     /// strength / primal *training* hold. Both auto-start hands-free and flow their per-side legs
     /// through a "Switch sides" beat (US-CC05, ADR-0010); the distinction survives for the copy and the
@@ -1120,7 +1113,7 @@ final class ActiveSessionViewModel {
             holdSide = finishedSide + 1
             // US-CC05 / ADR-0010: a per-side hold flows hands-free - a brief "Switch sides" beat, then
             // side 2 auto-starts as the beat ends (`completeRestIfElapsed` / `skipRest`).
-            startRest(seconds: Self.switchSidesSeconds, context: .switchSides)
+            startRest(seconds: SessionAssembly.switchSidesSeconds, context: .switchSides)
             persist()
         } else {
             // Records the set and starts the rest; `completeSet` resets the side back to 1 for the next.

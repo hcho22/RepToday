@@ -30,6 +30,8 @@ Capping every rest at 15 seconds removes that lever, and the minutes it held hav
 - The gap left is then spread across the session's rep-based training sets (`stretchWorkWindows`): every set gets the same whole-second stretch, the remainder goes one more second per set to stations in session order while a whole station's rounds fit, so a station's stretch is the same in every round and the result is deterministic.
   A window only grows from the generous pace (`workSecondsPerSet`, US-CC08), never shrinks below it, and never past `maxStretchSecondsPerSet` (90s).
   Timed holds and the warm-up and cooldown keep their prescribed lengths.
+- A timed hold is planned at exactly the seconds the player runs: one leg per side and the 5-second "Switch sides" beat between them, with no setup (`SessionAssembly.workSecondsPerSet`).
+  Every hold starts itself straight after the get-ready beat before it, so the setup its catalog estimate carries is never played; charging it ended a 15-minute session played with no taps 71 seconds short.
 - The stretch is stored on the prescription (`PrescribedExercise.stretchSeconds`, optional), the player's countdown shows the stretched window, and a swap hands the slot's stretch to a rep-based substitute.
 - The user finishes the reps and rests until the window ends.
   The set still records what it asked for (prescribed = performed, US-CC09), and the spare time at the end of a set is part of the set, not a rest, so the 15-second cap does not bind it.
@@ -50,7 +52,9 @@ Capping every rest at 15 seconds removes that lever, and the minutes it held hav
 ## Consequences / Trade-offs
 
 - The planned wall-clock formula is ADR-0003's with each rep-based training set's `workPerSet` including its stretch, and a fixed 15-second round rest.
-  Verified for 5/10/15/20/30/45/60 minutes at every fitness level, for a steady history and a fresh one (`SessionAssemblyTests.testEvidenceEvenRoundCircuitTranscriptAcrossLevelsAndLengths`): every session lands within 16 seconds of the request, every rest is at most 15 seconds, and the largest per-set stretch is 21 seconds.
+  Verified for 5/10/15/20/30/45/60 minutes at every fitness level, for a steady history and a fresh one (`SessionAssemblyTests.testEvidenceEvenRoundCircuitTranscriptAcrossLevelsAndLengths`): every session lands within 17 seconds of the request, every rest is at most 15 seconds, and the largest per-set stretch is 20 seconds.
+  A session played with no taps lasts exactly its planned seconds at every length and level (`GenerousRuntimePaceTests.testAHandsFreeSessionPlaysExactlyItsPlannedSecondsAtEveryLength`).
+- Pricing a hold at its played seconds makes a short hold cheaper than its rep-based peers, so the swap budget now declines the two shortest beginner holds, Wall Sit and Superman Hold: every in-band substitute would play over a minute longer across the slot (`ExerciseSwapTests.testEverySubstituteTheLibraryOffersStaysInsideTheSlotBudget`).
 - An injury flag that removes whole patterns (a lower-back flag drops pull and hinge) leaves a long session with too few stations to go wider at the round cap, which used to land several minutes short; the stretch now fills it, at the cost of long windows (about a minute of extra time per rep set for a lower-back user's 60-minute session, the most observed in `DifferentWorkoutTests`).
   The 90-second rail exists for that case.
 - With 15-second rests a session holds more work, so sessions fill wider and deeper within the existing 2-4 round cap: more stations, and more rounds at the shorter lengths.

@@ -11,8 +11,8 @@ import XCTest
 ///   asserted over every auto-advancing set of a **real assembled session** rather than a fixture, so a
 ///   second window value could not be introduced anywhere along the walk without failing here;
 /// - per-side and hold movements price identically runtime and planning, because there is one function:
-///   a per-side hold's planned seconds cover both sides, and the player's hold timer runs the prescribed
-///   seconds *per side* (two legs), so the two agree on the same set;
+///   a per-side hold's planned seconds are its two legs and the "Switch sides" beat between them, which
+///   is exactly what the player runs, so the two agree on the same set;
 /// - the number sits generously above the catalog's typical-case authored estimate, governed by the one
 ///   documented constant (`SessionAssembly.workPaceGenerosityFactor`);
 /// - it stays a pure function of the exercise and the prescribed target - no wall clock, no `asOf`;
@@ -132,9 +132,9 @@ final class GenerousRuntimePaceTests: XCTestCase {
     }
 
     /// Per-side and hold movements price the same way runtime and planning, because it is one function.
-    /// A per-side hold's *planned* seconds cover both sides (`sidesPerSet`), and what the player runs is
-    /// the prescribed seconds **per side**, once per leg - so a whole set of the same slot costs the plan
-    /// and the user the same holding time, with the authored setup as the only remainder.
+    /// A per-side hold's *planned* seconds are both sides (`sidesPerSet`) plus the "Switch sides" beat,
+    /// and what the player runs is the prescribed seconds **per side**, once per leg, with that beat
+    /// between - so a whole set of the same slot costs the plan and the user the same seconds.
     func testPerSideHoldPricesBothSidesInPlanningAndRunsPerSideInThePlayer() async throws {
         let library = try await library()
         let movement = try XCTUnwrap(library.first { $0.isHold && $0.isPerSide == true })
@@ -148,27 +148,77 @@ final class GenerousRuntimePaceTests: XCTestCase {
             blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [prescription])]
         )
 
-        // Planning: both sides are charged.
+        // Planning: both sides and the beat between them are charged, and nothing else.
         let planned = SessionAssembly.workSecondsPerSet(of: prescription)
         XCTAssertEqual(movement.sidesPerSet, 2)
-        XCTAssertGreaterThanOrEqual(
-            planned, movement.sidesPerSet * seconds,
-            "a per-side hold's planned set must cover the hold on both sides"
-        )
         XCTAssertEqual(
-            planned - movement.sidesPerSet * seconds,
-            movement.estimatedTimePerSetSeconds - movement.sidesPerSet * (movement.defaultDurationSeconds ?? 0),
-            "the only thing planning charges beyond the two legs is the movement's own authored setup"
+            planned, movement.sidesPerSet * seconds + SessionAssembly.switchSidesSeconds,
+            "a per-side hold's planned set is its two legs and the Switch sides beat"
         )
 
-        // Runtime: the timer runs the prescribed seconds per side, one leg each, and both legs together
-        // are the holding half of that same planned number.
-        let vm = ActiveSessionViewModel(workout: workout, now: { self.asOf })
+        // Runtime: the hold starts itself, runs the prescribed seconds per side, one leg each, with the
+        // beat between, and the set ends exactly when the plan said it would.
+        var clock = asOf
+        let vm = ActiveSessionViewModel(workout: workout, now: { clock })
         vm.start()
+        XCTAssertTrue(vm.isHolding, "the hold starts on its own")
         XCTAssertEqual(vm.holdSecondsPerSide, seconds, "each leg is the prescribed per-side hold, not the pair")
-        vm.startHold()
-        vm.completeHoldIfElapsed(asOf: asOf.addingTimeInterval(TimeInterval(seconds)))
+        clock = clock.addingTimeInterval(TimeInterval(seconds))
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isSwitchingSides)
+        clock = clock.addingTimeInterval(TimeInterval(vm.restRemaining(asOf: clock)))
+        vm.completeRestIfElapsed(asOf: clock)
         XCTAssertEqual(vm.holdSecondsPerSide, seconds, "side 2 runs the same prescribed seconds")
+        clock = clock.addingTimeInterval(TimeInterval(vm.holdRemaining(asOf: clock)))
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isComplete)
+        XCTAssertEqual(Int(clock.timeIntervalSince(asOf)), planned, "the set played exactly its planned seconds")
+    }
+
+    /// ADR-0010's "no tap after start" promise, measured: a whole session played hands-free - every
+    /// work window, hold leg, "Switch sides" beat and rest run to zero, not one tap - lasts exactly the
+    /// seconds the engine planned it at, so it ends within ±60s of the length the user chose. Every
+    /// length and fitness level, for a brand-new user. Since every hold now starts itself straight after
+    /// its get-ready beat, a hold the plan priced with setup seconds the player never runs would end the
+    /// session early (a 15-minute session played 71 seconds short).
+    func testAHandsFreeSessionPlaysExactlyItsPlannedSecondsAtEveryLength() async throws {
+        let library = try await library()
+        for minutes in lengths {
+            for level in FitnessLevel.allCases {
+                let workout = assemble(minutes: minutes, level: level, library: library)
+                var clock = asOf
+                let vm = ActiveSessionViewModel(workout: workout, now: { clock })
+                vm.start()
+
+                var guardRail = 0
+                while !vm.isComplete {
+                    guardRail += 1
+                    guard guardRail < 1_000 else { return XCTFail("\(level) \(minutes)-min never finished") }
+                    if vm.isHolding {
+                        clock = clock.addingTimeInterval(TimeInterval(vm.holdRemaining(asOf: clock)))
+                        vm.completeHoldIfElapsed(asOf: clock)
+                    } else if vm.isResting {
+                        clock = clock.addingTimeInterval(TimeInterval(vm.restRemaining(asOf: clock)))
+                        vm.completeRestIfElapsed(asOf: clock)
+                    } else if vm.isRunningWorkWindow {
+                        clock = clock.addingTimeInterval(TimeInterval(vm.workWindowRemaining(asOf: clock)))
+                        vm.completeWorkWindowIfElapsed(asOf: clock)
+                    } else {
+                        return XCTFail("\(level) \(minutes)-min stalled waiting for a tap")
+                    }
+                }
+
+                let played = Int(clock.timeIntervalSince(asOf))
+                XCTAssertEqual(
+                    played, SessionAssembly.plannedSeconds(of: workout),
+                    "\(level) \(minutes)-min: played seconds must be the planned seconds"
+                )
+                XCTAssertLessThanOrEqual(
+                    abs(played - minutes * 60), SessionAssembly.toleranceSeconds,
+                    "\(level) \(minutes)-min played \(played)s"
+                )
+            }
+        }
     }
 
     // MARK: - The calibration itself
@@ -178,7 +228,8 @@ final class GenerousRuntimePaceTests: XCTestCase {
     /// a lucky movement and fail elsewhere: every rep-based movement is priced at its authored estimate
     /// scaled by the factor - the sweep spans the whole catalog, so mobility stretches are included and a
     /// rep-based one is paced like any other - and every hold is left alone, because a hold's per-second
-    /// cost is definitional rather than estimated (prescribed seconds are elapsed seconds).
+    /// cost is definitional rather than estimated (prescribed seconds are elapsed seconds): it costs its
+    /// legs and the "Switch sides" beat between them, exactly what the player runs.
     func testGenerousPaceScalesEveryRepBasedMovementAndLeavesHoldsAlone() async throws {
         let library = try await library()
         let factor = SessionAssembly.workPaceGenerosityFactor
@@ -197,7 +248,8 @@ final class GenerousRuntimePaceTests: XCTestCase {
             )
             if movement.isHold {
                 XCTAssertEqual(
-                    atDefault, movement.estimatedTimePerSetSeconds,
+                    atDefault,
+                    movement.sidesPerSet * baseline + (movement.sidesPerSet - 1) * SessionAssembly.switchSidesSeconds,
                     "\(movement.id): a hold's seconds are definitional, so the pacing factor must not touch them"
                 )
                 holdMovements += 1

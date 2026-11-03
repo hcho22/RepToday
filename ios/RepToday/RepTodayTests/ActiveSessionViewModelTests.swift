@@ -798,7 +798,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isSwitchingSides, "a brief switch-sides beat gives time to change position")
         XCTAssertEqual(vm.completedSetCount, 0, "half the set is not a set")
 
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertTrue(vm.isHolding, "side 2 starts on its own - no tap")
         clock = clock.addingTimeInterval(20)
@@ -820,7 +820,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.start() // side 1 starts on its own (ADR-0010)
         clock = start.addingTimeInterval(20)
         vm.completeHoldIfElapsed(asOf: clock) // side 1 done; the switch-sides beat opens
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock) // side 2 auto-starts
         XCTAssertTrue(vm.isHolding)
         clock = clock.addingTimeInterval(5)
@@ -3201,7 +3201,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let afterLeg1 = spy.cues
         XCTAssertEqual(afterLeg1.filter { $0 == .done }.count, 1, "leg 1 fires exactly one done")
 
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock) // beat ends, side 2 auto-starts
         XCTAssertEqual(spy.cues, afterLeg1, "the switch-sides beat added no cue - not a done, not a transition")
         XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a bookend hold starts silently")
@@ -3325,12 +3325,12 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(spy.completions, 1, "side 1 leg cues once")
         XCTAssertFalse(vm.isHolding, "the leg is down while the beat runs")
         XCTAssertTrue(vm.isSwitchingSides, "a Switch sides beat bridges the two legs")
-        XCTAssertEqual(vm.restTotalSeconds, ActiveSessionViewModel.switchSidesSeconds, "and it is brief")
+        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.switchSidesSeconds, "and it is brief")
         XCTAssertEqual(vm.holdSide, 2, "owing side 2")
         XCTAssertEqual(vm.completedSetCount, 0, "half a set is not a set")
 
         // The beat ends: side 2 auto-starts hands-free, and the beat itself fired no cue.
-        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        clock = clock.addingTimeInterval(TimeInterval(SessionAssembly.switchSidesSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isSwitchingSides)
         XCTAssertTrue(vm.isHolding, "side 2 auto-starts with no tap")
@@ -3377,7 +3377,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done
         XCTAssertEqual(vm.holdSide, 2)
         XCTAssertTrue(vm.isSwitchingSides, "a switch-sides beat opens on a training hold too")
-        vm.completeRestIfElapsed(asOf: start.addingTimeInterval(20 + TimeInterval(ActiveSessionViewModel.switchSidesSeconds)))
+        vm.completeRestIfElapsed(asOf: start.addingTimeInterval(20 + TimeInterval(SessionAssembly.switchSidesSeconds)))
         XCTAssertTrue(vm.isHolding, "side 2 starts on its own")
     }
 

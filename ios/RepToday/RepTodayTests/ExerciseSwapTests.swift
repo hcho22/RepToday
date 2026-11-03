@@ -310,7 +310,12 @@ final class ExerciseSwapTests: XCTestCase {
         // hardest low-rep skills (authored at 3-5 reps) are served ten and their windows run far longer
         // than any in-band peer's - six of them decline at every growth level, while the grid's ceiling
         // keeps x2.0 from growing targets as far as it used to, so more of the catalog stays swappable there.
-        for (growth, expectedSwapped) in [(1.0, 67), (1.25, 67), (1.5, 67), (2.0, 62)] {
+        //
+        // A timed hold is priced at the seconds it plays, with no setup (ADR-0010), so at x1.0 and x1.25
+        // the two shortest beginner holds - `squat_wall_sit` (30s) and `pull_superman` (20s) - decline:
+        // every in-band peer is a rep set that would play well over a minute longer across the slot, past
+        // its tolerance. The old setup charge had hidden that drift rather than kept it in budget.
+        for (growth, expectedSwapped) in [(1.0, 65), (1.25, 65), (1.5, 67), (2.0, 62)] {
             var swapped = 0
             for movement in library {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
