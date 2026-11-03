@@ -451,8 +451,8 @@ struct ActiveSessionView: View {
 
     /// The exercise name and target, with the compact countdown ring beside them while a work window
     /// (US-CC01) or a hold (US-O03) counts down (ADR-0008). With no countdown running (an idle
-    /// Start-hold step, a rep-based stretch) there is no ring and the name keeps the full width. The
-    /// ring is its own VoiceOver element, after the name and target.
+    /// Start-hold step) there is no ring and the name keeps the full width. The ring is its own
+    /// VoiceOver element, after the name and target.
     private func exerciseHeadline(_ step: ActiveSessionViewModel.Step) -> some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
             exerciseTitle(step)
