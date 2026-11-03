@@ -21,7 +21,8 @@ final class ServiceContainerTests: XCTestCase {
             requestedMinutes: 10,
             user: user,
             recentLogs: [],
-            sessionPolicy: policy
+            sessionPolicy: policy,
+            variation: .none
         )
         _ = try await services.consistencyService.consistency(for: [], weeklyGoal: 3)
         _ = try await services.phaseService.phase(for: user, recentLogs: [])

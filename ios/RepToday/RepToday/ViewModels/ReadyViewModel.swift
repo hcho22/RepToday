@@ -71,8 +71,9 @@ final class ReadyViewModel {
 
     /// The **Different workout** request the shown session was built with: the moves earlier presses
     /// already showed at this length (`SessionVariation`). `.none` until the first press; a length change
-    /// starts over from `.none`. In memory only - nothing is logged or persisted until the user starts a
-    /// session, so a press never counts toward variety, progression or the Consistency Score.
+    /// or a session start (`sessionWillStart()`) starts over from `.none`. In memory only - nothing is
+    /// logged or persisted until the user starts a session, so a press never counts toward variety,
+    /// progression or the Consistency Score.
     private(set) var variation: SessionVariation = .none
 
     private let userService: any UserServiceProtocol
@@ -340,6 +341,15 @@ final class ReadyViewModel {
                 variation = previous
             }
         }
+    }
+
+    /// A session is starting from this screen, fresh or resumed, so the Different workout sequence ends
+    /// here. Its presses were ranked against the history the screen last read, and a session the user
+    /// plays changes that history, so the next generation is the default session for whatever history
+    /// the screen reads then - never the old presses re-applied to it. A press still in flight is
+    /// superseded and does not land.
+    func sessionWillStart() {
+        variation = .none
     }
 
     /// The store the active-session player persists to and resumes from (US-K04), handed to the

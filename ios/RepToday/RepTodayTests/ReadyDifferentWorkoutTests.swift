@@ -3,9 +3,10 @@ import XCTest
 
 /// The Ready Screen half of **Different workout**: `ReadyViewModel.showDifferentWorkout()` over the real
 /// engine and catalog. A press rebuilds today's session in place at the same length with other moves; a
-/// length change still works and starts the sequence over; a paused session waiting to be resumed is left
-/// alone; and nothing is logged, scored or reported for a workout that is never started. The engine rules
-/// every press obeys are pinned in `DifferentWorkoutTests`.
+/// length change still works and starts the sequence over; starting a session ends it, so the next load is
+/// the default session for the new history; a paused session waiting to be resumed is left alone; and
+/// nothing is logged, scored or reported for a workout that is never started. The engine rules every press
+/// obeys are pinned in `DifferentWorkoutTests`.
 @MainActor
 final class ReadyDifferentWorkoutTests: XCTestCase {
 
@@ -25,9 +26,13 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
         let analytics: MockAnalyticsService
     }
 
-    private func harness(user: User? = nil, store: InMemoryActiveSessionStore = InMemoryActiveSessionStore()) throws -> Harness {
+    private func harness(
+        user: User? = nil,
+        logs: [WorkoutLog] = [],
+        store: InMemoryActiveSessionStore = InMemoryActiveSessionStore()
+    ) throws -> Harness {
         let exerciseService = try MockExerciseService()
-        let logService = MockWorkoutLogService(logs: [])
+        let logService = MockWorkoutLogService(logs: logs)
         let analytics = MockAnalyticsService()
         let viewModel = ReadyViewModel(
             userService: MockUserService(user: user ?? self.user()),
@@ -43,6 +48,29 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
 
     private func moves(_ workout: Workout?) -> Set<String> {
         workout.map(SessionVariation.exerciseIds(in:)) ?? []
+    }
+
+    /// The log of `workout` played through at its prescription, completed at the test clock.
+    private func completedLog(of workout: Workout) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(), workoutId: workout.id, completedAt: fixedDate,
+            requestedMinutes: workout.requestedMinutes, durationMinutes: workout.requestedMinutes,
+            wasReturn: false, shape: workout.shape, focusPillar: workout.focusPillar,
+            perceivedDifficulty: .justRight,
+            exercises: workout.blocks.flatMap(\.exercises).map { prescription in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: prescription.exercise.id,
+                    pillar: prescription.exercise.pillar,
+                    movementPattern: prescription.exercise.movementPattern,
+                    completedSets: Array(
+                        repeating: CompletedSet(reps: prescription.reps, durationSeconds: prescription.durationSeconds),
+                        count: prescription.sets
+                    ),
+                    skipped: false
+                )
+            }
+        )
     }
 
     private func content(_ workout: Workout?) -> [String] {
@@ -131,6 +159,27 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
         await h.viewModel.load()
 
         XCTAssertEqual(content(h.viewModel.workout), chosen, "returning to the tab does not undo the press")
+    }
+
+    func testStartingAPressedWorkoutEndsTheSequenceSoTheNextLoadIsTheDefaultForTheNewHistory() async throws {
+        let h = try harness()
+        await h.viewModel.load()
+        await h.viewModel.showDifferentWorkout()
+        let started = try XCTUnwrap(h.viewModel.workout)
+
+        h.viewModel.sessionWillStart()
+        let log = completedLog(of: started)
+        try await h.logService.save(log)
+        await h.viewModel.handlePlayerDismiss(completed: true)
+        await h.viewModel.load()
+
+        XCTAssertEqual(h.viewModel.variation, .none, "starting a session ends the Different workout sequence")
+        let fresh = try harness(logs: [log])
+        await fresh.viewModel.load()
+        XCTAssertEqual(
+            content(h.viewModel.workout), content(fresh.viewModel.workout),
+            "the next Ready Screen shows the default session for the history that now includes the played workout"
+        )
     }
 
     func testAPressLeavesAPausedSessionExactlyAsItIs() async throws {

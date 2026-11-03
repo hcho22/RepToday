@@ -49,6 +49,7 @@ The Ready Screen's button that rebuilds today's session at the same length with 
 Each press ranks the moves the earlier presses of the same sequence already showed behind their alternatives; it never filters, so movement access, injury flags, earned tiers and the timing fit still decide every pick.
 When nothing new is left the default session comes back and the presses start over, so the same history and the same number of presses always give the same workout.
 A length change starts over, a paused session waiting to be resumed is untouched, and nothing is logged until the session is started, so a press never counts toward variety, progression or the Consistency Score.
+Starting a session, fresh or resumed, ends the sequence, so the next Ready Screen shows the default session for the history that session leaves.
 It is unrelated to the in-session **Swap**, which replaces one move while a session runs.
 The owning code is `Models/SessionVariation.swift`, `SessionAssembly.assemble(variation:)` and `ReadyViewModel.showDifferentWorkout()`.
 

@@ -62,24 +62,6 @@ protocol WorkoutEngineProtocol {
     ) async throws -> SwapOutcome
 }
 
-extension WorkoutEngineProtocol {
-    /// The default session, with no **Different workout** press.
-    func generateWorkout(
-        requestedMinutes: Int,
-        user: User,
-        recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
-    ) async throws -> Workout {
-        try await generateWorkout(
-            requestedMinutes: requestedMinutes,
-            user: user,
-            recentLogs: recentLogs,
-            sessionPolicy: sessionPolicy,
-            variation: .none
-        )
-    }
-}
-
 /// Reads, re-programs, and detects triggers for the per-user Session Policy - the single seam
 /// between the AI Programmer (Epic F) and the engine (Epic E).
 ///

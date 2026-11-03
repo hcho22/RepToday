@@ -136,7 +136,10 @@ struct ReadyView: View {
                     if let state = viewModel.resumableSession {
                         ResumeSessionCard(
                             state: state,
-                            onResume: { presentedPlayer = .resume(state) },
+                            onResume: {
+                                viewModel.sessionWillStart()
+                                presentedPlayer = .resume(state)
+                            },
                             onDiscard: { Task { await viewModel.discardResumableSession() } }
                         )
                     }
@@ -235,6 +238,7 @@ struct ReadyView: View {
             // that paused session is being given up - emit its abandonment before the fresh player's
             // first persist replaces it (US-T10). A no-op when nothing is resumable.
             Task { await viewModel.abandonResumableSessionForOverwrite() }
+            viewModel.sessionWillStart()
             presentedPlayer = .fresh(workout)
         }) {
             Text("Start")

@@ -1764,6 +1764,7 @@ What landed:
   The engine stays deterministic and `asOf`-pure: the same inputs and press count give the same workout.
 - **Ready Screen state.** `ReadyViewModel.showDifferentWorkout()` holds the variation in memory, re-reads the profile like a chip tap so injury flags are current, and ignores a slower result a newer press or chip tap has overtaken.
   A length change starts the sequence over; a re-appear keeps the chosen workout; a paused session waiting to be resumed is never touched.
+  Starting a session, fresh or resumed, ends the sequence (`sessionWillStart()`), so the next load builds the default session for the history that session leaves rather than re-applying old presses to it.
   Nothing is logged, persisted or reported until the user starts a session, so a press never counts toward variety, progression or the Consistency Score.
 - **Tests.** The "Different workout" row in [`docs/test-coverage.md`](test-coverage.md).
 
