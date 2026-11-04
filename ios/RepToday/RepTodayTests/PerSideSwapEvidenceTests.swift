@@ -8,7 +8,7 @@ import SwiftUI
 /// form of that same target agreeing with its own counts on every slot of a real session.
 ///
 /// Everything here runs the real pipeline over the real bundled `Exercises.json` - `SessionAssembly`
-/// generates the session, `ExerciseSwap` (through `MockWorkoutEngine`, the same seam the app wires) does
+/// generates the session, `ExerciseSwap` (through `OnDeviceWorkoutEngine`, the same seam the app wires) does
 /// the substitution, and `ActiveSessionViewModel` / `ActiveSessionView` / `ReadyView` are the production
 /// surfaces - so the strings and the arithmetic asserted here are the ones a user actually gets. The
 /// printed transcripts and rendered PNGs are the reviewable artifact; the assertions are what make them
@@ -260,7 +260,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// ±1 minute it promised.
     func testPlayerSwapAtAPerSideSlotKeepsCopyAndBudget() async throws {
         let workout = try generate()
-        let viewModel = player(workout, engine: MockWorkoutEngine(exerciseService: try MockExerciseService()))
+        let viewModel = player(workout, engine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()))
         viewModel.start()
 
         // Walk forward the way the user does - completing each set - until a per-side slot is on screen.
@@ -318,7 +318,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// at the kept count is declined outright. One printed line per slot is the reviewable sweep.
     func testSwappingEverySlotKeepsBudgetAndRespectsTheSetLever() async throws {
         let workout = try generate()
-        let engine = MockWorkoutEngine(exerciseService: try MockExerciseService())
+        let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
         let slotCount = workout.blocks.reduce(0) { $0 + $1.exercises.count }
         // The assembled session's planned wall-clock, before any swap. Under the even-round model a swap
         // keeps the slot's round count, so the only budget lever it has is the substitute's own per-set
@@ -461,7 +461,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     private func playerView(_ state: ActiveSessionState) throws -> some View {
         ActiveSessionView(
             resuming: state,
-            workoutEngine: MockWorkoutEngine(exerciseService: try MockExerciseService()),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()),
             user: steadyUser(),
             recentLogs: history()
         )
@@ -587,7 +587,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// no-double-count regression test, so a reviewer can see the round was not thrown back to 1.
     func testRenderMidCircuitSwapKeepsTheRound() async throws {
         let workout = try generate()
-        let viewModel = player(workout, engine: MockWorkoutEngine(exerciseService: try MockExerciseService()))
+        let viewModel = player(workout, engine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()))
         viewModel.start()
 
         // Rotate the real player until a circuit station is on screen in Round 2 (rotation, not grinding).
@@ -623,7 +623,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// place, its own per-side label, the slot's set count, set counter back to 1), not a hand-built one.
     func testRenderPlayerBeforeAndAfterSwappingAPerSideSlot() async throws {
         let workout = try generate()
-        let viewModel = player(workout, engine: MockWorkoutEngine(exerciseService: try MockExerciseService()))
+        let viewModel = player(workout, engine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()))
         viewModel.start()
         var guardRail = 0
         while let step = viewModel.currentStep, guardRail < 200,
@@ -676,7 +676,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             // Pin the assembler's clock so the hosted Ready Screen generates the same lineup as
             // `generate()` (fixed `asOf`), rather than drifting with the wall clock and diverging by
             // a staleness tier as real time moves away from the fixture date.
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService, now: { self.asOf }),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService, now: { self.asOf }),
             sessionPolicyService: DeterministicSessionPolicyService(
                 store: policyStore, exerciseService: exerciseService, userService: userService
             ),

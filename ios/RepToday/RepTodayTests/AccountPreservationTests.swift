@@ -40,7 +40,7 @@ final class AccountPreservationTests: XCTestCase {
                 policy.version = 7
                 policy.progressionRate = 0.8
                 try await policies.save(policy, for: user.id)
-                let engine = MockWorkoutEngine(exerciseService: try MockExerciseService(), now: { user.createdAt })
+                let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService(), now: { user.createdAt })
                 let workout = try await engine.generateWorkout(
                     requestedMinutes: 15, user: user, recentLogs: MockPersistence.sampleLogs, sessionPolicy: policy,
                     variation: .none

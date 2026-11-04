@@ -82,7 +82,7 @@ final class StapleMovementsEvidenceTests: XCTestCase {
         let authService = MockAuthService()
         return ServiceContainer(
             exerciseService: exerciseService,
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService, now: { self.asOf }),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService, now: { self.asOf }),
             sessionPolicyService: DeterministicSessionPolicyService(
                 store: policyStore, exerciseService: exerciseService, userService: userService
             ),

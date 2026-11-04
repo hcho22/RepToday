@@ -58,7 +58,7 @@ final class ReadyViewModelTests: XCTestCase {
         let vm = ReadyViewModel(
             userService: MockUserService(user: user),
             sessionPolicyService: StubPolicyService(policy: policy),
-            workoutEngine: MockWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }),
             workoutLogService: MockWorkoutLogService(logs: [
                 squatLog(daysAgo: 80, wasReturn: true),
                 squatLog(daysAgo: 2, wasReturn: false),
@@ -476,7 +476,7 @@ final class ReadyViewModelTests: XCTestCase {
     /// screen shows a ~N-minute session, matching the US-I01 validation.
     func testEndToEndGeneratesRequestedLengthSession() async throws {
         let exercises = try MockExerciseService()
-        let engine = MockWorkoutEngine(exerciseService: exercises)
+        let engine = OnDeviceWorkoutEngine(exerciseService: exercises)
         let users = MockUserService(user: onboardedUser(defaultMinutes: 15))
         let vm = ReadyViewModel(
             userService: users,
@@ -631,7 +631,7 @@ final class ReadyViewModelTests: XCTestCase {
     /// the US-J01 validation.
     func testEndToEndChipRegeneratesToRequestedLength() async throws {
         let exercises = try MockExerciseService()
-        let engine = MockWorkoutEngine(exerciseService: exercises)
+        let engine = OnDeviceWorkoutEngine(exerciseService: exercises)
         let vm = ReadyViewModel(
             userService: MockUserService(user: onboardedUser(defaultMinutes: 15)),
             sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),

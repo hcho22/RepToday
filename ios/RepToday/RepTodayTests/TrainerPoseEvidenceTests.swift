@@ -298,7 +298,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         host(
             ActiveSessionView(
                 workout: session,
-                workoutEngine: MockWorkoutEngine(exerciseService: try MockExerciseService()),
+                workoutEngine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()),
                 user: user(sex: .female)
             ),
             variants[0]

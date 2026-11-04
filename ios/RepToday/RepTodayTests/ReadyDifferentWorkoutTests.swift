@@ -37,7 +37,7 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
         let viewModel = ReadyViewModel(
             userService: MockUserService(user: user ?? self.user()),
             sessionPolicyService: MockSessionPolicyService(),
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService, now: { self.fixedDate }),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService, now: { self.fixedDate }),
             workoutLogService: logService,
             activeSessionStore: store,
             analytics: analytics,
@@ -223,7 +223,7 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
     }
 
     func testAFailedPressKeepsTheShownSessionAndItsRequest() async throws {
-        let engine = FailingAfterFirstEngine(inner: MockWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }))
+        let engine = FailingAfterFirstEngine(inner: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }))
         let viewModel = ReadyViewModel(
             userService: MockUserService(user: user()),
             sessionPolicyService: MockSessionPolicyService(),

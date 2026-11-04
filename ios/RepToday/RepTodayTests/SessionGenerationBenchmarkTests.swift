@@ -7,8 +7,8 @@ import XCTest
 ///
 /// **What it measures.** The exact call the marketing/telemetry number straddles:
 /// `WorkoutEngineProtocol.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:variation:)` on the
-/// production conformer `MockWorkoutEngine` (misleadingly named; it is the real deterministic engine
-/// wired in both `ServiceContainer.live()` and `.mock()`), which runs the full Steps 1-7 pipeline
+/// production conformer `OnDeviceWorkoutEngine` (the real deterministic engine wired in both
+/// `ServiceContainer.live()` and `.mock()`), which runs the full Steps 1-7 pipeline
 /// through `SessionAssembly.assemble`. This is the same await `ReadyViewModel.generate()` times to
 /// emit `generation_ms` on `ready_screen_shown` (US-T09), so the harness benchmarks the claim's own
 /// unit rather than a proxy for it.
@@ -24,7 +24,7 @@ import XCTest
 /// - `warm`: one engine constructed once and warmed with a throwaway generation, then N timed
 ///   generations per duration. Models repeated one-tap duration-chip regeneration inside a live
 ///   session (`ReadyViewModel.selectDuration`).
-/// - `cold`: a freshly constructed `MockWorkoutEngine` per sample over a shared, already-decoded
+/// - `cold`: a freshly constructed `OnDeviceWorkoutEngine` per sample over a shared, already-decoded
 ///   library, timing that engine's first generation. Models the first Ready Screen generation after
 ///   a fresh launch, where the exercise library is already loaded at app launch (as in production)
 ///   but the engine instance has done no prior work. Caveat recorded in the doc: after the process
@@ -147,10 +147,10 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
 
     /// A fresh production engine over the shared, already-validated library, with the clock pinned so
     /// two runs assemble the same session and only speed varies.
-    private func makeEngine(library: [Exercise]) -> MockWorkoutEngine {
+    private func makeEngine(library: [Exercise]) -> OnDeviceWorkoutEngine {
         let exerciseService = try! MockExerciseService(library: library)
         let fixedNow = asOf
-        return MockWorkoutEngine(exerciseService: exerciseService, now: { fixedNow })
+        return OnDeviceWorkoutEngine(exerciseService: exerciseService, now: { fixedNow })
     }
 
     // MARK: - Timing
@@ -158,7 +158,7 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
     /// Monotonic wall-time of one `generateWorkout`, in milliseconds. Uses `DispatchTime.uptime`
     /// (the same clock the existing `testGenerationLatencyUnder100ms` uses), which does not drift with
     /// the calendar or pause across suspensions.
-    private func timeGenerationMs(_ engine: MockWorkoutEngine, minutes: Int, user: User, logs: [WorkoutLog]) async -> Double {
+    private func timeGenerationMs(_ engine: OnDeviceWorkoutEngine, minutes: Int, user: User, logs: [WorkoutLog]) async -> Double {
         let start = DispatchTime.now()
         _ = try! await engine.generateWorkout(
             requestedMinutes: minutes,
@@ -280,7 +280,7 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
         let mem = Double(info.physicalMemory) / 1_073_741_824
         var out = "\nBENCH_BEGIN\n"
         out += "## Session-generation latency benchmark (proxy run)\n\n"
-        out += "- Measured call: `MockWorkoutEngine.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:variation:)` -> `SessionAssembly.assemble` (Steps 1-7)\n"
+        out += "- Measured call: `OnDeviceWorkoutEngine.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:variation:)` -> `SessionAssembly.assemble` (Steps 1-7)\n"
         out += "- OS/runtime: \(info.operatingSystemVersionString)\n"
         out += "- Host physical memory: \(String(format: "%.1f", mem)) GiB\n"
         out += "- Warm iterations/duration: \(warmIterations); cold iterations/duration: \(coldIterations)\n"
