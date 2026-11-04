@@ -1796,4 +1796,5 @@ The claim "Airplane mode on. The session still builds." had no record behind it,
 - **The audit.** Every network touch from launch to a rendered Ready Screen (telemetry, the Variety Language upgrade, the Coach, CloudKit, StoreKit, HealthKit, Sign in with Apple) was traced; none is awaited by session building, so no production behavior changed.
   The table, with file and line for each, is in `artifacts/reports/offline-session/validation.md`.
 - **The guard.** `OfflineSessionGenerationTests` drives the production container through the app-open reconciliation and the Ready load with every telemetry send failing as airplane mode does, one request held open forever, the Variety Language provider failing offline, and a tripwire on `URLSession.shared`.
-- **Owed.** The real-iPhone airplane-mode check (cold open, and a fresh install through onboarding) is recorded by hand in the same report.
+- **The device check.** The real-iPhone airplane-mode cold open of an existing install passed (row 1 of the same report's device checklist).
+  A fresh install through onboarding was not run on a device: the captain accepted `OfflineSessionGenerationTests.testFreshInstallOfflineOnboardsAndBuildsACompleteSession` as the evidence for that path, because a device fresh install would erase the on-device history.
