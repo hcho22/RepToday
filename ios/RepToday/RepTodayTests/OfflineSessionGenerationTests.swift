@@ -91,12 +91,16 @@ final class OfflineSessionGenerationTests: XCTestCase {
         )
         try await onboard(through: services, minutes: 10)
         try await waitForRequests(on: OfflineHangingURLProtocol.log)
-        XCTAssertEqual(OfflineHangingURLProtocol.log.answered, 0, "the onboarding telemetry send is still in flight")
+        XCTAssertEqual(OfflineHangingURLProtocol.log.ended, 0, "the onboarding telemetry send is still in flight")
 
+        let clock = ContinuousClock()
+        let start = clock.now
         let viewModel = await coldOpenReadyScreen(services)
+        let elapsed = start.duration(to: clock.now)
 
         try assertReadyWithCompleteSession(viewModel, requestedMinutes: 10)
-        XCTAssertEqual(OfflineHangingURLProtocol.log.answered, 0, "the session became ready without the network answering")
+        XCTAssertEqual(OfflineHangingURLProtocol.log.ended, 0, "the session became ready without the network request ending")
+        XCTAssertLessThan(elapsed, .seconds(2), "the cold open finished well inside the request timeout, so it waited on no request")
     }
 
     /// The Variety Language upgrade falls back offline even if a provider were wired: the real proxy
@@ -301,15 +305,15 @@ final class OfflineSessionGenerationTests: XCTestCase {
 final class OfflineRequestLog: @unchecked Sendable {
     private let lock = NSLock()
     private var seen: [URL] = []
-    private var answeredCount = 0
+    private var endedCount = 0
 
     var urls: [URL] { lock.withLock { seen } }
     var count: Int { lock.withLock { seen.count } }
-    var answered: Int { lock.withLock { answeredCount } }
+    var ended: Int { lock.withLock { endedCount } }
 
     func record(_ url: URL?) { lock.withLock { seen.append(url ?? URL(fileURLWithPath: "/")) } }
-    func recordAnswer() { lock.withLock { answeredCount += 1 } }
-    func reset() { lock.withLock { seen = []; answeredCount = 0 } }
+    func recordEnd() { lock.withLock { endedCount += 1 } }
+    func reset() { lock.withLock { seen = []; endedCount = 0 } }
 }
 
 /// Answers every request the way airplane mode does: `URLError(.notConnectedToInternet)`.
@@ -321,11 +325,12 @@ final class OfflineFailingURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.log.record(request.url)
-        Self.log.recordAnswer()
         client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        Self.log.recordEnd()
+    }
 }
 
 /// Accepts every request and never answers it; only the session's request timeout ends it.
@@ -339,7 +344,9 @@ final class OfflineHangingURLProtocol: URLProtocol {
         Self.log.record(request.url)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        Self.log.recordEnd()
+    }
 }
 
 /// Registered globally so any request on `URLSession.shared` is recorded and fails offline.
