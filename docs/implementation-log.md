@@ -1786,3 +1786,15 @@ On the captain's 2026-11-02 answers, a session now runs for the length the user 
 - **Catalog.** Every rep advancement criterion at or below 10 per set is raised to 15 in `Exercises.json` (21 criteria, set counts and per-side wording kept; the captain's option C), so a newly reached move needs at least four sessions to clear; no Foundation entry rung changed.
 - **Injured users' long sessions.** An injury flag that removes whole patterns used to leave the 45- and 60-minute sessions several minutes short (noted under "Different workout" above); the stretch fills them, which is why its rail (`maxStretchSecondsPerSet`) is 90 seconds rather than 60 - a lower-back user's 60-minute session stretches each rep set by about a minute, far past any unflagged session's stretch.
 - **Not done here (follow-ups).** No on-screen cue marks the spare seconds at the end of a stretched set; the progression map still names the highest rung reached when the user has stepped down; how stretched sets and ten-rep floors on the hardest moves feel on a phone is the captain's check by hand.
+
+## Offline session building, and the engine's real name (2026-11-04)
+
+The claim "Airplane mode on. The session still builds." had no record behind it, and the only `WorkoutEngineProtocol` conformer was still called `MockWorkoutEngine` in `Services/Mock/`.
+
+- **The engine.** Renamed `OnDeviceWorkoutEngine` and moved to `Services/Engine/OnDeviceWorkoutEngine.swift`, unchanged; both containers and every test now name it.
+  The entries above that say `MockWorkoutEngine` describe the same class under its old name.
+- **The audit.** Every network touch from launch to a rendered Ready Screen (telemetry, the Variety Language upgrade, the Coach, CloudKit, StoreKit, HealthKit, Sign in with Apple) was traced; none is awaited by session building, so no production behavior changed.
+  The table, with file and line for each, is in `artifacts/reports/offline-session/validation.md`.
+- **The guard.** `OfflineSessionGenerationTests` drives the production container through the app-open reconciliation and the Ready load with every telemetry send failing as airplane mode does, one request held open forever, the Variety Language provider failing offline, and a tripwire on `URLSession.shared`.
+- **The device check.** The real-iPhone airplane-mode cold open of an existing install passed (row 1 of the same report's device checklist).
+  A fresh install through onboarding was not run on a device: the captain accepted `OfflineSessionGenerationTests.testFreshInstallOfflineOnboardsAndBuildsACompleteSession` as the evidence for that path, because a device fresh install would erase the on-device history.

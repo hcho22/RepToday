@@ -120,7 +120,7 @@ struct ServiceContainer {
         let authService = MockAuthService()
         return ServiceContainer(
             exerciseService: exerciseService,
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
             // The real on-device deterministic Programmer (US-F03), backed by the shared in-memory
             // policy store so the mock container stays deterministic and disk-free. It returns
             // `SessionPolicy.default` until it has written a policy, so pre-programming behavior
@@ -327,7 +327,7 @@ struct ServiceContainer {
         )
         return ServiceContainer(
             exerciseService: exerciseService,
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
             sessionPolicyService: DeterministicSessionPolicyService(
                 store: policyStore,
                 exerciseService: exerciseService,

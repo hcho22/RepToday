@@ -1652,7 +1652,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
             id: UUID(), createdAt: start, shape: .singleFocus, focusPillar: .strength,
             requestedMinutes: 15, wasReturn: false, blocks: [block]
         )
-        let engine = MockWorkoutEngine(exerciseService: exerciseService)
+        let engine = OnDeviceWorkoutEngine(exerciseService: exerciseService)
         let vm = ActiveSessionViewModel(workout: workout, swapEngine: engine, user: makeUser(), recentLogs: [], now: { self.start })
 
         await vm.swapCurrentExercise()

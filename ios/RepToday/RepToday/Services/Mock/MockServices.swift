@@ -6,73 +6,8 @@ import Foundation
 /// mocks with real services by changing the corresponding line in `ServiceContainer`.
 ///
 /// The exercise service is the exception: the real bundled-library loader already lives in
-/// `MockExerciseService` (US-B02, `Services/Mock/MockExerciseService.swift`).
-
-// MARK: - Workout engine
-
-final class MockWorkoutEngine: WorkoutEngineProtocol {
-    /// The validated catalog is the engine's exercise source; pulling it from the exercise service
-    /// keeps a single, integrity-checked source of truth rather than re-loading the library here.
-    private let exerciseService: any ExerciseServiceProtocol
-    /// The clock the assembler reads for pillar/pattern staleness. Defaults to the wall clock so
-    /// production is unchanged, but is injectable so a test can pin it - the codebase rule is that
-    /// engine logic never reads the wall clock inline, and a fixed clock keeps a hosted generation
-    /// reproducible instead of drifting with the calendar (`PerSideSwapEvidenceTests`).
-    private let now: () -> Date
-
-    init(exerciseService: any ExerciseServiceProtocol, now: @escaping () -> Date = { Date() }) {
-        self.exerciseService = exerciseService
-        self.now = now
-    }
-
-    func generateWorkout(
-        requestedMinutes: Int,
-        user: User,
-        recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy,
-        variation: SessionVariation
-    ) async throws -> Workout {
-        // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
-        // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`. Routing the mock
-        // through the canonical assembler keeps it in lockstep with the real engine.
-        //
-        // `sessionPolicy` is threaded through the assembler (US-E03): its `pillarWeighting`,
-        // `varietyWindow`, and `progressionRate` levers reach Steps 2/5/6. With `SessionPolicy.default`
-        // (every lever neutral) that is a no-op, so output is identical to pre-policy behavior.
-        let library = try await exerciseService.exercises()
-        return SessionAssembly.assemble(
-            requestedMinutes: requestedMinutes,
-            user: user,
-            library: library,
-            recentLogs: recentLogs,
-            sessionPolicy: sessionPolicy,
-            variation: variation,
-            asOf: now()
-        )
-    }
-
-    func swapExercise(
-        _ prescription: PrescribedExercise,
-        in workout: Workout,
-        user: User,
-        recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
-    ) async throws -> SwapOutcome {
-        // The deterministic swap (US-C08) runs through `ExerciseSwap`, drawing substitutes from the
-        // same validated library the assembler uses so the swap stays in lockstep with the engine.
-        // `sessionPolicy` is the same program the session was generated against, so a substitute is
-        // sized by the same Step 6 levers - including the cold-start Start Seed (US-O02).
-        let library = try await exerciseService.exercises()
-        return ExerciseSwap.swap(
-            prescription,
-            in: workout,
-            user: user,
-            library: library,
-            recentLogs: recentLogs,
-            sessionPolicy: sessionPolicy
-        )
-    }
-}
+/// `MockExerciseService` (US-B02, `Services/Mock/MockExerciseService.swift`). The workout engine
+/// that used to sit here was always the real one and now lives in `Services/Engine/OnDeviceWorkoutEngine.swift`.
 
 // MARK: - Session policy
 

@@ -826,7 +826,7 @@ final class StapleMovementsTests: XCTestCase {
         ReadyViewModel(
             userService: MockUserService(user: user),
             sessionPolicyService: MockSessionPolicyService(),
-            workoutEngine: MockWorkoutEngine(exerciseService: try! MockExerciseService()),
+            workoutEngine: OnDeviceWorkoutEngine(exerciseService: try! MockExerciseService()),
             workoutLogService: MockWorkoutLogService(logs: [])
         )
     }
