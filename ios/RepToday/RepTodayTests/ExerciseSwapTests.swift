@@ -302,7 +302,7 @@ final class ExerciseSwapTests: XCTestCase {
         // the loop tolerates `.noAlternative`, but exactly *how many* decline has to hold at every growth
         // level, not just at the defaults where the budget check is a no-op. Before the set-count lever,
         // x1.5 dropped to 18/42 of the strength/primal catalog and x2.0 to 3/42. The x1.5/x2.0 counts sit
-        // below the offered catalog (73 since ADR-0007 withdrew the three version-2 crawls) because the hard phase-gated skills (US-SP02's one-arm push-up /
+        // below the offered catalog (72 since ADR-0007 withdrew the three version-2 crawls and Prone Y-T-W Raises followed them) because the hard phase-gated skills (US-SP02's one-arm push-up /
         // pistol / L-sit bridges and US-SP03's Nordic-curl hinge ladder) have no in-band peer once
         // grown that far - the honest answer is to decline, and the count records it.
         //
@@ -315,7 +315,7 @@ final class ExerciseSwapTests: XCTestCase {
         // the two shortest beginner holds - `squat_wall_sit` (30s) and `pull_superman` (20s) - decline:
         // every in-band peer is a rep set that would play well over a minute longer across the slot, past
         // its tolerance. The old setup charge had hidden that drift rather than kept it in budget.
-        for (growth, expectedSwapped) in [(1.0, 65), (1.25, 65), (1.5, 67), (2.0, 62)] {
+        for (growth, expectedSwapped) in [(1.0, 64), (1.25, 64), (1.5, 66), (2.0, 61)] {
             var swapped = 0
             for movement in library {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10

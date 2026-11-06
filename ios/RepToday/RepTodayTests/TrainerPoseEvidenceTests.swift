@@ -332,7 +332,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
-    /// Prone Y-T-W Raises has no usable art: today's glyph with today's label.
+    /// Prone Y-T-W Raises has no usable art: today's glyph with today's label. It is withdrawn until
+    /// version 2, but a paused session written before that still carries it and resumes with it.
     func testNoArtMovementKeepsTheGlyphFallback() throws {
         let session = workout([("Strength", .strength, [try prescription("pull_ytw", sets: 2)])])
         for variant in variants {

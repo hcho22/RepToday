@@ -105,7 +105,7 @@ Each foundation's counting ladder:
 
 - **Push** - either push chain (horizontal or vertical).
 - **Pull** - the **horizontal chain only** (Wall Scapular Pull, Supine Floor Row, Single-Arm Supine Floor Row).
-  The postural chain (Superman Hold, Reverse Snow Angel, Prone Y-T-W Raises) stays in sessions as accessory and prehab work but never counts toward clearing Pull.
+  The postural chain (Superman Hold, Reverse Snow Angel) stays in sessions as accessory and prehab work but never counts toward clearing Pull.
 - **Legs** - Squat side: either squat-family chain (squat or lunge).
   Hinge side: either hinge-family chain (bridge or hip).
 - **Core** - any core chain.

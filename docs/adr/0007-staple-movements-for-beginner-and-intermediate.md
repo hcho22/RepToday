@@ -29,6 +29,8 @@ The captain wants beginner and intermediate sessions built from the movements pe
 3. **Version 2 removals.**
    Gorilla Walk, Lizard Crawl and Underswitch are withdrawn for every user in every phase until version 2.
    They stay in `Exercises.json` marked `version2` so they are recoverable, and the exercise service never serves them, so no session, swap, progression map, Coach context or analytics surface can name one.
+   Prone Y-T-W Raises followed them on 2026-11-06 (captain request), because its source Trainer art splits it into separate Y, T and W movements that do not match one catalog movement.
+   A withdrawn movement must sit in a chain withdrawn whole, so it left the top of the postural chain for its own one-rung `pull_ytw` chain and Reverse Snow Angel became the postural chain's top rung; history on Y-T-W alone no longer places a user on the postural chain, so such a user re-enters it at its entry rung.
    The dedicated primal block now has one chain; a beginner's primal block is Bear Crawl alone and the timing fit lets strength absorb the leftover time.
    The 30-minute blend lost its primal accessory in the reserve, so the fit's worst landing there is 24 seconds off target, still inside the +/-60 second tolerance.
 4. **Sumo Squat and Dead Bug move later.**
@@ -54,7 +56,7 @@ The captain wants beginner and intermediate sessions built from the movements pe
 
 ## Consequences
 
-- Beginner and intermediate pools shrink sharply: a beginner sees 16 training movements and 16 stretches, an intermediate user 25 and 16, and an advanced user 39 and 26 (47 training movements once Strength is earned).
+- Beginner and intermediate pools shrink sharply: a beginner sees 16 training movements and 16 stretches, an intermediate user 25 and 16, and an advanced user 38 and 26 (46 training movements once Strength is earned, since Prone Y-T-W Raises was withdrawn).
 - Every foundation stays clearable from staples by a beginner: Push (Wall Push-Up), Pull (Wall Scapular Pull), Legs squat side (Wall Sit or Reverse Lunge), Legs hinge side (Glute Bridge or Bodyweight Good Morning), Core (Forearm Plank or Bird Dog).
 - Every strength pattern keeps at least two staple stretches complementing it, so the bookends' lead-complement preference still works.
 - The fitness-level difficulty band no longer gates the pool: staples sit inside it by construction, advanced users saw the whole band, and the Strength Phase lifted it, so it would never withhold anything `MovementAccess` allows.

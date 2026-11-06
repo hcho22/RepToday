@@ -141,11 +141,13 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
-    /// Every strength and primal movement sits in a real chain (one with room to regress or
-    /// progress) - never a lone movement with no path up or down.
+    /// Every offered strength and primal movement sits in a real chain (one with room to regress or
+    /// progress) - never a lone movement with no path up or down. A movement withdrawn until version 2
+    /// is exempt: it is never served, and Prone Y-T-W Raises sits alone on its own withdrawn chain
+    /// because a withdrawn movement may not link into a live one (ADR-0007).
     func testStrengthAndPrimalMovementsHaveChainRoom() {
         let chainSizes = Dictionary(grouping: exercises, by: \.progressionChainId).mapValues(\.count)
-        for ex in exercises where ex.pillar == .strength || ex.pillar == .primal {
+        for ex in exercises where (ex.pillar == .strength || ex.pillar == .primal) && !MovementAccess.isWithdrawn(ex) {
             XCTAssertGreaterThanOrEqual(chainSizes[ex.progressionChainId] ?? 0, 2,
                                         "\(ex.id) should belong to a multi-step progression chain")
             XCTAssertTrue(ex.regressionId != nil || ex.progressionId != nil,

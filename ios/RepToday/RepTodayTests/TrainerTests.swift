@@ -218,8 +218,8 @@ final class TrainerTests: XCTestCase {
     // MARK: - US-TP02: bundled art
 
     /// The bundle carries art for every served movement that has art, keyed by exercise id: 70 full
-    /// pairs per Trainer, the two end-only gaps, and nothing for the no-art movement or the withheld
-    /// `version2` crawls (decision 16).
+    /// pairs per Trainer, the two end-only gaps, and nothing for the withheld `version2` movements (the
+    /// three crawls, decision 16, and Prone Y-T-W Raises, whose source art never matched one movement).
     func testTheBundleCarriesArtForEveryServedMovementAndNoneForVersion2() throws {
         let url = try XCTUnwrap(Bundle(for: AppState.self).url(forResource: "Exercises", withExtension: "json"))
         let catalog = try JSONDecoder().decode([Exercise].self, from: Data(contentsOf: url))
