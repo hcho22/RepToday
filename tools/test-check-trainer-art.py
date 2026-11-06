@@ -17,8 +17,6 @@ TRAINER_ART = ROOT / 'ios/RepToday/RepToday/Resources/Assets.xcassets/Trainer'
 TODAY = [
     'warning: Trainer art gap: pull_reverse_snow_angel (Reverse Snow Angel) is missing the male start pose',
     'warning: Trainer art gap: pull_reverse_snow_angel (Reverse Snow Angel) is missing the female start pose',
-    'warning: Trainer art gap: pull_ytw (Prone Y-T-W Raises) is missing the male start and end poses',
-    'warning: Trainer art gap: pull_ytw (Prone Y-T-W Raises) is missing the female start and end poses',
     'warning: Trainer art gap: pull_wall_scapular_pull (Wall Scapular Pull) is missing the male start pose',
     'warning: Trainer art gap: pull_wall_scapular_pull (Wall Scapular Pull) is missing the female start pose',
 ]
@@ -41,7 +39,7 @@ class TrainerArtGapReportTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def test_todays_art_reports_exactly_the_six_known_gaps_and_passes(self):
+    def test_todays_art_reports_exactly_the_four_known_gaps_and_passes(self):
         result = run(CATALOG, self.assets)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(), TODAY)
@@ -71,7 +69,7 @@ class TrainerArtGapReportTests(unittest.TestCase):
 
     def test_version2_movements_are_never_reported(self):
         for line in run(CATALOG, self.assets).stdout.splitlines():
-            for withheld in ('primal_gorilla_walk', 'primal_lizard_crawl', 'primal_underswitch'):
+            for withheld in ('primal_gorilla_walk', 'primal_lizard_crawl', 'primal_underswitch', 'pull_ytw'):
                 self.assertNotIn(withheld, line)
 
     def test_unreadable_inputs_fail_the_build(self):

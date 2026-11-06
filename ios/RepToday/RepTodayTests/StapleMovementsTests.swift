@@ -2,8 +2,8 @@ import XCTest
 @testable import RepToday
 
 /// ADR-0007: beginner and intermediate users get staple movements only while in the Discipline Phase,
-/// advanced users keep today's variety, the Strength Phase opens everything, and three crawls are
-/// withdrawn until version 2.
+/// advanced users keep today's variety, the Strength Phase opens everything, and three crawls plus
+/// Prone Y-T-W Raises are withdrawn until version 2.
 ///
 /// Everything here runs over the real bundled `Exercises.json`, so the lists below are the captain's
 /// decision as shipped data: the per-level pool contents are pinned exactly, not by a rule that could
@@ -31,7 +31,7 @@ final class StapleMovementsTests: XCTestCase {
     /// Training movements for advanced users only (Strength-Phase skills excluded).
     private let advancedTraining: Set<String> = [
         "push_pike", "push_archer",
-        "pull_reverse_snow_angel", "pull_ytw", "pull_floor_row_single_arm",
+        "pull_reverse_snow_angel", "pull_floor_row_single_arm",
         "squat_cossack", "squat_shrimp",
         "hinge_long_lever_bridge",
         "core_bear_hold", "core_hollow_hold", "core_hollow_rock", "core_tuck_l_sit",
@@ -57,7 +57,9 @@ final class StapleMovementsTests: XCTestCase {
         "mobility_cossack", "mobility_ankle_rocks",
     ]
     /// Withdrawn from the app for everyone until version 2.
-    private let withdrawn: Set<String> = ["primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch"]
+    private let withdrawn: Set<String> = [
+        "primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch", "pull_ytw",
+    ]
 
     private func expectedPool(level: FitnessLevel, phase: Phase) -> Set<String> {
         if phase == .strength {
@@ -191,7 +193,7 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(count(.beginner, training: false), 16)
         XCTAssertEqual(count(.intermediate, training: true), 25)
         XCTAssertEqual(count(.intermediate, training: false), 16)
-        XCTAssertEqual(count(.advanced, training: true), 39)
+        XCTAssertEqual(count(.advanced, training: true), 38)
         XCTAssertEqual(count(.advanced, training: false), 26)
     }
 
@@ -217,7 +219,7 @@ final class StapleMovementsTests: XCTestCase {
         let service = try MockExerciseService()
         let offered = ids(try await service.exercises())
         XCTAssertTrue(offered.isDisjoint(with: withdrawn), "the service never serves a withdrawn movement")
-        XCTAssertEqual(offered.count, 73)
+        XCTAssertEqual(offered.count, 72)
         for pillar in Pillar.allCases {
             let byPillar = try await service.exercises(for: pillar)
             XCTAssertTrue(ids(byPillar).isDisjoint(with: withdrawn))
@@ -230,12 +232,55 @@ final class StapleMovementsTests: XCTestCase {
             let found = try await service.exercise(id: id)
             XCTAssertNil(found, "\(id) is not resolvable as an offered movement")
         }
-        // Recoverable: the whole chain is still in the file, marked for version 2, and loads with the rest.
+        // Recoverable: each withdrawn chain is still in the file whole, marked for version 2, and loads
+        // with the rest - the crawls' ground-flow chain and Prone Y-T-W Raises' own one-rung chain.
         let archived = try fullFileLibrary().filter { $0.progressionChainId == "primal_ground_flow" }
-        XCTAssertEqual(ids(archived), withdrawn)
+        XCTAssertEqual(ids(archived), withdrawn.subtracting(["pull_ytw"]))
         XCTAssertTrue(archived.allSatisfy { $0.audience == .version2 })
         XCTAssertEqual(archived.sorted { $0.progressionOrder < $1.progressionOrder }.map(\.id),
                        ["primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch"])
+        let ytwChain = try fullFileLibrary().filter { $0.progressionChainId == "pull_ytw" }
+        XCTAssertEqual(ids(ytwChain), ["pull_ytw"])
+        XCTAssertTrue(ytwChain.allSatisfy { $0.audience == .version2 })
+    }
+
+    /// Prone Y-T-W Raises left the top of the postural chain for its own withdrawn one-rung chain, so
+    /// Reverse Snow Angel is now that chain's top. A user who climbed through Reverse Snow Angel to
+    /// Y-T-W keeps that history and is served Reverse Snow Angel, the closest rung they get; history on
+    /// Y-T-W alone no longer places anyone on the postural chain, so such a user re-enters it at its
+    /// entry, as ADR-0007 records for history on a movement no surface can name.
+    func testProneYTWHistoryIsServedTheClosestPosturalRung() async throws {
+        let library = try await offeredLibrary()
+        let postural = library.filter { $0.progressionChainId == "pull_postural" }
+            .sorted { $0.progressionOrder < $1.progressionOrder }
+        XCTAssertEqual(postural.map(\.id), ["pull_superman", "pull_reverse_snow_angel"])
+        XCTAssertNil(postural.last?.progressionId, "Reverse Snow Angel is now the chain's top rung")
+
+        let climbed = [
+            workLog("pull_reverse_snow_angel", pattern: .pull, reps: 15, daysAgo: 6),
+            workLog("pull_ytw", pattern: .pull, reps: 12, daysAgo: 2),
+        ]
+        let eligible = Set(ExercisePoolFilter.eligiblePool(
+            from: library, user: user(level: .advanced, phase: .discipline), recentLogs: climbed
+        ).map(\.id))
+        XCTAssertFalse(eligible.contains("pull_ytw"))
+        let served = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: climbed)
+        XCTAssertEqual(served?.exercise.id, "pull_reverse_snow_angel")
+
+        let ytwOnly = [workLog("pull_ytw", pattern: .pull, reps: 12, daysAgo: 2)]
+        let reentry = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: ytwOnly)
+        XCTAssertEqual(reentry?.exercise.id, "pull_superman", "Y-T-W-only history re-enters at the chain's entry")
+
+        for phase in [Phase.discipline, .strength] {
+            let analytics = ProgressAnalytics.from(
+                logs: climbed, library: library, level: .advanced, phase: phase, asOf: asOf, calendar: calendar
+            )
+            let named = analytics.progressionMap.ladders.flatMap { $0.rungs.map(\.exerciseId) }
+                + analytics.chainPositions.compactMap { $0.currentExercise?.id }
+                + analytics.deep.strengthJourney.chains.flatMap { $0.milestones.map(\.exerciseId) }
+            XCTAssertFalse(named.contains("pull_ytw"), "\(phase): a Progress surface named Prone Y-T-W Raises")
+            XCTAssertEqual(analytics.personalBests.totalSessions, 2, "the Y-T-W session still counts")
+        }
     }
 
     func testWithdrawnCrawlsNeverAppearInAnySessionForAnyUser() throws {

@@ -25,7 +25,7 @@ The captain wants the foundations to read the way people talk about strength: Pu
 
 2. **Only the horizontal pull chain counts.**
    Pull is cleared by the entry rung of the horizontal chain (Wall Scapular Pull, 3x12 clean reps).
-   The postural chain (Superman Hold, Reverse Snow Angel, Prone Y-T-W Raises) stays in sessions as accessory and prehab work but never clears Pull.
+   The postural chain (Superman Hold, Reverse Snow Angel; Prone Y-T-W Raises was its top rung until it was withdrawn to version 2 on 2026-11-06, see ADR-0007) stays in sessions as accessory and prehab work but never clears Pull.
    Its entry rung is a prone hold on the floor that says little about pulling strength, and counting it would let the easiest movement in the catalog stand in for the foundation.
    The rule is data on the foundation line (a set of counting chain ids), so Pull's ladder, current movement and dated climb on the Progress tab and in the premium analytics are always the horizontal chain.
 
