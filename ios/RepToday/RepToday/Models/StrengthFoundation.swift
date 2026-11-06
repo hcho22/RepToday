@@ -69,8 +69,8 @@ enum StrengthFoundation: String, CaseIterable, Identifiable, Hashable {
 struct FoundationLine: Hashable, Identifiable {
 
     /// The horizontal Pull chain - the only Pull chain that counts (Wall Scapular Pull, Supine Floor
-    /// Row, Single-Arm Supine Floor Row). The postural chain (Superman Hold, Reverse Snow Angel,
-    /// Prone Y-T-W Raises) stays in sessions as accessory and prehab work but never clears Pull.
+    /// Row, Single-Arm Supine Floor Row). The postural chain (Superman Hold, Reverse Snow Angel) stays
+    /// in sessions as accessory and prehab work but never clears Pull.
     static let pullCountingChainId = "pull_horizontal"
 
     let foundation: StrengthFoundation

@@ -30,7 +30,7 @@ final class FoundationsUITests: XCTestCase {
         }
         app.buttons["60 minute session"].tap()
 
-        let pulls = ["Superman Hold", "Reverse Snow Angel", "Prone Y-T-W Raises",
+        let pulls = ["Superman Hold", "Reverse Snow Angel",
                      "Wall Scapular Pull", "Supine Floor Row", "Single-Arm Supine Floor Row"]
         let hinges = ["Glute Bridge", "Single-Leg Glute Bridge", "Marching Glute Bridge",
                       "Long-Lever Single-Leg Bridge", "Assisted Nordic Curl", "Nordic Curl",
