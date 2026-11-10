@@ -3,9 +3,9 @@ import SwiftUI
 @testable import RepToday
 
 /// End-to-end evidence for the prescription as the user meets it: the player *saying* "per side" on a
-/// movement the engine charges both sides for, the in-session swap keeping the slot's own set count
-/// unless moving it is what keeps the session inside the minutes the user asked for, and the spoken
-/// form of that same target agreeing with its own counts on every slot of a real session.
+/// movement the engine charges both sides for, the in-session swap keeping the slot's own set count and
+/// the session inside its budget, and the spoken form of that same target agreeing with its own counts
+/// on every slot of a real session.
 ///
 /// Everything here runs the real pipeline over the real bundled `Exercises.json` - `SessionAssembly`
 /// generates the session, `ExerciseSwap` (through `OnDeviceWorkoutEngine`, the same seam the app wires) does
@@ -30,23 +30,16 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        return calendar
-    }()
-
-    private var asOf: Date {
-        calendar.date(from: DateComponents(year: 2026, month: 7, day: 30, hour: 12))!
-    }
+    private let calendar = TrainingDayFixtures.calendar
+    private var asOf: Date { TrainingDayFixtures.asOf }
 
     private func date(daysAgo: Int) -> Date {
-        calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!
+        TrainingDayFixtures.date(daysAgo: daysAgo)
     }
 
-    /// A steady-state, past-cold-start user with a learned 30-minute default - long enough that the
-    /// lineup carries warm-up, strength, primal and cooldown blocks, so the per-side label and the
-    /// swap's set lever are exercised across every slot shape rather than only the adjustable one.
+    /// A steady-state, past-cold-start user with a learned 30-minute default. Advanced: the per-side
+    /// moves this fixture pins (`core_side_plank`, `hinge_single_leg_bridge`) sit beyond a beginner's
+    /// staples (ADR-0007), and an advanced user keeps the whole Discipline-Phase catalog.
     private func steadyUser() -> User {
         User(
             id: "evidence-user",
@@ -54,8 +47,6 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             createdAt: date(daysAgo: 120),
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                // Advanced: this fixture needs the whole discipline-phase catalog (the per-side holds and
-                // rep movements it pins sit beyond an intermediate's staples - ADR-0007).
                 fitnessLevel: .advanced, primaryGoal: .stayActive,
                 sitsLong: true, injuries: [], typicalAvailableMinutes: requestedMinutes
             ),
@@ -74,46 +65,38 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
-    /// A short history so Step 6 has demonstrated capacity to size targets against - including the
-    /// per-side hold `core_side_plank` (the strength block's per-side carrier now that US-002 makes a
-    /// blend strength-led and the mobility accessory small) and a per-side rep movement, so their
-    /// prescriptions are capacity-grown rather than sitting on the catalog default.
-    ///
-    /// `core_side_plank` is placed so it is the established **core** frontier yet falls *outside* the
-    /// `varietyWindow` (the three most-recent sessions), so Step 5 selects it as the core slot rather than
-    /// avoiding it as recently-used - which is what puts a per-side hold in the generated strength-led
-    /// session for the per-side-hold render/swap evidence below.
-    ///
-    /// The logged hold is a moderate capacity above the catalog default (grown, not at the default) but
-    /// not the extreme top of the rail: under the even-round model (US-CC03/US-CC04) a swap keeps the
-    /// block's uniform round count, and drift scales with rounds × the per-set work gap, so a per-side
-    /// hold grown to the very top of its rail has no in-band core peer within the (soft-widened) budget at
-    /// the block's round count and would decline. A moderately-grown hold stays genuinely capacity-derived
-    /// while keeping an honest same-pattern peer reachable, so the per-side-hold swap evidence is real.
+    /// Two full Push -> Pull -> Legs Cycles (each followed by its Rest Day) and a third Cycle's Push and
+    /// Pull Days, so the Rotation serves a **Legs Day** today - and one shaped so that day carries every
+    /// kind of per-side slot:
+    /// - The lunge and bridge ladders were last worked on the first Legs Day (13 days ago) and the squat
+    ///   and hip ladders on the second (7 days ago), so today's two main slots lead with `lunge_reverse`
+    ///   and `hinge_single_leg_bridge` - both per-side **rep** movements.
+    /// - Of the three core ladders, the plank ladder was worked longest before the current Cycle began, so
+    ///   the Core Sprinkle is its current rung, `core_side_plank` - a per-side **training hold**.
     private func history() -> [WorkoutLog] {
-        struct Spec { let id: String, pillar: Pillar, pattern: MovementPattern; let reps: Int?, seconds: Int? }
-        let specs: [Spec] = [
-            Spec(id: "push_standard", pillar: .strength, pattern: .push, reps: 12, seconds: nil),
-            Spec(id: "squat_split", pillar: .strength, pattern: .squat, reps: 10, seconds: nil),
-            Spec(id: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 10, seconds: nil),
-            Spec(id: "core_side_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 25),
-        ]
-        return (0..<8).map { offset in
-            let spec = specs[offset % specs.count]
-            let set = CompletedSet(reps: spec.reps, durationSeconds: spec.seconds)
-            return WorkoutLog(
-                id: UUID(), workoutId: UUID(), completedAt: date(daysAgo: offset * 2 + 1),
-                requestedMinutes: requestedMinutes, durationMinutes: requestedMinutes - 1,
-                wasReturn: false, shape: .blend, focusPillar: spec.pillar,
-                perceivedDifficulty: .justRight,
-                exercises: [
-                    LoggedExercise(
-                        id: UUID(), exerciseId: spec.id, pillar: spec.pillar,
-                        movementPattern: spec.pattern, completedSets: [set, set, set], skipped: false
-                    )
-                ]
+        typealias F = TrainingDayFixtures
+        func core(_ id: String) -> LoggedExercise {
+            id == "core_dead_bug"
+                ? F.station(id, pattern: .core, role: .core, value: 10, earned: 10)
+                : F.station(id, pattern: .core, role: .core, value: 30, earned: 30, isHold: true)
+        }
+        func day(_ daysAgo: Int, _ mains: [(String, MovementPattern, Int)], core id: String) -> WorkoutLog {
+            F.log(
+                mains.map { F.station($0.0, pattern: $0.1, value: $0.2, earned: $0.2) } + [core(id)],
+                completedAt: date(daysAgo: daysAgo),
+                requestedMinutes: requestedMinutes
             )
         }
+        return [
+            day(17, [("push_standard", .push, 20), ("push_floor_dips", .push, 20)], core: "core_dead_bug"),
+            day(15, [("pull_floor_row", .pull, 20), ("pull_reverse_snow_angel", .pull, 20)], core: "core_hollow_hold"),
+            day(13, [("lunge_reverse", .squat, 10), ("hinge_single_leg_bridge", .hinge, 10)], core: "core_side_plank"),
+            day(11, [("push_standard", .push, 20), ("push_floor_dips", .push, 20)], core: "core_dead_bug"),
+            day(9, [("pull_floor_row", .pull, 20), ("pull_reverse_snow_angel", .pull, 20)], core: "core_hollow_hold"),
+            day(7, [("squat_bodyweight", .squat, 20), ("hinge_good_morning", .hinge, 20)], core: "core_dead_bug"),
+            day(5, [("push_standard", .push, 20), ("push_floor_dips", .push, 20)], core: "core_hollow_hold"),
+            day(3, [("pull_floor_row", .pull, 20), ("pull_reverse_snow_angel", .pull, 20)], core: "core_dead_bug"),
+        ]
     }
 
     private func library() throws -> [Exercise] {
@@ -122,49 +105,20 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         return try JSONDecoder().decode([Exercise].self, from: Data(contentsOf: url))
     }
 
-    /// The real Steps 1-7 pipeline at a fixed clock, so the transcripts below are reproducible.
-    private func generate(recentLogs: [WorkoutLog]? = nil) throws -> Workout {
-        SessionAssembly.assemble(
+    /// The real Steps 1-7 pipeline at a fixed clock, so the transcripts below are reproducible. The
+    /// Rotation picks the day from `history()`.
+    private func generate() throws -> Workout {
+        let workout = SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
             user: steadyUser(),
             library: try library(),
-            recentLogs: recentLogs ?? history(),
+            recentLogs: history(),
             sessionPolicy: .default,
             asOf: asOf,
             calendar: calendar
         )
-    }
-
-    /// A history that establishes a per-side **rep** strength movement (Bird Dog, a per-side core
-    /// movement) as the core frontier *outside* the variety window - exactly the technique `history()`
-    /// uses to pin the per-side hold (`core_side_plank`). Since US-M01 removed the Movement Practice
-    /// mobility block - the block that used to surface a per-side rep movement (per-side mobility
-    /// rotations) in a normal session - the per-side rep suffix now belongs to a strength movement, so a
-    /// render of the player at a per-side rep needs a session whose strength block carries one.
-    private func perSideRepHistory() -> [WorkoutLog] {
-        struct Spec { let id: String, pillar: Pillar, pattern: MovementPattern; let reps: Int?, seconds: Int? }
-        let specs: [Spec] = [
-            Spec(id: "push_standard", pillar: .strength, pattern: .push, reps: 12, seconds: nil),
-            Spec(id: "squat_split", pillar: .strength, pattern: .squat, reps: 10, seconds: nil),
-            Spec(id: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 10, seconds: nil),
-            Spec(id: "core_bird_dog", pillar: .strength, pattern: .core, reps: 10, seconds: nil),
-        ]
-        return (0..<8).map { offset in
-            let spec = specs[offset % specs.count]
-            let set = CompletedSet(reps: spec.reps, durationSeconds: spec.seconds)
-            return WorkoutLog(
-                id: UUID(), workoutId: UUID(), completedAt: date(daysAgo: offset * 2 + 1),
-                requestedMinutes: requestedMinutes, durationMinutes: requestedMinutes - 1,
-                wasReturn: false, shape: .blend, focusPillar: spec.pillar,
-                perceivedDifficulty: .justRight,
-                exercises: [
-                    LoggedExercise(
-                        id: UUID(), exerciseId: spec.id, pillar: spec.pillar,
-                        movementPattern: spec.pattern, completedSets: [set, set, set], skipped: false
-                    )
-                ]
-            )
-        }
+        XCTAssertEqual(workout.trainingDay, .legs, "the history ends on a Pull Day, so today is a Legs Day")
+        return workout
     }
 
     private func player(_ workout: Workout, engine: any WorkoutEngineProtocol) -> ActiveSessionViewModel {
@@ -247,8 +201,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
               + "\(requestedMinutes) min request; \(perSideCount) of \(slots.count) slots are per side")
         XCTAssertGreaterThan(perSideCount, 0, "the transcript proves nothing if the session has no per-side slot")
         XCTAssertLessThanOrEqual(
-            abs(planned - requestedMinutes * 60), 60,
-            "the session has to land within ±1 minute of the request"
+            abs(planned - requestedMinutes * 60), SessionAssembly.toleranceSeconds,
+            "the session has to land within the fit's tolerance of the request"
         )
     }
 
@@ -256,8 +210,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// The end-user swap path: start the real player on a real session, walk to a per-side slot the way a
     /// user does (finishing sets), tap Swap, and print what changed. The substitute has to stay a
-    /// same-pillar/pattern peer, carry its own honest per-side label, and leave the session inside the
-    /// ±1 minute it promised.
+    /// same-pillar/pattern peer, carry its own honest per-side label, keep the slot's role, and leave the
+    /// session inside the fit's tolerance.
     func testPlayerSwapAtAPerSideSlotKeepsCopyAndBudget() async throws {
         let workout = try generate()
         let viewModel = player(workout, engine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()))
@@ -305,27 +259,24 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         } else {
             XCTAssertFalse(substituteLabel.contains("per side"), "bilateral substitute shown as \"\(substituteLabel)\"")
         }
+        XCTAssertEqual(after.prescription.role, before.prescription.role, "the substitute keeps the slot's role")
         XCTAssertLessThanOrEqual(
-            abs(plannedAfter - requestedMinutes * 60), 60,
-            "the swap left the session outside the ±1 minute it promised"
+            abs(plannedAfter - requestedMinutes * 60), SessionAssembly.toleranceSeconds,
+            "the swap left the session outside the fit's tolerance"
         )
     }
 
-    /// Swapping every slot of a real session in turn - not just the one the walk happens to land on. Under
-    /// the even-round model (US-CC03/US-CC04) a swap **keeps the slot's set count** everywhere: a training
-    /// block runs a uniform round count, so a substitute joins the circuit at that same count rather than
-    /// re-picking its own, and the warm-up/cooldown bookends stay one set. A substitute that will not fit
-    /// at the kept count is declined outright. One printed line per slot is the reviewable sweep.
+    /// Swapping every slot of a real session in turn - not just the one the walk happens to land on. A
+    /// swap **keeps the slot's set count and role** everywhere: a Training Day station runs four rounds
+    /// like its peers and the warm-up/cooldown stretches stay one set, so a substitute that will not fit at
+    /// the kept count is declined outright. One printed line per slot is the reviewable sweep.
     func testSwappingEverySlotKeepsBudgetAndRespectsTheSetLever() async throws {
         let workout = try generate()
         let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
         let slotCount = workout.blocks.reduce(0) { $0 + $1.exercises.count }
-        // The assembled session's planned wall-clock, before any swap. Under the even-round model a swap
-        // keeps the slot's round count, so the only budget lever it has is the substitute's own per-set
-        // work - it moves the session by at most the swapped slot's `slotTolerance`, not the assembler's
-        // ±60s (the per-slot set lever that used to re-absorb that drift is retired). That per-slot bound
-        // is the swap's real contract and is what this sweep verifies (a tighter post-swap ±1 minute is
-        // US-CC07's job: reshaping the block's shared round-rest on swap to re-absorb the drift).
+        // The assembled session's planned wall-clock, before any swap. A swap keeps the slot's set count,
+        // so the only thing it moves is the substitute's own per-set work - by at most the swapped slot's
+        // `slotTolerance`, which is the swap's contract and what this sweep verifies.
         let plannedBefore = SessionAssembly.plannedSeconds(of: workout)
 
         print("=== Rep Today - swap sweep over all \(slotCount) slots of a 30 minute session ===")
@@ -374,9 +325,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
                 + "\(after.prescription.exercise.id)) moved the session \(abs(planned - plannedBefore))s, "
                 + "past the swapped slot's \(slotTolerance)s budget"
             )
-            // Even-round model (US-CC03): no slot has a set lever - a training block runs a uniform round
-            // count and a substitute joins at it, the bookends stay one set - so every substitute keeps
-            // the slot's count exactly, and a block can never be left uneven by a swap.
+            XCTAssertEqual(after.prescription.role, before.prescription.role, "slot \(index + 1) swap lost its role")
+            // No slot has a set lever: a circuit runs a uniform round count and a substitute joins at it,
+            // the bookends stay one set, so a block can never be left uneven by a swap.
             XCTAssertEqual(
                 after.prescription.sets, before.prescription.sets,
                 "slot \(index + 1) swap changed the set count \(before.prescription.sets)->\(after.prescription.sets); "
@@ -386,7 +337,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         print("swept \(slotCount) slots: \(substituted) substituted (\(rePicked) that moved a set count), "
               + "\(noAlternative) with no alternative")
         XCTAssertGreaterThan(substituted, 0)
-        XCTAssertEqual(rePicked, 0, "no swap may move a slot's set count under the even-round model")
+        XCTAssertEqual(rePicked, 0, "no swap may move a slot's set count")
     }
 
     // MARK: - Rendered-UI evidence
@@ -493,12 +444,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
-    /// The player on a per-side *rep* movement, where the suffix lands on a count rather than a clock.
-    /// Since US-M01 removed the Movement Practice mobility block (the old source of a per-side rep slot),
-    /// this drives a history that establishes a per-side rep **strength** frontier (`perSideRepHistory`),
-    /// so the generated session carries one.
+    /// The player on a per-side *rep* movement, where the suffix lands on a count rather than a clock -
+    /// the Legs Day's lead lunge.
     func testRenderPlayerAtAPerSideRepMovement() throws {
-        let workout = try generate(recentLogs: perSideRepHistory())
+        let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
         let index = try XCTUnwrap(
             slots.firstIndex { $0.exercise.sidesPerSet > 1 && !$0.exercise.isHold },
@@ -620,14 +569,16 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// The swap as the user sees it: the player before the tap and after it, both rendered from the real
     /// view model's own snapshot - so the "after" frame is the state the swap actually produced (peer in
-    /// place, its own per-side label, the slot's set count, set counter back to 1), not a hand-built one.
+    /// place, its own label, the slot's set count, set counter back to 1), not a hand-built one. The slot
+    /// is the Legs Day's lead per-side station, the lunge; its peer is the bilateral squat, so the "per
+    /// side" suffix the before frame shows is gone from the after frame.
     func testRenderPlayerBeforeAndAfterSwappingAPerSideSlot() async throws {
         let workout = try generate()
         let viewModel = player(workout, engine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService()))
         viewModel.start()
         var guardRail = 0
         while let step = viewModel.currentStep, guardRail < 200,
-              !(step.prescription.exercise.sidesPerSet > 1 && step.prescription.exercise.isHold) {
+              !(step.prescription.exercise.sidesPerSet > 1 && SessionAssembly.isCircuit(step.blockCategory)) {
             viewModel.completeSet()
             guardRail += 1
         }
@@ -840,12 +791,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     private var playerSize: CGSize { CGSize(width: 393, height: 852) }
 
-    /// The flat index (into `workout.blocks.flatMap(\.exercises)`) of the first hold that still uses the
-    /// US-O03 **manual Start-hold** path: a timed hold in a **training** block (`.strength`/`.primal`,
-    /// via `SessionAssembly.isCircuit`). Warm-up and cooldown *bookend* holds auto-start hands-free since
-    /// US-CC05, so they no longer present a Start-hold control - these US-O03 surfaces must read a
-    /// training hold, the one the manual path still owns. `perSide` narrows it to a two-leg hold when the
-    /// side copy is what is under test. `nil` when the generated session carries no such hold.
+    /// The flat index (into `workout.blocks.flatMap(\.exercises)`) of the first timed hold in the
+    /// **training** circuit (`SessionAssembly.isCircuit`) - on the fixture's Legs Day, the Core Sprinkle's
+    /// side plank. The US-O03 Hold Timer surfaces below read a training hold rather than a warm-up or
+    /// cooldown bookend hold. `perSide` narrows it to a two-leg hold when the side copy is what is under
+    /// test. `nil` when the generated session carries no such hold.
     private func firstTrainingHoldIndex(in workout: Workout, perSide: Bool = false) -> Int? {
         var flat = 0
         for block in workout.blocks {

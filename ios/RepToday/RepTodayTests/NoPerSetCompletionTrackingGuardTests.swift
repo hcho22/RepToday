@@ -19,9 +19,12 @@ import XCTest
 /// as `NoManualModeGuardTests` and `UITestLaunchGuardTests`, living in the routinely-run unit bundle for
 /// the same reason (the gate is `-scheme RepToday test`).
 ///
-/// ADR-0011 adds one post-session, per-*move* signal beside the rating: after "too hard" the completion
-/// screen asks which moves the user could not finish, stored as `LoggedExercise.couldNotFinish`. The
-/// second test pins `LoggedExercise` to its fields plus that one flag, so the narrowing goes no further.
+/// `LoggedExercise` is pinned the same way. Beyond its identity and completed sets it carries exactly two
+/// kinds of per-move data: ADR-0011's post-session `couldNotFinish` mark (one flag per move, set only after
+/// a "too hard" rating), and the prescription facts copied onto the move when it is logged (US-TD02) - the
+/// station's `role` and its Earned Reps (`earnedReps` / `earnedDurationSeconds`). Those copied facts
+/// describe what was prescribed, not whether it was done, so they are no completion signal. Anything
+/// else is refused.
 final class NoPerSetCompletionTrackingGuardTests: XCTestCase {
 
     func testCompletedSetHasNoPerSetCompletionTrackingField() {
@@ -43,13 +46,14 @@ final class NoPerSetCompletionTrackingGuardTests: XCTestCase {
         )
     }
 
-    /// ADR-0011 narrows this guard by exactly one field: `LoggedExercise.couldNotFinish`, the completion
-    /// screen's post-session "couldn't finish" mark - one optional flag per *move*, set only after a
-    /// "too hard" rating, never per set. Any other new field on the logged move is still refused, so a
-    /// per-set or per-move "did they really do it" record cannot slip in beside it.
-    func testLoggedExerciseCarriesOnlyThePostSessionCouldNotFinishMark() {
+    /// The logged move carries its identity, its completed sets, the skip, ADR-0011's post-session
+    /// "couldn't finish" mark, and the prescription facts copied from its station (role and Earned Reps).
+    /// Any other new field is refused, so a per-set or per-move "did they really do it" record cannot slip
+    /// in beside them.
+    func testLoggedExerciseCarriesOnlyThePostSessionMarkAndItsPrescriptionFacts() {
         let allowed: Set<String> = [
-            "id", "exerciseId", "pillar", "movementPattern", "completedSets", "skipped", "couldNotFinish"
+            "id", "exerciseId", "pillar", "movementPattern", "completedSets", "skipped",
+            "couldNotFinish", "role", "earnedReps", "earnedDurationSeconds"
         ]
 
         let sample = LoggedExercise(
@@ -61,9 +65,10 @@ final class NoPerSetCompletionTrackingGuardTests: XCTestCase {
         XCTAssertEqual(
             Set(labels), allowed,
             """
-            `LoggedExercise` gained a field beyond \(allowed.sorted()): \(labels.sorted()). The only \
-            completion signal it may carry beyond the session's rating is ADR-0011's post-session, per-move \
-            `couldNotFinish` mark; a set still records prescribed = performed (US-CC09).
+            `LoggedExercise` gained a field beyond \(allowed.sorted()): \(labels.sorted()). Beyond the \
+            session's rating it may carry only ADR-0011's post-session, per-move `couldNotFinish` mark and \
+            the prescription facts copied from its station (US-TD02: `role`, `earnedReps`, \
+            `earnedDurationSeconds`); a set still records prescribed = performed (US-CC09).
             """
         )
     }
