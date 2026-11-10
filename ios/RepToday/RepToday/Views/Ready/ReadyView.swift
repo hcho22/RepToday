@@ -584,22 +584,33 @@ private struct ResumeSessionCard: View {
 private struct ConsistencyCard: View {
     let consistency: Consistency
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 }
 
     var body: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.md) {
+        // At the accessibility text sizes the score stacks under the words, so neither column is
+        // squeezed into breaking a word across lines.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
+        layout {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("You're someone who moves.")
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(pride)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if hasHistory {
-                Spacer(minLength: Theme.Spacing.md)
-                VStack(spacing: 0) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: Theme.Spacing.md)
+                }
+                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .center, spacing: 0) {
                     Text("\(Int(consistency.score.rounded()))")
                         .font(Theme.Typography.largeTitle)
                         .foregroundStyle(Theme.Colors.accent)

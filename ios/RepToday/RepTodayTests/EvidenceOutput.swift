@@ -31,6 +31,7 @@ enum EvidenceOutput {
     /// Each story keeps its evidence in its own folder, so an artifact belonging to one story's work
     /// never lands among the ones another story's acceptance notes point a reviewer at.
     enum Story {
+        static let restDay = "rest-day"
         static let perSideSwap = "per-side-swap"
         static let stapleMovements = "staple-movements"
         static let sessionTimer = "us-o03"
