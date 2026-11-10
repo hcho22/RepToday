@@ -6,8 +6,10 @@ import XCTest
 /// reduce friction), and maps each to the Session Policy levers the re-weighting service (US-F03)
 /// writes.
 ///
-/// Coverage mirrors the PRD acceptance criteria: a clear stall case, a clear disengagement case, and
-/// a mixed case resolved by Trigger Precedence (disengagement wins); the diagnosis reads only log
+/// Coverage mirrors the PRD acceptance criteria: a clear stall case (a rung cleared at the Training
+/// Day bar - four sets at the top of the user's range, at Earned Reps that reached it - in two sessions
+/// while the next rung is gated), sessions short of that bar never stalling, a clear disengagement case,
+/// and a mixed case resolved by Trigger Precedence (disengagement wins); the diagnosis reads only log
 /// history and is deterministic; and the lever mapping is explicit (stall raises
 /// `progressionRate`/variety, disengagement eases them and never raises challenge), clamped to its
 /// rails. The stall/disengagement detection itself is the shared seam exercised through the trigger
@@ -50,35 +52,27 @@ final class PlateauDiagnosisTests: XCTestCase {
         )
     }
 
+    /// A Training Day main station on `exerciseId`: `sets` sets at `reps`, recording Earned Reps of
+    /// `earned` (defaulting to `reps`).
     private func logged(
         _ exerciseId: String,
         reps: Int,
-        sets: Int,
-        skipped: Bool = false
+        earned: Int? = nil,
+        sets: Int = 4,
+        role: StationRole? = .main
     ) -> LoggedExercise {
-        LoggedExercise(
-            id: UUID(),
-            exerciseId: exerciseId,
-            pillar: .strength,
-            movementPattern: .push,
-            completedSets: Array(repeating: CompletedSet(reps: reps, durationSeconds: nil), count: sets),
-            skipped: skipped
-        )
+        TrainingDayFixtures.station(exerciseId, pattern: .push, role: role, value: reps, earned: earned ?? reps, sets: sets)
     }
 
-    private func loggedHold(
-        _ exerciseId: String,
-        seconds: Int,
-        sets: Int
-    ) -> LoggedExercise {
-        LoggedExercise(
-            id: UUID(),
-            exerciseId: exerciseId,
-            pillar: .mobility,
-            movementPattern: .mobility,
-            completedSets: Array(repeating: CompletedSet(reps: nil, durationSeconds: seconds), count: sets),
-            skipped: false
-        )
+    /// A log written before Training Days: no role, no Earned Reps.
+    private func legacyLogged(_ exerciseId: String, reps: Int, sets: Int) -> LoggedExercise {
+        TrainingDayFixtures.station(exerciseId, pattern: .push, role: nil, value: reps, earned: nil, sets: sets)
+    }
+
+    /// The new bar on the entry tier of `pushChain()` for a beginner or intermediate user: four sets at
+    /// the top of the 15-30 range, at Earned Reps of 30.
+    private func clears() -> [LoggedExercise] {
+        [logged("push_knee", reps: 30)]
     }
 
     /// A push chain whose entry tier's next tier exists but is gated behind the Strength phase, so a
@@ -86,8 +80,8 @@ final class PlateauDiagnosisTests: XCTestCase {
     /// Stall reads.
     private func pushChain() -> [Exercise] {
         [
-            exercise(id: "push_knee", difficulty: 1, order: 0, progressionId: "push_one_arm", phase: .discipline, criteria: "3x12"),
-            exercise(id: "push_one_arm", difficulty: 5, order: 1, progressionId: nil, phase: .strength, criteria: "3x8"),
+            exercise(id: "push_knee", difficulty: 1, order: 0, progressionId: "push_one_arm", phase: .discipline),
+            exercise(id: "push_one_arm", difficulty: 5, order: 1, progressionId: nil, phase: .strength),
         ]
     }
 
@@ -96,8 +90,7 @@ final class PlateauDiagnosisTests: XCTestCase {
         difficulty: Int,
         order: Int,
         progressionId: String?,
-        phase: Phase,
-        criteria: String
+        phase: Phase
     ) -> Exercise {
         Exercise(
             id: id,
@@ -117,14 +110,13 @@ final class PlateauDiagnosisTests: XCTestCase {
             progressionOrder: order,
             regressionId: nil,
             progressionId: progressionId,
-            advancementCriteria: criteria,
+            advancementCriteria: "4 clean sets at the top of your rep range",
             apartmentFriendly: true
         )
     }
 
-    /// A single-tier mobility chain (no next tier) with easily-met hold criteria: a healthy user
-    /// clearing it every session has a frontier that can never rise, so it must NOT diagnose as a
-    /// stall.
+    /// A single-tier mobility chain (no next tier): a healthy user holding it at the top of the hold
+    /// range every session has a frontier that can never rise, so it must NOT diagnose as a stall.
     private func mobilityHoldChain() -> [Exercise] {
         [
             Exercise(
@@ -145,7 +137,7 @@ final class PlateauDiagnosisTests: XCTestCase {
                 progressionOrder: 0,
                 regressionId: nil,
                 progressionId: nil,
-                advancementCriteria: "hold 60s",
+                advancementCriteria: "4 clean sets at the top of your rep range",
                 apartmentFriendly: true
             )
         ]
@@ -153,15 +145,76 @@ final class PlateauDiagnosisTests: XCTestCase {
 
     // MARK: - Diagnosis
 
-    /// History A: consistent attendance, frontier criteria cleared across two sessions, next tier
-    /// gated -> `physicalStall`.
+    /// History A: consistent attendance, the frontier tier cleared at the new bar across two sessions,
+    /// the next tier gated -> `physicalStall`.
     func testClearStallDiagnosesPhysicalStall() {
-        let clears = [logged("push_knee", reps: 12, sets: 3)] // meets "3x12"
         let logs = [
-            log(on: dayInWeek(1), exercises: clears),
-            log(on: dayInWeek(2), exercises: clears),
+            log(on: dayInWeek(1), exercises: clears()),
+            log(on: dayInWeek(2), exercises: clears()),
         ]
         XCTAssertEqual(PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain()), .physicalStall)
+        XCTAssertEqual(PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain(), level: .intermediate), .physicalStall)
+    }
+
+    /// The same stall over the real catalog: an advanced Discipline-Phase user holding Archer Push-Ups
+    /// at four sets of 15 a side, session after session, cannot move up - the next rung (Assisted
+    /// One-Arm Push-Up) is a Strength-Phase skill.
+    func testRealCatalogStallBehindAStrengthPhaseRung() async throws {
+        let library = try await MockExerciseService().exercises()
+        let archer = try XCTUnwrap(library.first { $0.id == "push_archer" })
+        let next = try XCTUnwrap(library.first { $0.id == archer.progressionId })
+        XCTAssertEqual(next.phase, .strength, "the fixture needs a gated next rung")
+
+        let logs = [
+            log(on: dayInWeek(1), exercises: [logged(archer.id, reps: 15)]),
+            log(on: dayInWeek(3), exercises: [logged(archer.id, reps: 15)]),
+        ]
+        XCTAssertEqual(PlateauDiagnosis.diagnose(recentLogs: logs, library: library, level: .advanced), .physicalStall)
+
+        let oneShort = [
+            log(on: dayInWeek(1), exercises: [logged(archer.id, reps: 15)]),
+            log(on: dayInWeek(3), exercises: [logged(archer.id, reps: 10)]),
+        ]
+        XCTAssertNil(PlateauDiagnosis.diagnose(recentLogs: oneShort, library: library, level: .advanced))
+    }
+
+    /// The bar is the top of the user's own range: 30 reps clears for a beginner or intermediate user and
+    /// not for an advanced one, whose range runs to 50.
+    func testTheStallBarIsTheTopOfTheLevelsRange() {
+        let atThirty = [log(on: dayInWeek(1), exercises: clears()), log(on: dayInWeek(2), exercises: clears())]
+        XCTAssertTrue(PlateauDiagnosis.isPhysicallyStalled(recentLogs: atThirty, library: pushChain(), level: .beginner))
+        XCTAssertTrue(PlateauDiagnosis.isPhysicallyStalled(recentLogs: atThirty, library: pushChain(), level: .intermediate))
+        XCTAssertFalse(PlateauDiagnosis.isPhysicallyStalled(recentLogs: atThirty, library: pushChain(), level: .advanced))
+
+        let atFifty = [
+            log(on: dayInWeek(1), exercises: [logged("push_knee", reps: 50)]),
+            log(on: dayInWeek(2), exercises: [logged("push_knee", reps: 50)]),
+        ]
+        XCTAssertTrue(PlateauDiagnosis.isPhysicallyStalled(recentLogs: atFifty, library: pushChain(), level: .advanced))
+    }
+
+    /// Sessions that fall short of the bar are never a stall, however often they repeat: three-set logs
+    /// written before Training Days, four sets padded to the top over lower Earned Reps, only three sets
+    /// at the top, a session rated too hard, and a Practice station at the very top numbers.
+    func testSessionsUnderTheBarAreNotAStall() {
+        func twice(_ exercise: LoggedExercise, difficulty: PerceivedDifficulty? = nil) -> [WorkoutLog] {
+            [dayInWeek(1), dayInWeek(2)].map { day in
+                var session = log(on: day, exercises: [exercise])
+                session.perceivedDifficulty = difficulty
+                return session
+            }
+        }
+        let shortOfTheBar: [String: [WorkoutLog]] = [
+            "legacy 3x12": twice(legacyLogged("push_knee", reps: 12, sets: 3)),
+            "legacy 3x30": twice(legacyLogged("push_knee", reps: 30, sets: 3)),
+            "padded": twice(logged("push_knee", reps: 30, earned: 25)),
+            "three sets": twice(logged("push_knee", reps: 30, sets: 3)),
+            "too hard": twice(logged("push_knee", reps: 30), difficulty: .tooHard),
+            "practice": twice(logged("push_knee", reps: 30, role: .practice)),
+        ]
+        for (name, logs) in shortOfTheBar {
+            XCTAssertNil(PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain()), name)
+        }
     }
 
     /// History B: sessions completing a shrinking share of what was requested (20 asked; 20, 12, 5
@@ -178,12 +231,12 @@ final class PlateauDiagnosisTests: XCTestCase {
     /// A history that is simultaneously stalled and disengaging: Trigger Precedence resolves it to
     /// `disengagement` (PRD validation - a user pulling away is never handed more challenge).
     func testMixedCaseResolvedByPrecedence() {
-        let clears = [logged("push_knee", reps: 12, sets: 3)] // clears the gated frontier every session
         let logs = [
-            log(on: dayInWeek(1), requestedMinutes: 20, durationMinutes: 20, exercises: clears),
-            log(on: dayInWeek(2), requestedMinutes: 20, durationMinutes: 12, exercises: clears),
-            log(on: dayInWeek(3), requestedMinutes: 20, durationMinutes: 5, exercises: clears),
+            log(on: dayInWeek(1), requestedMinutes: 20, durationMinutes: 20, exercises: clears()),
+            log(on: dayInWeek(2), requestedMinutes: 20, durationMinutes: 12, exercises: clears()),
+            log(on: dayInWeek(3), requestedMinutes: 20, durationMinutes: 5, exercises: clears()),
         ]
+        XCTAssertTrue(PlateauDiagnosis.isPhysicallyStalled(recentLogs: logs, library: pushChain()), "the history is stalled")
         XCTAssertEqual(PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain()), .disengagement)
     }
 
@@ -202,21 +255,22 @@ final class PlateauDiagnosisTests: XCTestCase {
         XCTAssertNil(PlateauDiagnosis.diagnose(recentLogs: [], library: pushChain()))
     }
 
-    /// A single-tier mobility chain cleared every session is not a stall (nothing to advance to),
-    /// mirroring the real-library regression guarded in trigger detection.
+    /// A single-tier chain cleared every session is not a stall (nothing to advance to), mirroring the
+    /// real-library regression guarded in trigger detection.
     func testRepeatedlyClearedSingleTierChainDiagnosesNil() {
-        let clears = [loggedHold("deep_squat_hold", seconds: 60, sets: 1)] // meets "hold 60s"
+        let held = [TrainingDayFixtures.station("deep_squat_hold", pattern: .mobility, pillar: .mobility, value: 60, earned: 60, isHold: true)]
         let logs = [
-            log(on: dayInWeek(1), exercises: clears),
-            log(on: dayInWeek(2), exercises: clears),
+            log(on: dayInWeek(1), exercises: held),
+            log(on: dayInWeek(2), exercises: held),
         ]
+        XCTAssertEqual(RepGrammar.clearingSessionCount(mobilityHoldChain()[0], in: logs, level: .beginner), 2,
+                       "the fixture clears the bar in both sessions")
         XCTAssertNil(PlateauDiagnosis.diagnose(recentLogs: logs, library: mobilityHoldChain()))
     }
 
-    /// Diagnosis is deterministic for a given `(recentLogs, library)`.
+    /// Diagnosis is deterministic for a given `(recentLogs, library, level)`.
     func testDiagnosisIsDeterministic() {
-        let clears = [logged("push_knee", reps: 12, sets: 3)]
-        let logs = [log(on: dayInWeek(1), exercises: clears), log(on: dayInWeek(2), exercises: clears)]
+        let logs = [log(on: dayInWeek(1), exercises: clears()), log(on: dayInWeek(2), exercises: clears())]
         XCTAssertEqual(
             PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain()),
             PlateauDiagnosis.diagnose(recentLogs: logs, library: pushChain())

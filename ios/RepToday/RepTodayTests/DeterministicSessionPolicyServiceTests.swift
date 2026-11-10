@@ -29,14 +29,14 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
 
     /// A fresh user whose Ready-Screen default and onboarding seed are both `minutes`, with no
     /// completed-duration history yet. Built inline so the test stays hermetic (no persistence).
-    private func user(defaultMinutes: Int = 15) -> User {
+    private func user(defaultMinutes: Int = 15, level: FitnessLevel = .intermediate) -> User {
         User(
             id: "policy-test-user",
             displayName: "Riley",
             createdAt: day(1),
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                fitnessLevel: level, primaryGoal: .stayActive,
                 sitsLong: true, injuries: [], typicalAvailableMinutes: defaultMinutes
             ),
             phase: .discipline,
@@ -82,15 +82,19 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
         )
     }
 
+    /// The entry tier of `gatedPushChain()` cleared at the Training Day bar for an intermediate user:
+    /// four sets at the top of the 15-30 range, at Earned Reps of 30.
     private func clearedPush() -> LoggedExercise {
-        LoggedExercise(
-            id: UUID(),
-            exerciseId: "push_knee",
-            pillar: .strength,
-            movementPattern: .push,
-            completedSets: Array(repeating: CompletedSet(reps: 12, durationSeconds: nil), count: 3),
-            skipped: false
-        )
+        TrainingDayFixtures.station("push_knee", pattern: .push, value: 30, earned: 30)
+    }
+
+    /// Two same-week sessions that each clear the gated entry tier: a Physical Stall for an intermediate
+    /// user.
+    private func stalledLogs() -> [WorkoutLog] {
+        [
+            log(on: day(1), requestedMinutes: 15, durationMinutes: 15, exercises: [clearedPush()]),
+            log(on: day(2), requestedMinutes: 15, durationMinutes: 15, exercises: [clearedPush()]),
+        ]
     }
 
     /// A push chain whose entry tier's next tier exists but is gated behind the Strength phase, so a
@@ -102,14 +106,16 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
                 category: .strength, difficulty: 1, phase: .discipline, equipment: [], isHold: false,
                 defaultReps: 10, defaultDurationSeconds: nil, estimatedTimePerSetSeconds: 40, metValue: 4,
                 progressionChainId: "push", progressionOrder: 0, regressionId: nil,
-                progressionId: "push_one_arm", advancementCriteria: "3x12", apartmentFriendly: true
+                progressionId: "push_one_arm", advancementCriteria: "4 clean sets at the top of your rep range",
+                apartmentFriendly: true
             ),
             Exercise(
                 id: "push_one_arm", displayName: "push_one_arm", pillar: .strength, movementPattern: .push,
                 category: .strength, difficulty: 5, phase: .strength, equipment: [], isHold: false,
                 defaultReps: 8, defaultDurationSeconds: nil, estimatedTimePerSetSeconds: 40, metValue: 4,
                 progressionChainId: "push", progressionOrder: 1, regressionId: nil,
-                progressionId: nil, advancementCriteria: "3x8", apartmentFriendly: true
+                progressionId: nil, advancementCriteria: "4 clean sets at the top of your rep range",
+                apartmentFriendly: true
             ),
         ]
     }
@@ -162,11 +168,7 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
     func testReprogramStampsVersionUpdatedByAndTime() async throws {
         let users = MockUserService()
         let svc = service(library: gatedPushChain(), userService: users)
-        let clears = [clearedPush()]
-        let logs = [
-            log(on: day(1), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-            log(on: day(2), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-        ]
+        let logs = stalledLogs()
         let when = day(3)
         let policy = try await svc.reprogram(user: user(), recentLogs: logs, trigger: trigger(.physicalStall, at: when))
 
@@ -181,15 +183,31 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
     func testPhysicalStallRaisesChallenge() async throws {
         let users = MockUserService()
         let svc = service(library: gatedPushChain(), userService: users)
-        let clears = [clearedPush()]
-        let logs = [
-            log(on: day(1), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-            log(on: day(2), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-        ]
+        let logs = stalledLogs()
         let policy = try await svc.reprogram(user: user(), recentLogs: logs, trigger: trigger(.physicalStall, at: day(3)))
 
         XCTAssertGreaterThan(policy.progressionRate, SessionPolicy.default.progressionRate)
         XCTAssertGreaterThan(policy.varietyWindow, SessionPolicy.default.varietyWindow)
+    }
+
+    /// The stall is re-diagnosed at the user's level before any lever moves: a stall trigger over sessions
+    /// short of the bar (three-set logs written before Training Days), or over 30 reps for an advanced
+    /// user whose range runs to 50, moves no lever.
+    func testStallTriggerShortOfTheBarMovesNoLever() async throws {
+        let users = MockUserService()
+        let svc = service(library: gatedPushChain(), userService: users)
+        let legacy = [TrainingDayFixtures.station("push_knee", pattern: .push, role: nil, value: 12, sets: 3)]
+        let legacyLogs = [
+            log(on: day(1), requestedMinutes: 15, durationMinutes: 15, exercises: legacy),
+            log(on: day(2), requestedMinutes: 15, durationMinutes: 15, exercises: legacy),
+        ]
+        let fromLegacy = try await svc.reprogram(user: user(), recentLogs: legacyLogs, trigger: trigger(.physicalStall, at: day(3)))
+        XCTAssertEqual(fromLegacy.progressionRate, SessionPolicy.default.progressionRate, accuracy: 1e-9)
+        XCTAssertEqual(fromLegacy.varietyWindow, SessionPolicy.default.varietyWindow)
+
+        let advanced = try await svc.reprogram(user: user(level: .advanced), recentLogs: stalledLogs(), trigger: trigger(.physicalStall, at: day(3)))
+        XCTAssertEqual(advanced.progressionRate, SessionPolicy.default.progressionRate, accuracy: 1e-9)
+        XCTAssertEqual(advanced.varietyWindow, SessionPolicy.default.varietyWindow)
     }
 
     /// A disengagement re-program eases `progressionRate` and narrows the variety window, never
@@ -242,11 +260,7 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
         let users = MockUserService()
         let store = InMemorySessionPolicyStore()
         let svc = service(library: gatedPushChain(), store: store, userService: users)
-        let clears = [clearedPush()]
-        let logs = [
-            log(on: day(1), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-            log(on: day(2), requestedMinutes: 15, durationMinutes: 15, exercises: clears),
-        ]
+        let logs = stalledLogs()
         let written = try await svc.reprogram(user: user(), recentLogs: logs, trigger: trigger(.physicalStall, at: day(3)))
 
         let readBack = try await svc.currentPolicy(for: user())
