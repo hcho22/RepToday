@@ -59,6 +59,29 @@ final class ReadyViewModel {
     /// silently lost.
     private(set) var resumableSession: ActiveSessionState?
 
+    /// Today's place in the Push -> Pull -> Legs Rotation (ADR-0012), read from the logs on every load and
+    /// after every completed session.
+    private(set) var plan: TrainingPlan = .train(.push)
+
+    /// The user chose "Train anyway" on today's Rest Day, forfeiting the rest: today then shows the next
+    /// group's session instead of the Rest Day card. In memory only - completing that session moves the
+    /// Rotation on, which is what makes the choice stick.
+    private(set) var trainsAnyway = false
+
+    /// Whether Today shows the Rest Day card (US-TD05) rather than a session.
+    var showsRestDay: Bool { plan.isRest && !trainsAnyway }
+
+    /// The Training Day the session on screen trains, for the header.
+    var trainingDay: TrainingDay? { workout?.trainingDay }
+
+    /// The session's honest length in whole minutes (decision 17): what it was planned to take, which is
+    /// shorter than the request when even the top of the user's rep range and the longest rests cannot
+    /// fill it. Falls back to the request before a session exists.
+    var plannedMinutes: Int {
+        guard let workout else { return selectedMinutes }
+        return max(1, Int((Double(SessionAssembly.plannedSeconds(of: workout)) / 60).rounded()))
+    }
+
     /// The duration today's session is currently generated at. Starts at the user's learned Default
     /// Duration on `load()`, then follows whichever duration chip the user taps (US-J01). Distinct
     /// from `user.duration.defaultMinutes` (the persisted learned default): tapping a chip changes
@@ -200,9 +223,15 @@ final class ReadyViewModel {
             let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
             recentLogs = try await workoutLogService.workoutLogs(from: lookback, to: nil)
             policy = try await sessionPolicyService.currentPolicy(for: user)
+            plan = TrainingRotation.plan(logs: recentLogs, asOf: now())
 
             // The profile just read is the freshest there is, so the load path needs no second fetch.
-            try await generate(user: user)
+            // A Rest Day builds no session until the user asks to train anyway.
+            if showsRestDay {
+                workout = nil
+            } else {
+                try await generate(user: user)
+            }
 
             // US-T09: `ready_screen_shown` fires once per Ready Screen appearance, scoped to the first
             // successful load, carrying the `generation_ms` just measured in `generate()`. Guarded like
@@ -384,6 +413,43 @@ final class ReadyViewModel {
         user = refreshed
         let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
         await refreshInsights(for: refreshed, logs: allLogs)
+        // The finished session moved the Rotation (or, a Recovery flow, did not), so Today shows the next
+        // Training Day - or the Rest Day a completed Cycle owes - rather than the session just played.
+        let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
+        if let logs = try? await workoutLogService.workoutLogs(from: lookback, to: nil) {
+            recentLogs = logs
+        }
+        trainsAnyway = false
+        variation = .none
+        plan = TrainingRotation.plan(logs: recentLogs, asOf: now())
+        if showsRestDay {
+            workout = nil
+        } else {
+            try? await generate(user: refreshed)
+        }
+    }
+
+    /// "Train anyway" on a Rest Day (US-TD05): forfeit the rest and build the next group's session.
+    func trainAnyway() async {
+        guard let cached = user, plan.isRest else { return }
+        trainsAnyway = true
+        errorMessage = nil
+        do {
+            let user = (try? await userService.currentUser()) ?? cached
+            try await generate(user: user)
+        } catch {
+            trainsAnyway = false
+            errorMessage = "We couldn't build that session."
+        }
+    }
+
+    /// The Rest Day's optional Recovery flow (US-TD05): a short mobility-only session that neither moves
+    /// the Rotation nor counts as a session. `nil` when it cannot be built.
+    func recoveryWorkout() async -> Workout? {
+        guard let user else { return nil }
+        guard let workout = try? await workoutEngine.generateRecoveryWorkout(user: user, recentLogs: recentLogs),
+              !workout.blocks.isEmpty else { return nil }
+        return workout
     }
 
     /// Re-read whether an abandoned session is resumable (US-K04). Called after the player closes, so
@@ -483,7 +549,8 @@ final class ReadyViewModel {
             user: user,
             recentLogs: recentLogs,
             sessionPolicy: policy,
-            variation: requestedVariation
+            variation: requestedVariation,
+            trainingDay: plan.trainingDay
         )
         let generationMs = max(0, Int(now().timeIntervalSince(generationStart) * 1000))
         guard requested == selectedMinutes, requestedVariation == variation else { return }

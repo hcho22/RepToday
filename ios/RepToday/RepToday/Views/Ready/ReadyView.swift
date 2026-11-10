@@ -73,6 +73,8 @@ struct ReadyView: View {
 
             if let workout = viewModel.workout {
                 sessionScroll(workout)
+            } else if viewModel.showsRestDay {
+                restDayScroll
             } else if viewModel.isLoading {
                 ProgressView().tint(Theme.Colors.accent)
             } else {
@@ -186,14 +188,74 @@ struct ReadyView: View {
             Text(greeting)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
-            Text("Today: \(viewModel.requestedMinutes) min")
+            Text(title)
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
+            if viewModel.plannedMinutes < viewModel.requestedMinutes {
+                // The honest time (decision 17): even the top of the user's rep range and the longest rests
+                // cannot fill the request yet, so the session says how long it really runs.
+                Text("Runs \(viewModel.plannedMinutes) of your \(viewModel.requestedMinutes) minutes. It fills out as your reps grow.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
             Text(subtitle)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Push Day: 30 min" - today's Training Day and its honest length.
+    private var title: String {
+        guard let day = viewModel.trainingDay else { return "Today: \(viewModel.plannedMinutes) min" }
+        return "\(day.displayName): \(viewModel.plannedMinutes) min"
+    }
+
+    // MARK: - Rest Day (US-TD05)
+
+    private var restDayScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text(greeting)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text("Rest Day")
+                        .font(Theme.Typography.largeTitle)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let state = viewModel.resumableSession {
+                    ResumeSessionCard(
+                        state: state,
+                        onResume: {
+                            viewModel.sessionWillStart()
+                            presentedPlayer = .resume(state)
+                        },
+                        onDiscard: { Task { await viewModel.discardResumableSession() } }
+                    )
+                }
+
+                RestDayCard(
+                    next: viewModel.plan.trainingDay,
+                    onRecovery: {
+                        Task {
+                            guard let recovery = await viewModel.recoveryWorkout() else { return }
+                            viewModel.sessionWillStart()
+                            presentedPlayer = .fresh(recovery)
+                        }
+                    },
+                    onTrainAnyway: { Task { await viewModel.trainAnyway() } }
+                )
+
+                if let consistency = viewModel.consistency {
+                    ConsistencyCard(consistency: consistency)
+                }
+            }
+            .padding(Theme.Spacing.lg)
+        }
     }
 
     private var greeting: String {
@@ -395,6 +457,63 @@ enum ClassicsUpdateNoteCopy {
 /// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
 /// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
 /// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target.
+/// Today on a Rest Day (US-TD05, ADR-0012): the Cycle is done, so the card says so, offers the optional
+/// mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts the next group and
+/// forfeits the rest. Rest is framed as part of training, never as a gap.
+struct RestDayCard: View {
+    let next: TrainingDay
+    let onRecovery: () -> Void
+    let onTrainAnyway: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("You trained Push, Pull and Legs.")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Rest is part of the program - it's where strength is built. Take today off, or loosen up with a five-minute stretch.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+
+            Button(action: onRecovery) {
+                Text("Recovery")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: Theme.Spacing.buttonHeight)
+            }
+            .accentFilledButtonStyle()
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityHint("Starts a five-minute stretch. Today stays a Rest Day.")
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Button(action: onTrainAnyway) {
+                    Text("Train anyway")
+                        .font(Theme.Typography.button)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.Spacing.buttonHeight)
+                }
+                .buttonStyle(.bordered)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .accessibilityHint("Builds your \(next.displayName) instead of resting today.")
+                Text("Builds your \(next.displayName) instead of resting today.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 private struct ResumeSessionCard: View {
     let state: ActiveSessionState
     let onResume: () -> Void

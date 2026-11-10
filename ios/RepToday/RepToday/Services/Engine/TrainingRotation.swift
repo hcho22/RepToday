@@ -44,7 +44,7 @@ enum TrainingPlan: Equatable {
 ///   missed day never skips a group. A Recovery flow never moves it.
 /// - **Rest Day.** Completing the last group of a Cycle owes a Rest Day. Any session-free calendar day
 ///   after it honors the rest and starts the next Cycle; a session started before then ("Train anyway")
-///   forfeits it.
+///   forfeits it. A day with an Outside Activity is a day of showing up, not a rest.
 /// - **Outside Activities (decision 21).** The group an activity worked gets at least one day off: when
 ///   it is next, it swaps behind the following group, and when it is the only group left in the Cycle the
 ///   Rest Day comes early - and a Cycle whose rest came early owes none at its end. An activity counts as
@@ -75,7 +75,13 @@ enum TrainingRotation {
         calendar: Calendar = .current
     ) -> TrainingPlan {
         let state = state(logs: logs, activities: activities, asOf: asOf, calendar: calendar)
-        return plan(for: state, on: calendar.startOfDay(for: asOf), activities: activities, calendar: calendar)
+        return plan(
+            for: state,
+            on: calendar.startOfDay(for: asOf),
+            activities: activities,
+            includingSameDay: true,
+            calendar: calendar
+        )
     }
 
     /// The Rotation's state at the start of `asOf`'s day: every Training Day log and session-free day
@@ -91,18 +97,26 @@ enum TrainingRotation {
             .filter { $0.trainingDay != nil && $0.completedAt < today }
             .sorted { $0.completedAt < $1.completedAt }
         var state = State()
-        guard let first = trainingLogs.first else { return state }
         let byDay = Dictionary(grouping: trainingLogs) { calendar.startOfDay(for: $0.completedAt) }
+        let activityDays = Set(activities.map { calendar.startOfDay(for: $0.date) })
 
-        var day = calendar.startOfDay(for: first.completedAt)
+        var day = trainingLogs.first.map { calendar.startOfDay(for: $0.completedAt) } ?? today
         while day < today {
             if let sessions = byDay[day] {
                 for log in sessions {
                     record(log, into: &state)
                 }
+            } else if activityDays.contains(day) {
+                // An Outside Activity counts as showing up, so its day is not a rest.
             } else if state.restOwed {
                 state = State()
-            } else if case .rest(_, isEarly: true) = plan(for: state, on: day, activities: activities, calendar: calendar) {
+            } else if case .rest(_, isEarly: true) = plan(
+                for: state,
+                on: day,
+                activities: activities,
+                includingSameDay: false,
+                calendar: calendar
+            ) {
                 state.restTakenEarly = true
             }
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
@@ -177,11 +191,12 @@ enum TrainingRotation {
     }
 
     /// The plan for a day that starts in `state`: rest when owed, else the first group not yet done this
-    /// Cycle - unless an Outside Activity on that day or the day before worked it.
+    /// Cycle - unless an Outside Activity the day before (or, planning today, earlier today) worked it.
     private static func plan(
         for state: State,
         on day: Date,
         activities: [OutsideActivity],
+        includingSameDay: Bool,
         calendar: Calendar
     ) -> TrainingPlan {
         let remaining = TrainingDay.rotation.filter { !state.completed.contains($0) }
@@ -190,7 +205,7 @@ enum TrainingRotation {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: day) ?? day
         let rested = Set(activities.compactMap { activity -> TrainingDay? in
             let activityDay = calendar.startOfDay(for: activity.date)
-            return activityDay == day || activityDay == yesterday ? activity.group : nil
+            return (includingSameDay && activityDay == day) || activityDay == yesterday ? activity.group : nil
         })
         guard rested.contains(next) else { return .train(next) }
         if let swapped = remaining.dropFirst().first(where: { !rested.contains($0) }) {
