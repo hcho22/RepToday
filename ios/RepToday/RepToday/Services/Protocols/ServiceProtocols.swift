@@ -45,20 +45,23 @@ protocol WorkoutEngineProtocol {
         variation: SessionVariation
     ) async throws -> Workout
 
-    /// Assembles a complete session for `trainingDay` (ADR-0012); `nil` lets the Rotation decide from
-    /// `recentLogs`. Today passes the Rest Day's "Train anyway" group here.
+    /// Assembles a complete session for `trainingDay` (ADR-0012); `nil` lets the Rotation decide. Today
+    /// passes the Rest Day's "Train anyway" group here. `history` is the full log history the Rotation
+    /// replays (a Cycle reaches back past any bounded window); every other step reads `recentLogs`.
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         variation: SessionVariation,
         trainingDay: TrainingDay?
     ) async throws -> Workout
 
     /// Today's place in the Rotation for `user` (ADR-0012): a Training Day, or a Rest Day after a
-    /// completed Cycle. Days the user cannot train at all are passed over.
-    func trainingPlan(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> TrainingPlan
+    /// completed Cycle, replayed over the full log `history`. Days the user cannot train at all are
+    /// passed over.
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan
 
     /// The Rest Day's optional Recovery flow (US-TD05): a short, mobility-only session that neither
     /// advances the Rotation nor counts as a session.
@@ -87,6 +90,7 @@ extension WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         variation: SessionVariation,
         trainingDay: TrainingDay?
@@ -101,8 +105,8 @@ extension WorkoutEngineProtocol {
     }
 
     /// A test double that predates Training Days follows the Rotation over every group.
-    func trainingPlan(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
-        TrainingRotation.plan(logs: recentLogs, asOf: asOf)
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+        TrainingRotation.plan(logs: history, asOf: asOf)
     }
 
     /// A test double that predates the Recovery flow has none to offer.

@@ -354,6 +354,28 @@ final class SessionCompletionServiceTests: XCTestCase {
         XCTAssertTrue(saved?.coldStart.active ?? false, "still in the cold-start window below the threshold")
     }
 
+    /// A Recovery flow is not a session: it neither advances nor retires cold-start, even one below the
+    /// threshold, and the stored contract survives it.
+    func testARecoveryFlowNeverAdvancesColdStart() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.seeded(forFitnessLevel: .beginner), for: "u1")
+        let user = makeUser(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
+        let userService = MockUserService(user: user)
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: store)
+
+        try await service.recordCompletedSession(
+            TrainingDayFixtures.recoveryLog(completedAt: TrainingDayFixtures.asOf),
+            user: user,
+            recentLogs: []
+        )
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold - 1)
+        XCTAssertTrue(saved?.coldStart.active ?? false)
+        let savedPolicy = try await store.policy(for: "u1")
+        XCTAssertNotNil(savedPolicy?.coldStartContract)
+    }
+
     /// The session that reaches the handoff threshold retires cold-start on the user *and* clears the
     /// now-inert cold-start contract from the stored policy (US-G04), so the engine runs the plain
     /// pipeline from the next open.

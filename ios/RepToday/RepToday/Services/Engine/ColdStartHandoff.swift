@@ -116,9 +116,10 @@ enum ColdStartHandoff {
     /// The cold-start sessions themselves: the first `handoffThreshold` logs in date order. The band
     /// is a claim about *that* week, so both the recording and any later revision of it count
     /// down-signals over exactly this set - a `tooHard` rating on a much later session can neither
-    /// widen nor narrow a band that retired long before it.
+    /// widen nor narrow a band that retired long before it. A Recovery flow is not a session
+    /// (`WorkoutLog.isRecovery`), so it is never one of them.
     static func coldStartWindowLogs(_ allLogs: [WorkoutLog]) -> [WorkoutLog] {
-        Array(allLogs.sorted { $0.completedAt < $1.completedAt }.prefix(handoffThreshold))
+        Array(allLogs.filter { !$0.isRecovery }.sorted { $0.completedAt < $1.completedAt }.prefix(handoffThreshold))
     }
 
     /// The cold-start state with its recorded band floor re-resolved against the now-rated cold-start

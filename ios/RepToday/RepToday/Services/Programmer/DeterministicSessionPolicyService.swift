@@ -77,7 +77,8 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
 
     /// The re-program triggers due as of `asOf`, in precedence order (US-F01). Adapts the
     /// library-taking `ReprogramTriggerDetection.dueTriggers` to the protocol's library-free
-    /// signature by supplying the validated catalog from the exercise service.
+    /// signature by supplying the validated catalog from the exercise service. A Recovery flow is not
+    /// a session (`WorkoutLog.isRecovery`), so neither this nor `reprogram` reads one.
     func dueTriggers(
         user: User,
         recentLogs: [WorkoutLog],
@@ -86,7 +87,7 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
         let library = try await exerciseService.exercises()
         return ReprogramTriggerDetection.dueTriggers(
             user: user,
-            recentLogs: recentLogs,
+            recentLogs: recentLogs.filter { !$0.isRecovery },
             library: library,
             asOf: asOf
         )
@@ -115,6 +116,7 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
     ) async throws -> SessionPolicy {
         let current = try await currentPolicy(for: user)
         let library = try await exerciseService.exercises()
+        let recentLogs = recentLogs.filter { !$0.isRecovery }
 
         // 1. Move the optimization levers for this trigger (precedence-safe re-diagnosis inside).
         var next = leveled(current, for: trigger, recentLogs: recentLogs, library: library, level: user.profile.fitnessLevel)

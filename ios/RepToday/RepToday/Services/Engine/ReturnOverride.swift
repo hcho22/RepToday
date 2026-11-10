@@ -73,13 +73,14 @@ enum ReturnOverride {
 
     /// Calendar days since the most recent logged session, or `nil` when there is no history. A log is
     /// a show-up (it is only written on completion), so any log - even a fully-skipped one - counts as
-    /// the last time the user was here.
+    /// the last time the user was here. A Recovery flow is not a session (`WorkoutLog.isRecovery`), so
+    /// it counts toward none of the Return rules here.
     static func daysSinceLastSession(
         recentLogs: [WorkoutLog],
         asOf: Date,
         calendar: Calendar = .current
     ) -> Int? {
-        guard let last = recentLogs.map(\.completedAt).max() else { return nil }
+        guard let last = recentLogs.filter({ !$0.isRecovery }).map(\.completedAt).max() else { return nil }
         let days = calendar.dateComponents(
             [.day],
             from: calendar.startOfDay(for: last),
@@ -123,7 +124,7 @@ enum ReturnOverride {
     /// no ramp. Pure over the logs, like the Return detection it follows.
     static func rampSessionsRemaining(recentLogs: [WorkoutLog]) -> Int {
         guard let returnedAt = recentLogs.filter(\.wasReturn).map(\.completedAt).max() else { return 0 }
-        return max(0, rampSessions - recentLogs.filter { $0.completedAt > returnedAt }.count)
+        return max(0, rampSessions - recentLogs.filter { $0.completedAt > returnedAt && !$0.isRecovery }.count)
     }
 
     /// `recentLogs` split into the sessions that show the user's capacity and the **held** ones: every
@@ -138,7 +139,7 @@ enum ReturnOverride {
         var capacity: [WorkoutLog] = []
         var held: [WorkoutLog] = []
         var rampLeft = 0
-        for log in recentLogs.sorted(by: { $0.completedAt < $1.completedAt }) {
+        for log in recentLogs.filter({ !$0.isRecovery }).sorted(by: { $0.completedAt < $1.completedAt }) {
             if log.wasReturn {
                 rampLeft = rampSessions
                 held.append(log)

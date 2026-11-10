@@ -196,9 +196,14 @@ enum SessionAssembly {
 
     /// Assembles today's session for `requestedMinutes`.
     ///
-    /// `trainingDay` is the group to train; `nil` lets the Rotation decide from `recentLogs`
-    /// (`TrainingRotation.trainingDay`), which on a Rest Day is the group "Train anyway" starts - Today
-    /// decides whether to offer the Rest Day before it asks for a session.
+    /// `trainingDay` is the group to train; `nil` lets the Rotation decide (`TrainingRotation.trainingDay`),
+    /// which on a Rest Day is the group "Train anyway" starts - Today decides whether to offer the Rest Day
+    /// before it asks for a session.
+    ///
+    /// `history` is the full log history the Rotation replays (for today's group and the Cycle the Core
+    /// Sprinkle rotates on): a Cycle's alignment reaches back to the first Training Day, so a bounded
+    /// window would start the replay mid-Cycle. `nil` means `recentLogs` already is the full history.
+    /// Every other step reads `recentLogs`.
     ///
     /// `sessionPolicy` carries the levers Step 6 reads (`progressionRate`) and the cold-start contract.
     /// The Return and its Re-entry Ramp are read from `recentLogs` (`ReturnOverride`).
@@ -216,11 +221,12 @@ enum SessionAssembly {
         sessionPolicy: SessionPolicy = .default,
         variation: SessionVariation = .none,
         trainingDay: TrainingDay? = nil,
+        history: [WorkoutLog]? = nil,
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
         let day = trainingDay ?? TrainingRotation.trainingDay(
-            logs: recentLogs,
+            logs: history ?? recentLogs,
             trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
             asOf: asOf,
             calendar: calendar
@@ -234,6 +240,7 @@ enum SessionAssembly {
                 sessionPolicy: sessionPolicy,
                 offered: variation.offeredExerciseIds,
                 trainingDay: day,
+                history: history,
                 asOf: asOf,
                 calendar: calendar
             )
@@ -247,6 +254,7 @@ enum SessionAssembly {
             sessionPolicy: sessionPolicy,
             offered: [],
             trainingDay: day,
+            history: history,
             asOf: asOf,
             calendar: calendar
         )
@@ -262,6 +270,7 @@ enum SessionAssembly {
         sessionPolicy: SessionPolicy,
         offered: Set<String>,
         trainingDay: TrainingDay,
+        history: [WorkoutLog]?,
         asOf: Date,
         calendar: Calendar
     ) -> Workout {
@@ -273,6 +282,7 @@ enum SessionAssembly {
             sessionPolicy: sessionPolicy,
             offered: offered,
             trainingDay: trainingDay,
+            history: history,
             asOf: asOf,
             calendar: calendar
         )
@@ -309,6 +319,8 @@ enum SessionAssembly {
             library: library,
             pool: ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
             recentLogs: recentLogs,
+            history: recentLogs,
+            trainable: Set(TrainingDay.rotation),
             level: user.profile.fitnessLevel,
             phase: user.phase,
             injuries: user.profile.injuries,
@@ -345,15 +357,26 @@ enum SessionAssembly {
     /// eligible pool offers. An injury can remove every ladder of a day (a wrist flag empties Push), and
     /// the Rotation passes such a day over rather than serve it as stretches and a Core Sprinkle.
     static func trainableDays(user: User, library: [Exercise], recentLogs: [WorkoutLog]) -> Set<TrainingDay> {
-        let ladders = Set(ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs).map(\.progressionChainId))
+        trainableDays(in: ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs))
+    }
+
+    private static func trainableDays(in eligiblePool: [Exercise]) -> Set<TrainingDay> {
+        let ladders = Set(eligiblePool.map(\.progressionChainId))
         return Set(TrainingDay.rotation.filter { day in day.ladders.contains(where: ladders.contains) })
     }
 
-    /// Today's plan for this user (ADR-0012): the Rotation over their logs, passing over any day they
-    /// cannot train.
-    static func trainingPlan(user: User, library: [Exercise], recentLogs: [WorkoutLog], asOf: Date, calendar: Calendar = .current) -> TrainingPlan {
+    /// Today's plan for this user (ADR-0012): the Rotation over their full log `history` (`nil` when
+    /// `recentLogs` already is the full history), passing over any day they cannot train.
+    static func trainingPlan(
+        user: User,
+        library: [Exercise],
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog]? = nil,
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> TrainingPlan {
         TrainingRotation.plan(
-            logs: recentLogs,
+            logs: history ?? recentLogs,
             trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
             asOf: asOf,
             calendar: calendar
@@ -387,6 +410,7 @@ enum SessionAssembly {
         sessionPolicy: SessionPolicy = .default,
         offered: Set<String> = [],
         trainingDay: TrainingDay,
+        history: [WorkoutLog]? = nil,
         asOf: Date,
         calendar: Calendar = .current
     ) -> SessionPlan {
@@ -400,10 +424,11 @@ enum SessionAssembly {
         // Step 0: the cold-start Start Seed, resolved once (its pool band, the chains it withholds, and
         // the opening multiplier move together), and the Return's difficulty cap and Re-entry scale.
         let startSeed = ColdStartOverride.startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
+        let eligible = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
         let pool = ReturnOverride.returnPool(
             ColdStartOverride.startBandedPool(
                 ColdStartOverride.cappedPool(
-                    ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+                    eligible,
                     user: user,
                     sessionPolicy: sessionPolicy
                 ),
@@ -421,6 +446,8 @@ enum SessionAssembly {
             library: library,
             pool: pool,
             recentLogs: recentLogs,
+            history: history ?? recentLogs,
+            trainable: trainableDays(in: eligible),
             level: user.profile.fitnessLevel,
             phase: user.phase,
             injuries: user.profile.injuries,
@@ -838,6 +865,10 @@ private struct Builder {
     /// The eligible pool (movement access, injuries, recent skips, the Start Seed band, the Return cap).
     let pool: [Exercise]
     let recentLogs: [WorkoutLog]
+    /// The full log history the Rotation replays to find the Cycle the Core Sprinkle rotates on.
+    let history: [WorkoutLog]
+    /// The Training Days this user can train (`SessionAssembly.trainableDays`), as the Rotation reads them.
+    let trainable: Set<TrainingDay>
     let level: FitnessLevel
     let phase: Phase
     let injuries: [String]
@@ -871,6 +902,8 @@ private struct Builder {
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        trainable: Set<TrainingDay>,
         level: FitnessLevel,
         phase: Phase,
         injuries: [String],
@@ -889,6 +922,8 @@ private struct Builder {
         self.library = library
         self.pool = pool
         self.recentLogs = recentLogs
+        self.history = history
+        self.trainable = trainable
         self.level = level
         self.phase = phase
         self.injuries = injuries
@@ -1096,7 +1131,8 @@ private struct Builder {
         let ordered = TrainingRotation.coreLadderOrder(
             canonical: SessionAssembly.coreLadders,
             library: library,
-            logs: recentLogs,
+            logs: history,
+            trainable: trainable,
             asOf: asOf,
             calendar: calendar
         )

@@ -270,6 +270,38 @@ final class TrainingDaySessionTests: XCTestCase {
         XCTAssertTrue(stations(workout).contains { $0.role == .main })
     }
 
+    /// With Push passed over, a Cycle of Pull and Legs still turns the Core Sprinkle: the Cycle the
+    /// Sprinkle rotates on is the one the Rotation reads, over the same trainable days.
+    func testTheCoreSprinkleRotatesWhenADayIsPassedOver() {
+        let user = TrainingDayFixtures.user(injuries: ["wrist"])
+        let logs = [
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 4)),
+            TrainingDayFixtures.trainingLog(.legs, completedAt: TrainingDayFixtures.date(daysAgo: 3)),
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 1)),
+        ]
+        let allDays = TrainingRotation.coreLadderOrder(
+            canonical: SessionAssembly.coreLadders,
+            library: library,
+            logs: logs,
+            asOf: TrainingDayFixtures.asOf,
+            calendar: TrainingDayFixtures.calendar
+        )
+        XCTAssertEqual(allDays.first, "core_plank", "read over every day, the first Cycle never ends")
+
+        let workout = SessionAssembly.assemble(
+            requestedMinutes: 30,
+            user: user,
+            library: library,
+            recentLogs: logs,
+            asOf: TrainingDayFixtures.asOf,
+            calendar: TrainingDayFixtures.calendar
+        )
+        XCTAssertEqual(workout.trainingDay, .legs)
+        let core = stations(workout).first { $0.role == .core }
+        XCTAssertNotNil(core)
+        XCTAssertNotEqual(core?.exercise.progressionChainId, "core_plank", "the plank ladder led the Cycle before")
+    }
+
     // MARK: Practice under the cold-start cap
 
     func testPracticeNeverExceedsTheColdStartDifficultyCap() {

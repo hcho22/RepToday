@@ -141,6 +141,10 @@ final class ReadyViewModel {
     /// alive, so `generate()` re-reads it.) Also handed to the active-session player so an in-session
     /// swap (US-K03) filters and sizes a substitute without a fresh fetch.
     private(set) var recentLogs: [WorkoutLog] = []
+    /// The full log history, read alongside `recentLogs`. The Rotation replays it (a Cycle's alignment
+    /// reaches back to the first Training Day, past any bounded window) and the Consistency Score reads
+    /// it (`longestChain` is an all-time maximum).
+    private var history: [WorkoutLog] = []
     /// The policy today's session was generated against. Handed to the active-session player so an
     /// in-session swap (US-K03) sizes its substitute with the same Step 6 levers the session was built
     /// on - including the cold-start Start Seed (US-O02) - rather than reverting to the neutral defaults.
@@ -217,13 +221,11 @@ final class ReadyViewModel {
             // backgrounded out of - and the player persisted - is offered back on return.
             resumableSession = try? await activeSessionStore.load(for: user.id)
 
-            // Recent logs feed the engine's staleness and Adaptive Overload steps; a freshly
-            // onboarded user simply has none. The lookback is generous so the engine sees the full
-            // relevant history without loading everything.
-            let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
-            recentLogs = try await workoutLogService.workoutLogs(from: lookback, to: nil)
+            // The full history feeds the Rotation and the Consistency Score; its recent window feeds the
+            // engine's staleness and Adaptive Overload steps. A freshly onboarded user simply has none.
+            setLogs(try await workoutLogService.workoutLogs(from: nil, to: nil))
             policy = try await sessionPolicyService.currentPolicy(for: user)
-            plan = try await workoutEngine.trainingPlan(user: user, recentLogs: recentLogs, asOf: now())
+            plan = try await workoutEngine.trainingPlan(user: user, recentLogs: recentLogs, history: history, asOf: now())
 
             // The profile just read is the freshest there is, so the load path needs no second fetch.
             // A Rest Day builds no session until the user asks to train anyway.
@@ -258,12 +260,11 @@ final class ReadyViewModel {
             // Consistency reads all history, not the bounded engine window: `longestChain` ("Best
             // run") is a historical maximum, so a run older than the 70-day lookback must still count.
             // The engine inputs keep the bounded `recentLogs` for staleness / Adaptive Overload. The
-            // full-history scan runs once per app open: the score only changes when a workout
-            // completes, and none completes on the Ready Screen, so a tab re-appear reuses the result.
+            // score runs once per app open: it only changes when a workout completes, and none
+            // completes on the Ready Screen, so a tab re-appear reuses the result.
             if !hasComputedConsistency {
                 hasComputedConsistency = true
-                let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
-                await refreshInsights(for: user, logs: allLogs)
+                await refreshInsights(for: user, logs: history)
             }
 
             // Re-program-on-open fires once per app open (not on every tab re-appear). It runs fully
@@ -411,17 +412,15 @@ final class ReadyViewModel {
         guard let existing = user else { return }
         let refreshed = (try? await userService.currentUser()) ?? existing
         user = refreshed
-        let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
-        await refreshInsights(for: refreshed, logs: allLogs)
+        if let logs = try? await workoutLogService.workoutLogs(from: nil, to: nil) {
+            setLogs(logs)
+        }
+        await refreshInsights(for: refreshed, logs: history)
         // The finished session moved the Rotation (or, a Recovery flow, did not), so Today shows the next
         // Training Day - or the Rest Day a completed Cycle owes - rather than the session just played.
-        let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
-        if let logs = try? await workoutLogService.workoutLogs(from: lookback, to: nil) {
-            recentLogs = logs
-        }
         trainsAnyway = false
         variation = .none
-        plan = (try? await workoutEngine.trainingPlan(user: refreshed, recentLogs: recentLogs, asOf: now())) ?? plan
+        plan = (try? await workoutEngine.trainingPlan(user: refreshed, recentLogs: recentLogs, history: history, asOf: now())) ?? plan
         if showsRestDay {
             workout = nil
         } else {
@@ -443,12 +442,15 @@ final class ReadyViewModel {
         }
     }
 
-    /// The Rest Day's optional Recovery flow (US-TD05): a short mobility-only session that neither moves
-    /// the Rotation nor counts as a session. `nil` when it cannot be built.
+    /// The Rest Day's optional Recovery flow (US-TD05), built to start now: a short mobility-only session
+    /// that neither moves the Rotation nor counts as a session. `nil` when it cannot be built. Starting it
+    /// fresh overwrites a paused session exactly as Start does, so that session is given up here
+    /// (`abandonResumableSessionForOverwrite()`).
     func recoveryWorkout() async -> Workout? {
         guard let user else { return nil }
         guard let workout = try? await workoutEngine.generateRecoveryWorkout(user: user, recentLogs: recentLogs),
               !workout.blocks.isEmpty else { return nil }
+        await abandonResumableSessionForOverwrite()
         return workout
     }
 
@@ -548,6 +550,7 @@ final class ReadyViewModel {
             requestedMinutes: requested,
             user: user,
             recentLogs: recentLogs,
+            history: history,
             sessionPolicy: policy,
             variation: requestedVariation,
             trainingDay: plan.trainingDay
@@ -566,8 +569,15 @@ final class ReadyViewModel {
         varietyNote = note
     }
 
-    /// How far back the Ready Screen reads logs for engine context. Covers the Consistency Score
-    /// window (8 weeks) with headroom.
+    /// Store a fresh read of the full history and its recent window.
+    private func setLogs(_ logs: [WorkoutLog]) {
+        history = logs
+        let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
+        recentLogs = lookback.map { start in logs.filter { $0.completedAt >= start } } ?? logs
+    }
+
+    /// How far back the engine's recent window reaches. Covers the Consistency Score window (8 weeks)
+    /// with headroom.
     private let recentLogLookbackDays = 70
 
     /// The duration shown before a user has loaded - a neutral mid-range default.

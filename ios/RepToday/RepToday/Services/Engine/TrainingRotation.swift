@@ -38,7 +38,9 @@ enum TrainingPlan: Equatable {
 // MARK: - TrainingRotation
 
 /// The Push -> Pull -> Legs Rotation (ADR-0012, US-TD04): pure and date-injected, read entirely from the
-/// logs (and, from M2, the Outside Activities).
+/// logs (and, from M2, the Outside Activities). The logs must be the full history: the replay starts a
+/// Cycle at the first Training Day it is given, so a window that begins mid-Cycle misaligns every Cycle
+/// after it.
 ///
 /// - **Advance on completion.** The Rotation moves only when a Training Day session is completed, so a
 ///   missed day never skips a group. A Recovery flow never moves it.
@@ -155,15 +157,17 @@ enum TrainingRotation {
 
     /// The core ladders in Core Sprinkle order for the current Cycle: the ladder worked longest before
     /// the Cycle began first (never-worked ladders ahead of worked ones, then `canonical` order), so
-    /// each Cycle leads with a different ladder.
+    /// each Cycle leads with a different ladder. `logs` and `trainable` are the ones `plan` reads, so the
+    /// Cycle is the one Today shows.
     static func coreLadderOrder(
         canonical: [String],
         library: [Exercise],
         logs: [WorkoutLog],
+        trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
         asOf: Date,
         calendar: Calendar = .current
     ) -> [String] {
-        let cycleStart = state(logs: logs, asOf: asOf, calendar: calendar).cycleStartedAt ?? asOf
+        let cycleStart = state(logs: logs, trainable: trainable, asOf: asOf, calendar: calendar).cycleStartedAt ?? asOf
         let ladderById = Dictionary(library.map { ($0.id, $0.progressionChainId) }, uniquingKeysWith: { first, _ in first })
         var lastWorked: [String: Date] = [:]
         for log in logs where log.completedAt < cycleStart {

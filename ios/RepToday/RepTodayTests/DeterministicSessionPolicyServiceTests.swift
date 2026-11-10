@@ -318,6 +318,30 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
         XCTAssertEqual(afterFirst.defaultMinutes, afterSecond.defaultMinutes)
     }
 
+    /// A Recovery flow is not a session: its few minutes never fold into Default Duration learning.
+    func testARecoveryFlowNeverFoldsIntoDefaultDuration() async throws {
+        let sessions = (1...3).map { i in log(on: day(i), requestedMinutes: 30, durationMinutes: 30) }
+        let recovery = log(
+            on: day(4),
+            requestedMinutes: 5,
+            durationMinutes: 5,
+            exercises: [TrainingDayFixtures.station("mobility_cat_cow", pattern: .mobility, pillar: .mobility, role: .recovery, value: 10, sets: 1)]
+        )
+        XCTAssertTrue(recovery.isRecovery)
+
+        let withoutUsers = MockUserService(user: user(defaultMinutes: 30))
+        _ = try await service(userService: withoutUsers)
+            .reprogram(user: user(defaultMinutes: 30), recentLogs: sessions, trigger: trigger(.weeklyBoundary, at: day(5)))
+        let withUsers = MockUserService(user: user(defaultMinutes: 30))
+        _ = try await service(userService: withUsers)
+            .reprogram(user: user(defaultMinutes: 30), recentLogs: sessions + [recovery], trigger: trigger(.weeklyBoundary, at: day(5)))
+
+        let without = try await withoutUsers.currentUser()!.duration
+        let with = try await withUsers.currentUser()!.duration
+        XCTAssertEqual(with.completedDurationEWMA, without.completedDurationEWMA)
+        XCTAssertEqual(with.defaultMinutes, 30)
+    }
+
     /// A re-program that moves no lever and learns no new duration still writes a policy but attaches
     /// no note (the honest outcome - nothing observable changed).
     func testNoteIsNilWhenNothingObservableChanged() async throws {
