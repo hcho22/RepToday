@@ -1,167 +1,63 @@
 import XCTest
 @testable import RepToday
 
-/// US-007: the cross-cutting strength-primary regression guard for the "Strength-Primary Sessions"
-/// slice (US-001 ... US-005).
+/// US-007 / US-M05: the cross-cutting strength-primary regression guard.
 ///
-/// This suite adds **no engine behavior**. It is a single consolidated invariant that a future tuning
-/// change would have to break loudly: it sweeps every requested length in
-/// `5, 10, 15, 20, 30, 45, 60` across all three generation regimes - **steady-state**, **cold-start**
-/// (US-004's First-Week window), and **Return** (US-005's post-gap comeback) - and pins that every
-/// generated session:
+/// One consolidated sweep a future tuning change would have to break loudly. It runs every requested
+/// length in `5, 10, 15, 20, 30, 45, 60` on every Training Day across all three generation regimes -
+/// **steady-state**, **cold-start** (the First-Week window) and **Return** (the post-gap comeback) - and
+/// pins that every generated session:
 ///
-///   1. contains a real `.strength` **training** block (not merely a mobility warm-up), and is never
-///      **mobility-led** (the training block owning the most planned time is strength, never mobility);
-///   2. holds the strength-primary share bands - since US-M01 there is **no mobility training block at
-///      any length**, so a session's training time is all strength (single-focus and the shorter blends)
-///      or a strength block leading a dedicated primal minority block (extended), always strength-heavier
-///      than the archived ~0.75-0.80 accessory model; and
-///   3. stays deterministic and a pure function of the injected `asOf` (no wall-clock read).
+///   1. trains through exactly one strength circuit, every station a strength-pillar movement, and never
+///      carries a mobility *middle* block - mobility survives only as the warm-up and cooldown bookends
+///      (the originally-reported bug was a 5-minute desk-worker session generated as all stretches);
+///   2. stays deterministic and a pure function of the injected `asOf`;
+///   3. opens and closes with a stretch complementing the day's lead pattern (US-M02 prefer-then-fill);
+///   4. treats `sitsLong` as a bookend bias only - toggling it never changes the block structure.
 ///
-/// **US-M05** extends the same sweep with the Movement-Practice-removal regression guard: across every
-/// (regime, length) it also pins that
-///
-///   4. **no** session emits a mobility *middle* block - no `.mobility`-category block exists at all, and
-///      the training middle is built only from strength (+ a dedicated primal block at 41-60 min), so a
-///      later tuning change cannot silently bring Movement Practice back;
-///   5. the warm-up and cooldown still **lead** with a stretch complementing the day's lead strength
-///      pattern (US-M02 prefer-then-fill), at the regression altitude; and
-///   6. `sitsLong` remains a bookend *bias* only - toggling it across the full length matrix never
-///      changes the block-category structure and never introduces a mobility middle block.
-///
-/// `BookendComplementSelectionTests` / `SitsLongBookendBiasTests` prove the bookend mechanisms per-story
-/// (including the general-pool fallback and that `sitsLong` sizes nothing); the sweeps here complement -
-/// never duplicate - those by re-checking the structural invariants across the whole matrix.
-///
-/// The originally-reported bug this guards against is a 5-minute desk-worker session generated as all
-/// stretches. `SessionAssemblyTests` proves the per-story behavior; this suite is the one place a
-/// maintainer can see, at a glance, that the invariant holds across the whole matrix - so a change that
-/// quietly reintroduces a mobility-only (or mobility-middle) session for some length/mode fails here even
-/// if it slipped past a narrower per-story test.
+/// `BookendComplementSelectionTests` / `SitsLongBookendBiasTests` prove the bookend mechanisms per story
+/// and `TrainingDaySessionTests` the slots inside the circuit; this suite re-checks the structural
+/// invariants across the whole regime x day x length matrix.
 final class StrengthPrimaryRegressionTests: XCTestCase {
 
-    // MARK: - Fixtures (mirrors SessionAssemblyTests so the sweep exercises the real pipeline)
+    // MARK: - Fixtures
 
-    private let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        return calendar
-    }()
-
-    private var asOf: Date {
-        calendar.date(from: DateComponents(year: 2026, month: 6, day: 29, hour: 12))!
-    }
-
-    private func date(daysAgo: Int) -> Date {
-        calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!
-    }
-
-    private func library() async throws -> [Exercise] {
-        try await MockExerciseService().exercises()
-    }
-
-    /// The seven lengths swept: two single-focus (5, 10) and five blends (15/20 light, 30 full, 45/60
-    /// extended), so every session shape the engine builds is covered.
     private let lengths = [5, 10, 15, 20, 30, 45, 60]
 
-    private func user(
-        level: FitnessLevel = .intermediate,
-        sitsLong: Bool = false
-    ) -> User {
-        User(
-            id: "u1",
-            displayName: "Test",
-            createdAt: asOf,
-            profile: UserProfile(
-                age: 35,
-                sex: .other,
-                heightCm: 175,
-                weightKg: 75,
-                fitnessLevel: level,
-                primaryGoal: .stayActive,
-                sitsLong: sitsLong,
-                injuries: [],
-                typicalAvailableMinutes: 15
-            ),
-            phase: .discipline,
-            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
-            consistency: Consistency(
-                weeklyGoal: 3,
-                score: 50,
-                workoutsThisWeek: 1,
-                longestChain: 0,
-                totalWorkoutsCompleted: 0,
-                totalMinutesExercised: 0
-            )
-        )
+    private var library: [Exercise] = []
+
+    override func setUp() async throws {
+        library = try await MockExerciseService().exercises()
     }
 
-    /// A cold-start user inside the First-Week window (US-004): the shared user plus an active
-    /// cold-start state. A desk worker (`sitsLong`) with a mobility bias is the hardest case - the
-    /// original bug's profile - so the sweep uses it.
-    private func coldStartUser(sitsLong: Bool = true) -> User {
-        var user = user(level: .beginner, sitsLong: sitsLong)
+    /// The pattern each Training Day's bookends lead with.
+    private let leadPattern: [TrainingDay: MovementPattern] = [.push: .push, .pull: .pull, .legs: .squat]
+
+    /// A cold-start user inside the First-Week window: a desk-worker beginner with a mobility opening bias,
+    /// the original bug's profile.
+    private var coldStartUser: User {
+        var user = TrainingDayFixtures.user(level: .beginner, sitsLong: true)
         user.coldStart = User.ColdStart(sessionsLogged: 1, active: true)
         user.why = User.Why(statement: "", openingBias: .mobility)
         return user
     }
 
-    /// The cold-start contract the policy carries during the First-Week window (US-E04/US-004): contrast
-    /// on, difficulty capped at the gentle end.
-    private func coldStartPolicy() -> SessionPolicy {
-        var policy = SessionPolicy.default
-        policy.coldStartContract = SessionPolicy.ColdStartContract(
-            forceContrastSpread: true,
-            cappedMaxDifficulty: 2
-        )
-        return policy
-    }
-
-    /// A completed session `daysAgo` training `pillar`, used to build a genuine Return history (a gap
-    /// past `returnThresholdDays`) for a user who has trained before.
-    private func log(pillar: Pillar, daysAgo: Int) -> WorkoutLog {
-        WorkoutLog(
-            id: UUID(),
-            workoutId: UUID(),
-            completedAt: date(daysAgo: daysAgo),
-            requestedMinutes: 20,
-            durationMinutes: 20,
-            shape: .blend,
-            focusPillar: nil,
-            perceivedDifficulty: .justRight,
-            exercises: [
-                LoggedExercise(
-                    id: UUID(),
-                    exerciseId: "ex-\(pillar.rawValue)-\(daysAgo)",
-                    pillar: pillar,
-                    movementPattern: pillar == .mobility ? .mobility : (pillar == .primal ? .locomotion : .push),
-                    completedSets: [
-                        CompletedSet(reps: 12, durationSeconds: nil),
-                        CompletedSet(reps: 12, durationSeconds: nil),
-                        CompletedSet(reps: 12, durationSeconds: nil),
-                    ],
-                    skipped: false
-                )
-            ]
-        )
-    }
-
-    /// A prior training history whose most recent session sits past `returnThresholdDays` - so the
-    /// engine treats the next session as a Return (US-005) - but with no active cold-start state, so
-    /// the two overrides do not overlap.
-    private func returnHistory() -> [WorkoutLog] {
+    /// A trained history whose most recent session sits past `ReturnOverride.returnThresholdDays`, so the
+    /// next session is a Return, with no active cold-start state.
+    private var returnHistory: [WorkoutLog] {
         [
-            log(pillar: .strength, daysAgo: 10),
-            log(pillar: .mobility, daysAgo: 17),
+            TrainingDayFixtures.trainingLog(.push, completedAt: TrainingDayFixtures.date(daysAgo: 12)),
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 10)),
         ]
     }
 
     private func assemble(
         minutes: Int,
+        day: TrainingDay,
         user: User,
-        library: [Exercise],
-        logs: [WorkoutLog],
-        policy: SessionPolicy = .default
+        logs: [WorkoutLog] = [],
+        policy: SessionPolicy = .default,
+        asOf: Date = TrainingDayFixtures.asOf
     ) -> Workout {
         SessionAssembly.assemble(
             requestedMinutes: minutes,
@@ -169,44 +65,17 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
             library: library,
             recentLogs: logs,
             sessionPolicy: policy,
+            trainingDay: day,
             asOf: asOf,
-            calendar: calendar
+            calendar: TrainingDayFixtures.calendar
         )
     }
 
-    // MARK: - Share helpers (reuse the engine's own work model, as SessionAssemblyTests does)
-
-    /// Planned wall-clock of one materialized block (`Σ sets × workPerSet + (sets - 1) × rest`),
-    /// measured with the engine's own per-set work model - the same computation
-    /// `SessionAssemblyTests.plannedSeconds(_:)` uses to compare how much time each pillar block owns.
-    private func plannedSeconds(_ block: WorkoutBlock) -> Int {
-        block.exercises.reduce(0) { sum, p in
-            sum + p.sets * SessionAssembly.workSecondsPerSet(of: p) + max(0, p.sets - 1) * p.restSeconds
-        }
-    }
-
-    /// Planned training seconds per pillar (warm-up and cooldown excluded), keyed by the block's pillar.
-    private func trainingSecondsByPillar(_ workout: Workout) -> [Pillar: Int] {
-        var totals: [Pillar: Int] = [:]
-        for block in workout.blocks where block.category != .warmup && block.category != .cooldown {
-            guard let pillar = SessionAssembly.pillar(of: block.category) else { continue }
-            totals[pillar, default: 0] += plannedSeconds(block)
-        }
-        return totals
-    }
-
-    /// The pillar of the training block that owns the most planned time - the session's actual lead.
-    private func leadingTrainingPillar(_ workout: Workout) -> Pillar? {
-        trainingSecondsByPillar(workout).max { $0.value < $1.value }?.key
-    }
-
-    /// A run-to-run-stable description of a workout's content (ids vary by design, so this captures
-    /// structure, ordering, and targets while ignoring `UUID`s). Mirrors
-    /// `SessionAssemblyTests.structuralSignature(_:)`.
+    /// A run-to-run-stable description of a workout's content (ids vary by design).
     private func structuralSignature(_ workout: Workout) -> String {
         workout.blocks.map { block in
-            let items = block.exercises.map { p in
-                "\(p.exercise.id):\(p.sets):\(p.reps.map(String.init) ?? "-"):\(p.durationSeconds.map(String.init) ?? "-"):\(p.restSeconds)"
+            let items = block.exercises.map { item in
+                "\(item.exercise.id):\(item.sets):\(item.reps.map(String.init) ?? "-"):\(item.durationSeconds.map(String.init) ?? "-"):\(item.restSeconds)"
             }.joined(separator: ",")
             return "\(block.category.rawValue)[\(items)]"
         }.joined(separator: "|")
@@ -214,369 +83,154 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
 
     // MARK: - The three generation regimes
 
-    /// One labelled regime: a name for failure messages plus a closure that generates the session for a
-    /// given length. All three are strength-primary by US-001 ... US-005.
     private struct Regime {
         let name: String
-        let generate: (Int) -> Workout
+        let generate: (Int, TrainingDay) -> Workout
     }
 
-    private func regimes(library: [Exercise]) -> [Regime] {
+    private var regimes: [Regime] {
         [
-            // Steady-state: a fresh (no-history) desk worker - the originally-reported failure profile -
-            // past any cold-start window. Single-focus at 5-10, blend at 11+.
-            Regime(name: "steady-state") { minutes in
-                self.assemble(minutes: minutes, user: self.user(sitsLong: true), library: library, logs: [])
+            // Steady-state: a fresh desk worker past any cold-start window.
+            Regime(name: "steady-state") { minutes, day in
+                self.assemble(minutes: minutes, day: day, user: TrainingDayFixtures.user(sitsLong: true))
             },
-            // Cold-start: a new user inside the First-Week window (US-004), difficulty-capped but still
-            // strength-led.
-            Regime(name: "cold-start") { minutes in
+            // Cold-start: the real onboarding seed for a beginner, difficulty-capped.
+            Regime(name: "cold-start") { minutes, day in
                 self.assemble(
-                    minutes: minutes, user: self.coldStartUser(), library: library,
-                    logs: [], policy: self.coldStartPolicy()
+                    minutes: minutes, day: day, user: self.coldStartUser,
+                    policy: .seeded(forFitnessLevel: .beginner)
                 )
             },
-            // Return: a user with prior history and a gap past the Return threshold, not in the
-            // cold-start window (US-005) - gentle but still strength-led.
-            Regime(name: "return") { minutes in
-                self.assemble(minutes: minutes, user: self.user(), library: library, logs: self.returnHistory())
+            // Return: a trained user back after a gap.
+            Regime(name: "return") { minutes, day in
+                self.assemble(minutes: minutes, day: day, user: TrainingDayFixtures.user(), logs: self.returnHistory)
             },
         ]
     }
 
-    // MARK: - Regime preconditions (the sweep tests what they claim to test)
+    // MARK: - Regime preconditions
 
-    /// Guards that the three regimes really are distinct engine paths: cold-start is active for the
-    /// cold-start user, and the Return history is a genuine Return (and not a cold-start) for the
-    /// steady/Return user. Without this a silent fixture drift could make every "mode" the steady state.
-    func testRegimesAreDistinctEnginePaths() async throws {
-        let library = try await library()
-
-        // Cold-start regime: the cold-start override is active.
+    /// The three regimes really are distinct engine paths, so a fixture drift cannot make every "mode"
+    /// the steady state.
+    func testRegimesAreDistinctEnginePaths() {
         XCTAssertTrue(
-            ColdStartOverride.isActive(user: coldStartUser(), sessionPolicy: coldStartPolicy()),
-            "the cold-start regime must actually engage the cold-start override"
+            ColdStartOverride.isActive(user: coldStartUser, sessionPolicy: .seeded(forFitnessLevel: .beginner)),
+            "the cold-start regime must engage the cold-start override"
         )
-
-        // Return regime: a genuine Return, and (no cold-start state) not suppressed by cold-start.
         XCTAssertTrue(
-            ReturnOverride.isReturn(recentLogs: returnHistory(), asOf: asOf, calendar: calendar),
+            ReturnOverride.isReturn(recentLogs: returnHistory, asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar),
             "the Return regime's history must cross the Return threshold"
         )
-        XCTAssertTrue(
-            SessionAssembly.isReturnSession(
-                user: user(), recentLogs: returnHistory(), sessionPolicy: .default,
-                asOf: asOf, calendar: calendar
-            ),
-            "the Return regime must resolve to a Return end-to-end (not be suppressed)"
-        )
-        // And the engine actually stamps it as a Return on the produced session.
-        let returned = assemble(minutes: 20, user: user(), library: library, logs: returnHistory())
+        let returned = assemble(minutes: 20, day: .legs, user: TrainingDayFixtures.user(), logs: returnHistory)
         XCTAssertTrue(returned.wasReturn, "the Return regime's session must be flagged wasReturn")
+        let steady = assemble(minutes: 20, day: .legs, user: TrainingDayFixtures.user(sitsLong: true))
+        XCTAssertFalse(steady.wasReturn)
     }
 
-    // MARK: - 1. A strength training block in every session, every length, every regime
+    // MARK: - 1. One strength circuit, never a mobility middle block
 
-    func testEverySessionHasAStrengthTrainingBlockAndIsNeverMobilityLed() async throws {
-        let library = try await library()
-        for regime in regimes(library: library) {
-            for minutes in lengths {
-                let workout = regime.generate(minutes)
+    func testEverySessionTrainsThroughOneStrengthCircuitAndNoMobilityMiddleBlock() {
+        for regime in regimes {
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    let workout = regime.generate(minutes, day)
+                    let label = "[\(regime.name)] \(day) \(minutes) min"
+                    let middle = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
 
-                // A real strength *training* block exists (not just the mobility warm-up).
-                XCTAssertTrue(
-                    workout.blocks.contains { $0.category == .strength },
-                    "[\(regime.name)] \(minutes) min must contain a strength training block"
-                )
-                let strengthBlocks = workout.blocks.filter { $0.category == .strength }
-                XCTAssertTrue(
-                    strengthBlocks.allSatisfy { !$0.exercises.isEmpty },
-                    "[\(regime.name)] \(minutes) min strength block must not be empty"
-                )
-
-                // The session is never mobility-led: the training block owning the most planned time is
-                // strength, never mobility. (Extended blends also carry a smaller primal block, and
-                // strength still leads it - so the lead is specifically strength.)
-                let lead = try XCTUnwrap(
-                    leadingTrainingPillar(workout),
-                    "[\(regime.name)] \(minutes) min produced no training block"
-                )
-                XCTAssertNotEqual(lead, .mobility, "[\(regime.name)] \(minutes) min must not be mobility-led")
-                XCTAssertEqual(lead, .strength, "[\(regime.name)] \(minutes) min must be strength-led")
-
-                // Single-focus (5-10 min) carries no mobility training block at all - mobility survives
-                // only as the warm-up, the exact regression the original all-stretches bug produced.
-                if minutes <= 10 {
-                    XCTAssertEqual(
-                        workout.focusPillar, .strength,
-                        "[\(regime.name)] \(minutes) min single-focus must report a strength focus"
-                    )
-                    XCTAssertFalse(
-                        workout.blocks.contains { $0.category == .mobility },
-                        "[\(regime.name)] \(minutes) min must have no mobility training block (warm-up only)"
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - 2. Strength-share bands
-
-    /// A single-focus session's training time is essentially all strength (mobility is warm-up only),
-    /// and a blend runs strength-dominant inside the US-002/US-003-validated band. Bands, not exact
-    /// pins, consistent with `SessionAssemblyTests.testBlendTrainingTimeIsStrengthDominantAtValidationLengths`.
-    func testStrengthShareBandsHoldAcrossRegimes() async throws {
-        let library = try await library()
-        for regime in regimes(library: library) {
-            for minutes in lengths {
-                let workout = regime.generate(minutes)
-                let totals = trainingSecondsByPillar(workout)
-                let strengthSeconds = totals[.strength] ?? 0
-                let primalSeconds = totals[.primal] ?? 0
-                let totalTraining = totals.values.reduce(0, +)
-                XCTAssertGreaterThan(totalTraining, 0, "[\(regime.name)] \(minutes) min produced no training time")
-
-                // Since US-M01 there is no mobility training block at any length: the training time is
-                // all strength/primal, so mobility contributes zero training seconds.
-                XCTAssertEqual(
-                    totals[.mobility] ?? 0, 0,
-                    "[\(regime.name)] \(minutes) min must emit no mobility training block (US-M01)"
-                )
-                let strengthShare = Double(strengthSeconds) / Double(totalTraining)
-
-                if minutes <= 10 {
-                    // Single-focus: one strength block, so training time is ~100% strength.
-                    XCTAssertGreaterThanOrEqual(
-                        strengthShare, 0.8,
-                        "[\(regime.name)] \(minutes) min single-focus strength share \(strengthShare) fell below the strength-primary floor"
-                    )
-                } else {
-                    // Blend: strength leads. A light/full blend (11-40 min) folds primal into strength, so
-                    // strength is ~100% of training; an extended blend (41-60 min) carves a dedicated
-                    // primal minority block (US-E02), so strength *alone* is smaller but still leads primal
-                    // and stays heavier than the archived ~0.75-0.80 accessory model. Either way, with the
-                    // mobility middle block gone the freed minutes accrued to strength (US-M01 decision 3).
-                    XCTAssertGreaterThan(
-                        strengthSeconds, primalSeconds,
-                        "[\(regime.name)] \(minutes) min blend: strength must lead any dedicated primal block"
-                    )
-                    XCTAssertGreaterThan(
-                        strengthShare, 0.80,
-                        "[\(regime.name)] \(minutes) min blend strength share \(strengthShare) is not above the archived ~0.75-0.80 accessory model"
-                    )
-                }
-            }
-        }
-    }
-
-    /// The story's explicit share check, isolated: the representative blend lengths (20 and 30 min) are a
-    /// strength session wrapped in bookends for a no-history steady-state user - no mobility training
-    /// block, and the training time is entirely strength (primal folded in) - the exact configuration
-    /// US-M01's validation pins.
-    func testRepresentativeBlendLengthsAreStrengthOnlyTraining() async throws {
-        let library = try await library()
-        for minutes in [20, 30] {
-            let workout = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
-            let totals = trainingSecondsByPillar(workout)
-            let strengthShare = Double(totals[.strength] ?? 0) / Double(totals.values.reduce(0, +))
-            XCTAssertEqual(totals[.mobility] ?? 0, 0, "\(minutes) min must emit no mobility training block")
-            XCTAssertGreaterThanOrEqual(strengthShare, 0.99, "\(minutes) min training time \(strengthShare) is not essentially all strength")
-        }
-    }
-
-    // MARK: - 3. Determinism and asOf-purity stay green (this guard does not weaken them)
-
-    /// Every swept (regime, length) generates byte-identically on repeat at a fixed injected `asOf` -
-    /// the structural signature is stable run to run. This reaffirms, across the whole strength-primary
-    /// matrix, the determinism `SessionAssemblyTests` and `DeterministicSessionPolicyServiceTests`
-    /// already guard; it does not replace or loosen them.
-    func testSweepIsDeterministicAtAFixedAsOf() async throws {
-        let library = try await library()
-        for regime in regimes(library: library) {
-            for minutes in lengths {
-                let first = structuralSignature(regime.generate(minutes))
-                for _ in 0..<5 {
-                    XCTAssertEqual(
-                        structuralSignature(regime.generate(minutes)), first,
-                        "[\(regime.name)] \(minutes) min generation is not deterministic"
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - 4. US-M05: no mobility *middle* block, ever (the Movement-Practice regression guard)
-
-    /// The Movement Practice mobility accessory block was the last place a session carried a mobility
-    /// *middle*. US-M01 removed it; this pins that it stays gone across the whole matrix. For every
-    /// swept (regime, length) the assembled session must:
-    ///
-    ///   - contain **no** block of category `.mobility` at all (mobility survives only as the `.warmup`
-    ///     and `.cooldown` bookends, which are distinct categories - the exact structural distinction a
-    ///     resurrected Movement Practice block would violate);
-    ///   - resolve **no** training block to pillar `.mobility` (the pillar view of the same invariant);
-    ///   - build its training middle (everything between the bookends) out of only `.strength` and, at
-    ///     41-60 min, a dedicated `.primal` block - never a mobility middle - with strength always
-    ///     present and primal appearing only on the extended shape.
-    ///
-    /// This is asserted structurally (block categories / pillars), not on copy, so it survives future
-    /// wording changes while still catching a silently reintroduced mobility middle block.
-    func testNoSessionEmitsAMobilityMiddleBlockAcrossAllLengthsAndRegimes() async throws {
-        let library = try await library()
-        for regime in regimes(library: library) {
-            for minutes in lengths {
-                let workout = regime.generate(minutes)
-
-                // No `.mobility`-category block anywhere: mobility is bookend-only (warm-up/cooldown).
-                XCTAssertFalse(
-                    workout.blocks.contains { $0.category == .mobility },
-                    "[\(regime.name)] \(minutes) min emitted a mobility middle block (US-M05: none, ever)"
-                )
-
-                // The pillar view of the same invariant: no training block resolves to mobility.
-                let trainingPillars = workout.blocks
-                    .filter { $0.category != .warmup && $0.category != .cooldown }
-                    .compactMap { SessionAssembly.pillar(of: $0.category) }
-                XCTAssertFalse(
-                    trainingPillars.contains(.mobility),
-                    "[\(regime.name)] \(minutes) min has a training block resolving to the mobility pillar"
-                )
-
-                // The training middle is built only from strength (+ a dedicated primal block at 41-60).
-                let trainingCategories = Set(
-                    workout.blocks
-                        .filter { $0.category != .warmup && $0.category != .cooldown }
-                        .map(\.category)
-                )
-                XCTAssertTrue(
-                    trainingCategories.isSubset(of: [.strength, .primal]),
-                    "[\(regime.name)] \(minutes) min training middle \(trainingCategories) is not strength (+primal at 41-60)"
-                )
-                XCTAssertTrue(
-                    trainingCategories.contains(.strength),
-                    "[\(regime.name)] \(minutes) min must carry a strength training block"
-                )
-                if trainingCategories.contains(.primal) {
-                    XCTAssertGreaterThanOrEqual(
-                        minutes, 41,
-                        "[\(regime.name)] \(minutes) min carries a dedicated primal block below the 41-60 extended band"
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - 5. US-M05: bookend pattern-match preference stays covered (prefer-then-fill)
-
-    /// The warm-up and cooldown *lead* with a stretch complementing the day's lead strength pattern
-    /// (US-M02), a prefer-then-fill preference. `BookendComplementSelectionTests` proves the mechanism
-    /// per-story (including the general-pool fallback when nothing complements); this pins it at the
-    /// regression-sweep altitude so a change that quietly dropped the bias for some regime fails here too.
-    ///
-    /// Each regime leaves the whole mobility pool fresh (steady-state and cold-start log no mobility; the
-    /// Return regime's one mobility log cannot starve a pattern with >= 6 complementary stretches), so the
-    /// leading bookend stretch always resolves to a complementary one rather than the fallback - which is
-    /// what lets this assert the match firmly rather than only "non-empty".
-    func testBookendsLeadWithAStretchComplementingTheStrengthLeadAcrossRegimes() async throws {
-        let library = try await library()
-        for regime in regimes(library: library) {
-            // Representative blend lengths that always carry both bookends (a cooldown appears over 10 min).
-            for minutes in [15, 20, 30, 45, 60] {
-                let workout = regime.generate(minutes)
-
-                let strength = try XCTUnwrap(
-                    workout.blocks.first { $0.category == .strength },
-                    "[\(regime.name)] \(minutes) min must carry a strength block"
-                )
-                let lead = try XCTUnwrap(
-                    strength.exercises.first?.exercise.movementPattern,
-                    "[\(regime.name)] \(minutes) min strength block is empty"
-                )
-
-                for category in [ExerciseCategory.warmup, .cooldown] {
-                    let block = try XCTUnwrap(
-                        workout.blocks.first { $0.category == category },
-                        "[\(regime.name)] \(minutes) min is missing its \(category) bookend"
-                    )
-                    let firstStretch = try XCTUnwrap(
-                        block.exercises.first?.exercise,
-                        "[\(regime.name)] \(minutes) min \(category) bookend is empty (never starved)"
-                    )
-                    XCTAssertEqual(
-                        firstStretch.pillar, .mobility,
-                        "[\(regime.name)] \(minutes) min \(category) must lead with a mobility stretch"
-                    )
+                    XCTAssertEqual(middle.map(\.category), [.strength], "\(label): the training middle is \(middle.map(\.category))")
+                    let circuit = middle.flatMap(\.exercises)
+                    XCTAssertFalse(circuit.isEmpty, "\(label): an empty circuit")
                     XCTAssertTrue(
-                        firstStretch.complements?.contains(lead) == true,
-                        "[\(regime.name)] \(minutes) min \(category) leads with '\(firstStretch.id)', which does not complement the strength lead \(lead)"
+                        circuit.allSatisfy { $0.exercise.pillar == .strength },
+                        "\(label): a non-strength station \(circuit.map(\.exercise.id))"
                     )
+                    XCTAssertEqual(workout.focusPillar, .strength, label)
+                    for bookend in workout.blocks where bookend.category == .warmup || bookend.category == .cooldown {
+                        XCTAssertTrue(bookend.exercises.allSatisfy { $0.exercise.pillar == .mobility }, label)
+                    }
                 }
             }
         }
     }
 
-    // MARK: - 6. US-M05: sitsLong is a bookend bias only, never a mobility middle block
+    // MARK: - 2. Determinism and asOf-purity
 
-    /// `sitsLong` biases bookend *ordering* toward posture/hip openers and sizes nothing
-    /// (`SitsLongBookendBiasTests` proves that at 5/20/45/60). This complements - not duplicates - that
-    /// suite by sweeping the *full* length matrix `5...60` and pinning the two structural halves of the
-    /// invariant end-to-end: toggling `sitsLong` on an otherwise-identical no-history profile never
-    /// changes the block-category structure and never introduces a mobility middle block, at any length.
-    func testSitsLongNeverChangesStructureOrAddsAMobilityMiddleBlockAcrossAllLengths() async throws {
-        let library = try await library()
-        for minutes in lengths {
-            let desk = assemble(minutes: minutes, user: user(sitsLong: true), library: library, logs: [])
-            let general = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
-
-            XCTAssertEqual(
-                desk.blocks.map(\.category), general.blocks.map(\.category),
-                "\(minutes) min: sitsLong changed the block-category structure (it must only reorder bookends)"
-            )
-            for (label, workout) in [("desk", desk), ("general", general)] {
-                XCTAssertFalse(
-                    workout.blocks.contains { $0.category == .mobility },
-                    "\(minutes) min (\(label)): sitsLong path emitted a mobility middle block"
-                )
+    func testSweepIsDeterministicAtAFixedAsOf() {
+        for regime in regimes {
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    let first = structuralSignature(regime.generate(minutes, day))
+                    for _ in 0..<3 {
+                        XCTAssertEqual(
+                            structuralSignature(regime.generate(minutes, day)), first,
+                            "[\(regime.name)] \(day) \(minutes) min generation is not deterministic"
+                        )
+                    }
+                }
             }
         }
     }
 
-    // MARK: - 8. asOf-purity stays green (this guard does not weaken it)
-
-    /// Generation is a pure function of the injected `asOf`: re-anchoring "now" and the whole history to
-    /// a different absolute date (same relative gaps) produces the identical session, so nothing in the
-    /// pipeline reads the wall clock. Guards the `asOf`-purity the engine's clock-injection depends on.
-    func testGenerationIsPureFunctionOfInjectedAsOf() async throws {
-        let library = try await library()
-
-        // Two absolute anchors a year apart; the Return history is expressed relative to each anchor, so
-        // the only thing that changes is the absolute date fed in.
+    /// Re-anchoring "now" and the whole history a year later (same relative gaps) produces the identical
+    /// session, so nothing in the pipeline reads the wall clock.
+    func testGenerationIsAPureFunctionOfTheInjectedAsOf() {
+        let calendar = TrainingDayFixtures.calendar
         func session(anchor: Date) -> Workout {
             let logs = [
-                WorkoutLog(
-                    id: UUID(), workoutId: UUID(),
-                    completedAt: calendar.date(byAdding: .day, value: -10, to: anchor)!,
-                    requestedMinutes: 20, durationMinutes: 20, shape: .blend, focusPillar: nil,
-                    perceivedDifficulty: .justRight,
-                    exercises: [LoggedExercise(
-                        id: UUID(), exerciseId: "ex-strength", pillar: .strength,
-                        movementPattern: .push,
-                        completedSets: [CompletedSet(reps: 12, durationSeconds: nil)], skipped: false
-                    )]
-                )
+                TrainingDayFixtures.trainingLog(.push, completedAt: calendar.date(byAdding: .day, value: -3, to: anchor)!),
+                TrainingDayFixtures.trainingLog(.pull, completedAt: calendar.date(byAdding: .day, value: -2, to: anchor)!),
             ]
             return SessionAssembly.assemble(
-                requestedMinutes: 20, user: user(), library: library, recentLogs: logs,
+                requestedMinutes: 30, user: TrainingDayFixtures.user(), library: library, recentLogs: logs,
                 asOf: anchor, calendar: calendar
             )
         }
+        let anchorA = TrainingDayFixtures.asOf
+        let anchorB = calendar.date(byAdding: .year, value: 1, to: anchorA)!
+        let a = session(anchor: anchorA)
+        XCTAssertEqual(a.trainingDay, .legs, "the Rotation reads the logs: Push then Pull leaves Legs")
+        XCTAssertEqual(structuralSignature(a), structuralSignature(session(anchor: anchorB)))
+    }
 
-        let anchorA = calendar.date(from: DateComponents(year: 2026, month: 6, day: 29, hour: 12))!
-        let anchorB = calendar.date(from: DateComponents(year: 2027, month: 6, day: 29, hour: 12))!
-        XCTAssertEqual(
-            structuralSignature(session(anchor: anchorA)),
-            structuralSignature(session(anchor: anchorB)),
-            "generation must depend only on the injected asOf, not the wall clock"
-        )
+    // MARK: - 3. The bookends lead with a stretch complementing the day
+
+    /// Every regime leaves enough complementary stretches fresh that the leading bookend stretch resolves
+    /// to a complementary one rather than the general-pool fallback.
+    func testBookendsLeadWithAStretchComplementingTheDayAcrossRegimes() throws {
+        for regime in regimes {
+            for day in TrainingDay.rotation {
+                let lead = try XCTUnwrap(leadPattern[day])
+                for minutes in [15, 20, 30, 45, 60] {
+                    let workout = regime.generate(minutes, day)
+                    for category in [ExerciseCategory.warmup, .cooldown] {
+                        let label = "[\(regime.name)] \(day) \(minutes) min \(category)"
+                        let first = try XCTUnwrap(
+                            workout.blocks.first { $0.category == category }?.exercises.first?.exercise,
+                            "\(label): missing or empty"
+                        )
+                        XCTAssertTrue(
+                            first.complements?.contains(lead) == true,
+                            "\(label) leads with '\(first.id)', which does not complement \(lead)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 4. sitsLong is a bookend bias only
+
+    func testSitsLongNeverChangesTheBlockStructure() {
+        for day in TrainingDay.rotation {
+            for minutes in lengths {
+                let desk = assemble(minutes: minutes, day: day, user: TrainingDayFixtures.user(sitsLong: true))
+                let general = assemble(minutes: minutes, day: day, user: TrainingDayFixtures.user(sitsLong: false))
+                XCTAssertEqual(
+                    desk.blocks.map { "\($0.category):\($0.exercises.count)" },
+                    general.blocks.map { "\($0.category):\($0.exercises.count)" },
+                    "\(day) \(minutes) min: sitsLong changed the block structure"
+                )
+            }
+        }
     }
 }

@@ -15,9 +15,10 @@ import XCTest
 ///   is exactly what the player runs, so the two agree on the same set;
 /// - the number sits generously above the catalog's typical-case authored estimate, governed by the one
 ///   documented constant (`SessionAssembly.workPaceGenerosityFactor`);
-/// - it stays a pure function of the exercise and the prescribed target - no wall clock, no `asOf`;
-/// - and the accepted trade-off is bounded: the fit still lands every length within ±60s, and no
-///   training block is squeezed below a single round.
+/// - it stays a pure function of the exercise and the prescribed target - no wall clock, no `asOf` -
+///   and the window is exactly that pace: the engine never stretches a work window;
+/// - and the trade-off is bounded: every length lands within the tolerance or runs honestly short (every
+///   fit lever spent), and every circuit station keeps its four sets.
 final class GenerousRuntimePaceTests: XCTestCase {
 
     private let calendar: Calendar = {
@@ -75,6 +76,34 @@ final class GenerousRuntimePaceTests: XCTestCase {
     }
 
     private let lengths = [5, 10, 15, 20, 30, 45, 60]
+
+    /// The session lands within `SessionAssembly.toleranceSeconds` of `minutes`, or runs short only
+    /// because the same plan, re-fit, has no lever left (`isSaturated`) - an honest shortfall.
+    private func assertFillsOrRunsHonestlyShort(
+        _ workout: Workout,
+        minutes: Int,
+        level: FitnessLevel,
+        library: [Exercise],
+        _ label: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let gap = SessionAssembly.plannedSeconds(of: workout) - minutes * 60
+        guard abs(gap) > SessionAssembly.toleranceSeconds else { return }
+        XCTAssertLessThan(gap, 0, "\(label): overruns by \(gap)s", file: file, line: line)
+        guard let day = workout.trainingDay else { return XCTFail("\(label): no Training Day", file: file, line: line) }
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: minutes,
+            user: user(level: level),
+            library: library,
+            recentLogs: [],
+            trainingDay: day,
+            asOf: asOf,
+            calendar: calendar
+        )
+        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+        XCTAssertTrue(plan.isSaturated, "\(label): runs \(-gap)s short with fit levers left", file: file, line: line)
+    }
 
     // MARK: - One source of truth: the screen window is the planned number
 
@@ -177,10 +206,9 @@ final class GenerousRuntimePaceTests: XCTestCase {
 
     /// ADR-0010's "no tap after start" promise, measured: a whole session played hands-free - every
     /// work window, hold leg, "Switch sides" beat and rest run to zero, not one tap - lasts exactly the
-    /// seconds the engine planned it at, so it ends within ±60s of the length the user chose. Every
-    /// length and fitness level, for a brand-new user. Since every hold now starts itself straight after
-    /// its get-ready beat, a hold the plan priced with setup seconds the player never runs would end the
-    /// session early (a 15-minute session played 71 seconds short).
+    /// seconds the engine planned it at, so it ends where the plan said: within the tolerance of the
+    /// length chosen, or honestly short. Every length and fitness level, for a brand-new user. A hold the
+    /// plan priced with setup seconds the player never runs would end the session early.
     func testAHandsFreeSessionPlaysExactlyItsPlannedSecondsAtEveryLength() async throws {
         let library = try await library()
         for minutes in lengths {
@@ -213,9 +241,8 @@ final class GenerousRuntimePaceTests: XCTestCase {
                     played, SessionAssembly.plannedSeconds(of: workout),
                     "\(level) \(minutes)-min: played seconds must be the planned seconds"
                 )
-                XCTAssertLessThanOrEqual(
-                    abs(played - minutes * 60), SessionAssembly.toleranceSeconds,
-                    "\(level) \(minutes)-min played \(played)s"
+                assertFillsOrRunsHonestlyShort(
+                    workout, minutes: minutes, level: level, library: library, "\(level) \(minutes)-min played \(played)s"
                 )
             }
         }
@@ -293,8 +320,9 @@ final class GenerousRuntimePaceTests: XCTestCase {
         for workout in [early, late] {
             for block in workout.blocks {
                 for slot in block.exercises {
-                    // The pace is a pure function of the exercise and target; the window adds only the
-                    // stretch the fit stored on the slot (ADR-0010).
+                    // The pace is a pure function of the exercise and target, and the window is exactly
+                    // that pace: the engine never stores a stretch on a slot.
+                    XCTAssertNil(slot.stretchSeconds, "\(slot.exercise.id) carries a stretched window")
                     XCTAssertEqual(
                         SessionAssembly.paceSecondsPerSet(of: slot),
                         SessionAssembly.workSecondsPerSet(
@@ -302,39 +330,37 @@ final class GenerousRuntimePaceTests: XCTestCase {
                         ),
                         "\(slot.exercise.id) must price off the exercise and target alone"
                     )
-                    XCTAssertEqual(
-                        SessionAssembly.workSecondsPerSet(of: slot),
-                        SessionAssembly.paceSecondsPerSet(of: slot) + (slot.stretchSeconds ?? 0)
-                    )
+                    XCTAssertEqual(SessionAssembly.workSecondsPerSet(of: slot), SessionAssembly.paceSecondsPerSet(of: slot))
                 }
             }
         }
     }
 
-    // MARK: - The accepted trade-off, bounded
+    // MARK: - The trade-off, bounded
 
-    /// The trade-off US-CC08 accepts is *fewer rounds*, not a session that misses the minutes asked for
-    /// or a block squeezed out of existence. So after the pacing factor inflates every rep-based set:
-    /// every length still lands within ±60s of the request for every fitness level, and every training
-    /// block still runs at least one full round with at least one station.
-    func testGenerousPaceStillLandsEveryLengthAndNeverStarvesABlockOfItsLastRound() async throws {
+    /// After the pacing factor inflates every rep-based set, every length still lands within the
+    /// tolerance of the request (or runs honestly short with every lever spent) for every fitness level
+    /// and Training Day, and every circuit station keeps its four sets - the pace moves served reps and
+    /// rest, never a station's set count.
+    func testGenerousPaceStillLandsEveryLengthAndKeepsEveryStationsFourSets() async throws {
         let library = try await library()
         for minutes in lengths {
             for level in FitnessLevel.allCases {
-                let workout = assemble(minutes: minutes, level: level, library: library)
-                let drift = abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60)
-                XCTAssertLessThanOrEqual(
-                    drift, SessionAssembly.toleranceSeconds,
-                    "\(level) \(minutes)-min drifted \(drift)s under the generous pace"
-                )
-                let training = workout.blocks.filter { SessionAssembly.isCircuit($0.category) }
-                XCTAssertFalse(training.isEmpty, "\(level) \(minutes)-min must still train something")
-                for block in training {
-                    XCTAssertFalse(block.exercises.isEmpty, "\(level) \(minutes)-min: \(block.title) lost every station")
-                    XCTAssertGreaterThanOrEqual(
-                        block.exercises[0].sets, SessionAssembly.minTrainingSets,
-                        "\(level) \(minutes)-min: \(block.title) was squeezed below one round"
+                for day in TrainingDay.rotation {
+                    let workout = SessionAssembly.assemble(
+                        requestedMinutes: minutes,
+                        user: user(level: level),
+                        library: library,
+                        recentLogs: [],
+                        trainingDay: day,
+                        asOf: asOf,
+                        calendar: calendar
                     )
+                    let label = "\(level) \(day) \(minutes)-min"
+                    assertFillsOrRunsHonestlyShort(workout, minutes: minutes, level: level, library: library, label)
+                    let circuit = workout.blocks.filter { SessionAssembly.isCircuit($0.category) }.flatMap(\.exercises)
+                    XCTAssertFalse(circuit.isEmpty, "\(label) must still train something")
+                    XCTAssertTrue(circuit.allSatisfy { $0.sets == RepGrammar.setsPerStation }, "\(label): \(circuit.map(\.sets))")
                 }
             }
         }

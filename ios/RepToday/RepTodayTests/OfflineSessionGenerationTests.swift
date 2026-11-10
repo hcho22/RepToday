@@ -52,7 +52,7 @@ final class OfflineSessionGenerationTests: XCTestCase {
         try await onboard(through: services, minutes: 20)
         let viewModel = await coldOpenReadyScreen(services)
 
-        try assertReadyWithCompleteSession(viewModel, requestedMinutes: 20)
+        try await assertReadyWithCompleteSession(viewModel, requestedMinutes: 20)
         XCTAssertEqual(viewModel.varietyNote?.source, .template, "offline, the Variety Language line is the template")
 
         // Non-vacuity: telemetry really tried the wire, every attempt failed offline, and the events
@@ -75,7 +75,7 @@ final class OfflineSessionGenerationTests: XCTestCase {
         let relaunched = makeLiveContainer(context: context, telemetry: makeTelemetry(protocolClass: OfflineFailingURLProtocol.self))
         let viewModel = await coldOpenReadyScreen(relaunched)
 
-        try assertReadyWithCompleteSession(viewModel, requestedMinutes: 15)
+        try await assertReadyWithCompleteSession(viewModel, requestedMinutes: 15)
         XCTAssertEqual(viewModel.recentLogs.count, 3, "the session was built from the saved history")
         XCTAssertNotNil(viewModel.consistency, "the Consistency Score is computed on-device")
         XCTAssertEqual(SharedSessionTripwireURLProtocol.log.count, 0, "nothing on the cold-open path may use URLSession.shared")
@@ -98,7 +98,7 @@ final class OfflineSessionGenerationTests: XCTestCase {
         let viewModel = await coldOpenReadyScreen(services)
         let elapsed = start.duration(to: clock.now)
 
-        try assertReadyWithCompleteSession(viewModel, requestedMinutes: 10)
+        try await assertReadyWithCompleteSession(viewModel, requestedMinutes: 10)
         XCTAssertEqual(OfflineHangingURLProtocol.log.ended, 0, "the session became ready without the network request ending")
         XCTAssertLessThan(elapsed, .seconds(2), "the cold open finished well inside the request timeout, so it waited on no request")
     }
@@ -131,7 +131,7 @@ final class OfflineSessionGenerationTests: XCTestCase {
         )
         await viewModel.load()
 
-        try assertReadyWithCompleteSession(viewModel, requestedMinutes: 15)
+        try await assertReadyWithCompleteSession(viewModel, requestedMinutes: 15)
         XCTAssertEqual(viewModel.varietyNote?.source, .template)
         XCTAssertTrue(
             OfflineFailingURLProtocol.log.urls.contains { $0.path == "/variety-language" },
@@ -227,7 +227,7 @@ final class OfflineSessionGenerationTests: XCTestCase {
         requestedMinutes: Int,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws {
+    ) async throws {
         XCTAssertNil(viewModel.errorMessage, "no error state", file: file, line: line)
         XCTAssertFalse(viewModel.isLoading, "no spinner once the session is ready", file: file, line: line)
         let workout = try XCTUnwrap(viewModel.workout, "the Ready Screen has today's session", file: file, line: line)
@@ -235,19 +235,29 @@ final class OfflineSessionGenerationTests: XCTestCase {
         XCTAssertFalse(workout.blocks.isEmpty, file: file, line: line)
         XCTAssertTrue(workout.blocks.allSatisfy { !$0.exercises.isEmpty }, "every block has movements", file: file, line: line)
         XCTAssertTrue(
-            workout.blocks.contains { $0.category == .strength || $0.category == .primal },
-            "the session carries its training block",
+            workout.blocks.contains { $0.category == .strength },
+            "the session carries its Training Day circuit",
             file: file,
             line: line
         )
-        let planned = SessionAssembly.plannedSeconds(of: workout)
-        XCTAssertLessThanOrEqual(
-            abs(planned - requestedMinutes * 60),
-            SessionAssembly.toleranceSeconds,
-            "the session fills the requested length",
-            file: file,
-            line: line
+        // The session lands within the tolerance of the length chosen, or - when even the top of the
+        // range and the longest rests cannot fill it - runs short with every fit lever spent (an honest
+        // shortfall), never short with a lever left.
+        let gap = SessionAssembly.plannedSeconds(of: workout) - requestedMinutes * 60
+        guard abs(gap) > SessionAssembly.toleranceSeconds else { return }
+        XCTAssertLessThan(gap, 0, "the session overruns the requested length", file: file, line: line)
+        let user = try XCTUnwrap(viewModel.user, file: file, line: line)
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            library: try await MockExerciseService().exercises(),
+            recentLogs: viewModel.recentLogs,
+            sessionPolicy: viewModel.policy,
+            trainingDay: try XCTUnwrap(workout.trainingDay, file: file, line: line),
+            asOf: Date()
         )
+        SessionAssembly.fit(&plan, targetSeconds: requestedMinutes * 60)
+        XCTAssertTrue(plan.isSaturated, "the session runs \(-gap)s short with fit levers left", file: file, line: line)
     }
 
     // MARK: - Offline wiring

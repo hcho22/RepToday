@@ -3,14 +3,16 @@ import XCTest
 
 /// The engine half of the Ready Screen's **Different workout** button (`SessionVariation`).
 ///
-/// A press rebuilds the session at the same length with other moves. These tests fold a whole sequence
-/// of presses through the real assembler and the real catalog, the way the Ready Screen does
-/// (`SessionVariation.advanced(past:)` then `SessionAssembly.assemble(variation:)`), and check every
-/// workout in it against the rules that govern any session: the ±60 s fit, the session shape, movement
-/// access and injury flags, the earned progression frontier, the round cap and even rounds, and the
-/// Adaptive Overload targets. They also pin that presses really change the moves, that a sequence cycles
-/// back to the default session deterministically, and that an empty variation is the session exactly as
-/// it was before the input existed.
+/// A press rebuilds the session at the same length and on the same Training Day with other moves where
+/// the plan has a choice (which ladders fill a short session, which stretches, which core ladder). These
+/// tests fold a whole sequence of presses through the real assembler and the real catalog, the way the
+/// Ready Screen does (`SessionVariation.advanced(past:)` then `SessionAssembly.assemble(variation:)`), and
+/// check every workout in it against the rules that govern any session: the fit (within the tolerance or
+/// an honest shortfall), the session shape and Training Day, movement access and injury flags, each
+/// ladder's current rung, four sets per station, and the Earned Reps behind every main and core station.
+/// They also pin that presses really change the moves, that a sequence cycles back to the default
+/// session deterministically, and that an empty variation is the session exactly as it was before the
+/// input existed.
 final class DifferentWorkoutTests: XCTestCase {
 
     private let calendar: Calendar = {
@@ -58,11 +60,13 @@ final class DifferentWorkoutTests: XCTestCase {
         let name: String
         let user: User
         let recentLogs: [WorkoutLog]
+        /// The Training Day to build, or `nil` to let the Rotation decide from `recentLogs`.
+        var day: TrainingDay? = nil
     }
 
     /// A user's last three days of sessions, each the engine's own default session for that day, logged as
-    /// completed at its prescription - enough history for real frontiers, staleness, a variety window and
-    /// a previous-session lead pattern.
+    /// completed at its prescription the way the player writes it - enough history for real rungs, Earned
+    /// Reps, a variety window and a Rotation that has moved through Push, Pull and Legs.
     private func history(for user: User, library: [Exercise]) -> [WorkoutLog] {
         var logs: [WorkoutLog] = []
         for daysAgo in [3, 2, 1] {
@@ -92,7 +96,10 @@ final class DifferentWorkoutTests: XCTestCase {
                         repeating: CompletedSet(reps: prescription.reps, durationSeconds: prescription.durationSeconds),
                         count: prescription.sets
                     ),
-                    skipped: false
+                    skipped: false,
+                    role: prescription.role,
+                    earnedReps: prescription.earnedReps,
+                    earnedDurationSeconds: prescription.earnedDurationSeconds
                 )
             }
         )
@@ -105,9 +112,12 @@ final class DifferentWorkoutTests: XCTestCase {
             result.append(Scenario(name: "\(level) new", user: fresh, recentLogs: []))
             result.append(Scenario(name: "\(level) with history", user: fresh, recentLogs: history(for: fresh, library: library)))
         }
-        for injury in ["knees", "lower_back", "wrist"] {
+        // Each injured scenario trains a day its flag narrows but does not empty: a knee flag takes the
+        // squat-side ladders off a Legs Day, a lower-back flag the hinge ladders; a wrist flag rules out
+        // push, so its Pull Day must still never show a push movement.
+        for (injury, day) in [("knees", TrainingDay.legs), ("lower_back", .legs), ("wrist", .pull)] {
             let injured = user(level: .intermediate, injuries: [injury])
-            result.append(Scenario(name: "\(injury) flagged", user: injured, recentLogs: history(for: injured, library: library)))
+            result.append(Scenario(name: "\(injury) flagged", user: injured, recentLogs: history(for: injured, library: library), day: day))
         }
         let strength = user(level: .beginner, phase: .strength)
         result.append(Scenario(name: "strength phase", user: strength, recentLogs: history(for: strength, library: library)))
@@ -119,7 +129,7 @@ final class DifferentWorkoutTests: XCTestCase {
     private func assemble(_ scenario: Scenario, minutes: Int, variation: SessionVariation, library: [Exercise]) -> Workout {
         SessionAssembly.assemble(
             requestedMinutes: minutes, user: scenario.user, library: library,
-            recentLogs: scenario.recentLogs, variation: variation, asOf: asOf, calendar: calendar
+            recentLogs: scenario.recentLogs, variation: variation, trainingDay: scenario.day, asOf: asOf, calendar: calendar
         )
     }
 
@@ -137,11 +147,11 @@ final class DifferentWorkoutTests: XCTestCase {
         return result
     }
 
-    /// Everything about a workout except its fresh ids: block order and category, and each slot's move and
-    /// full prescription.
+    /// Everything about a workout except its fresh ids: block order, category and pause, and each slot's
+    /// move and full prescription.
     private func content(_ workout: Workout) -> [String] {
         workout.blocks.map { block in
-            "\(block.category):" + block.exercises.map { item in
+            "\(block.category)p\(block.transitionSeconds ?? 0):" + block.exercises.map { item in
                 "\(item.exercise.id)x\(item.sets)r\(item.reps ?? -1)d\(item.durationSeconds ?? -1)s\(item.restSeconds)"
             }.joined(separator: ",")
         }
@@ -155,58 +165,82 @@ final class DifferentWorkoutTests: XCTestCase {
 
     // MARK: - Every rule still governs every press
 
-    func testEveryPressKeepsTheLengthShapeAccessInjuriesFrontiersRoundsAndTargets() async throws {
+    /// The session lands within `toleranceSeconds` of `minutes`, or runs short only because the same plan,
+    /// re-fit with the press's variation, has no lever left (`isSaturated`) - an honest shortfall.
+    private func fillsOrRunsHonestlyShort(_ workout: Workout, _ scenario: Scenario, minutes: Int, offered: Set<String>, library: [Exercise]) -> Bool {
+        let gap = SessionAssembly.plannedSeconds(of: workout) - minutes * 60
+        if abs(gap) <= SessionAssembly.toleranceSeconds { return true }
+        guard gap < 0, let day = workout.trainingDay else { return false }
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: minutes, user: scenario.user, library: library, recentLogs: scenario.recentLogs,
+            offered: offered, trainingDay: day, asOf: asOf, calendar: calendar
+        )
+        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+        return plan.isSaturated
+    }
+
+    func testEveryPressKeepsTheLengthShapeDayAccessInjuriesRungsSetsAndEarnedReps() async throws {
         let library = try await library()
-        var largestStretch = 0
-        defer { print("DIFFERENT WORKOUT LARGEST PER-SET STRETCH: \(largestStretch)s") }
         for scenario in scenarios(library: library) {
-            let pool = ExercisePoolFilter.eligiblePool(from: library, user: scenario.user, recentLogs: scenario.recentLogs)
+            let user = scenario.user
+            let level = user.profile.fitnessLevel
+            let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: scenario.recentLogs)
             let poolIds = Set(pool.map(\.id))
-            let contraindicated = InjuryContraindication.contraindicatedPatterns(for: scenario.user.profile.injuries)
+            let contraindicated = InjuryContraindication.contraindicatedPatterns(for: user.profile.injuries)
             for minutes in lengths {
-                let presses = sequence(scenario, minutes: minutes, presses: pressCap, library: library)
-                let defaultShape = presses[0].blocks.map(\.category)
-                let cycle = cycleIndex(of: presses) ?? presses.count - 1
-                // Every press - the default and each variation, injured scenarios included - lands within
-                // the ±60 s promise: when an injury flag narrows the pool so far that the round cap and the
-                // stations left cannot fill a long session, the stretched work windows do (ADR-0010).
-                for (index, workout) in presses.prefix(cycle + 1).enumerated() {
+                var variation = SessionVariation.none
+                var presses: [(Workout, Set<String>)] = []
+                var shown = assemble(scenario, minutes: minutes, variation: variation, library: library)
+                presses.append((shown, []))
+                for _ in 0..<pressCap {
+                    variation = variation.advanced(past: shown)
+                    shown = assemble(scenario, minutes: minutes, variation: variation, library: library)
+                    presses.append((shown, variation.offeredExerciseIds))
+                    if content(shown) == content(presses[0].0) { break }
+                }
+                let defaultWorkout = presses[0].0
+                let cycle = cycleIndex(of: presses.map(\.0)) ?? presses.count - 1
+                for (index, (workout, offered)) in presses.prefix(cycle + 1).enumerated() {
                     let label = "\(scenario.name) \(minutes) min press \(index)"
 
-                    XCTAssertLessThanOrEqual(
-                        abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60),
-                        SessionAssembly.toleranceSeconds,
-                        "\(label): misses the requested length"
+                    // A press that fell back to the default session was assembled without the offered moves.
+                    let assembledWith = content(workout) == content(defaultWorkout) ? [] : offered
+                    XCTAssertTrue(
+                        fillsOrRunsHonestlyShort(workout, scenario, minutes: minutes, offered: assembledWith, library: library),
+                        "\(label): misses the requested length by \(SessionAssembly.plannedSeconds(of: workout) - minutes * 60)s with fit levers left"
                     )
-                    for block in workout.blocks {
-                        for item in block.exercises {
-                            XCTAssertLessThanOrEqual(item.stretchSeconds ?? 0, SessionAssembly.maxStretchSecondsPerSet, label)
-                            largestStretch = max(largestStretch, item.stretchSeconds ?? 0)
-                        }
-                    }
                     XCTAssertEqual(workout.requestedMinutes, minutes, label)
-                    XCTAssertEqual(workout.blocks.map(\.category), defaultShape, "\(label): changed the session shape")
+                    XCTAssertEqual(workout.trainingDay, defaultWorkout.trainingDay, "\(label): changed the Training Day")
+                    XCTAssertEqual(workout.blocks.map(\.category), defaultWorkout.blocks.map(\.category), "\(label): changed the session shape")
 
                     for block in workout.blocks {
-                        if SessionAssembly.isCircuit(block.category) {
-                            XCTAssertEqual(Set(block.exercises.map(\.sets)).count, 1, "\(label): \(block.title) is uneven")
-                        }
                         for item in block.exercises {
                             let exercise = item.exercise
-                            XCTAssertTrue(poolIds.contains(exercise.id), "\(label): \(exercise.id) is outside movement access, injury and skip filters")
                             XCTAssertFalse(contraindicated.contains(exercise.movementPattern), "\(label): \(exercise.id) ignores an injury flag")
+                            XCTAssertFalse(MovementAccess.isWithdrawn(exercise), "\(label): \(exercise.id) is withdrawn")
+                            XCTAssertNil(item.stretchSeconds, "\(label): \(exercise.id) carries a stretched work window")
+                            guard SessionAssembly.isCircuit(block.category) else {
+                                XCTAssertTrue(poolIds.contains(exercise.id), "\(label): \(exercise.id) is outside movement access, injury and skip filters")
+                                continue
+                            }
+                            XCTAssertEqual(item.sets, RepGrammar.setsPerStation, "\(label): \(exercise.id) runs \(item.sets) sets")
+                            // A Practice Movement previews the next rung under its own eligibility (ADR-0015).
+                            guard item.role != .practice else { continue }
+                            XCTAssertTrue(poolIds.contains(exercise.id), "\(label): \(exercise.id) is outside movement access, injury and skip filters")
 
-                            let target = AdaptiveOverload.target(for: exercise, recentLogs: scenario.recentLogs)
-                            XCTAssertEqual(item.reps, target.reps, "\(label): \(exercise.id) reps are not its Adaptive Overload target")
-                            XCTAssertEqual(item.durationSeconds, target.durationSeconds, "\(label): \(exercise.id) hold is not its Adaptive Overload target")
-
-                            guard SessionAssembly.isCircuit(block.category) else { continue }
-                            XCTAssertTrue((2...4).contains(item.sets), "\(label): \(exercise.id) runs \(item.sets) rounds")
                             let chain = library.filter { $0.progressionChainId == exercise.progressionChainId }
-                            let frontier = ProgressionChainSelection.selectInChain(
-                                chain, eligibleIds: poolIds, recentLogs: scenario.recentLogs
+                            let rung = ProgressionChainSelection.selectInChain(chain, eligibleIds: poolIds, recentLogs: scenario.recentLogs, level: level)
+                            XCTAssertEqual(rung?.exercise.id, exercise.id, "\(label): \(exercise.id) is not its ladder's current rung")
+
+                            let earned = AdaptiveOverload.earned(
+                                for: exercise, level: level, recentLogs: scenario.recentLogs,
+                                steppedDownSince: ProgressionChainSelection.stepDownDate(onto: exercise, library: library, recentLogs: scenario.recentLogs, level: level)
                             )
-                            XCTAssertEqual(frontier?.exercise.id, exercise.id, "\(label): \(exercise.id) is not its chain's earned tier")
+                            XCTAssertEqual(
+                                item.earnedReps ?? item.earnedDurationSeconds,
+                                RepGrammar.served(earned: earned, for: RepGrammar.kind(of: exercise), level: level),
+                                "\(label): \(exercise.id) does not record its Earned Reps"
+                            )
                         }
                     }
                 }
@@ -264,24 +298,31 @@ final class DifferentWorkoutTests: XCTestCase {
         }
     }
 
-    // MARK: - Step 3's no-repeat lead survives a press
+    // MARK: - A press keeps the Training Day
 
-    func testAPressNeverLeadsWithThePreviousSessionsLeadPattern() async throws {
+    /// A press never changes what the Rotation decided: on every Training Day, every press trains that
+    /// day's groups, and the moves it can change are the bookends, the Core Sprinkle and which ladders fill
+    /// a short session - never a group the day does not train.
+    func testAPressNeverChangesTheTrainingDay() async throws {
         let library = try await library()
         for level in FitnessLevel.allCases {
             let person = user(level: level)
-            let logs = history(for: person, library: library)
-            let pool = ExercisePoolFilter.eligiblePool(from: library, user: person, recentLogs: logs)
-            let patterns = Array(Set(pool.filter { $0.pillar == .strength }.map(\.movementPattern)))
-            let blocked = try XCTUnwrap(
-                PatternFocus.recentLeadPattern(among: patterns, recentLogs: logs, asOf: asOf, calendar: calendar),
-                "the history must leave a previous-session lead pattern to hold back"
-            )
-            let scenario = Scenario(name: "\(level)", user: person, recentLogs: logs)
-            for minutes in lengths {
-                for (index, workout) in sequence(scenario, minutes: minutes, presses: 12, library: library).enumerated() {
-                    let lead = workout.blocks.first { $0.category == .strength }?.exercises.first?.exercise.movementPattern
-                    XCTAssertNotEqual(lead, blocked, "\(level) \(minutes) min press \(index) leads with yesterday's pattern")
+            let scenario = Scenario(name: "\(level)", user: person, recentLogs: history(for: person, library: library))
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    var variation = SessionVariation.none
+                    for index in 0..<12 {
+                        let workout = SessionAssembly.assemble(
+                            requestedMinutes: minutes, user: person, library: library, recentLogs: scenario.recentLogs,
+                            variation: variation, trainingDay: day, asOf: asOf, calendar: calendar
+                        )
+                        let label = "\(level) \(day) \(minutes) min press \(index)"
+                        XCTAssertEqual(workout.trainingDay, day, label)
+                        let worked = workout.blocks.filter { $0.category == .strength }.flatMap(\.exercises)
+                            .filter { $0.role == .main || $0.role == .practice }
+                        XCTAssertTrue(worked.allSatisfy { day.patterns.contains($0.exercise.movementPattern) }, "\(label): \(worked.map(\.exercise.id))")
+                        variation = variation.advanced(past: workout)
+                    }
                 }
             }
         }
@@ -299,7 +340,7 @@ final class DifferentWorkoutTests: XCTestCase {
             for minutes in lengths {
                 let plain = SessionAssembly.assemble(
                     requestedMinutes: minutes, user: scenario.user, library: library,
-                    recentLogs: scenario.recentLogs, asOf: asOf, calendar: calendar
+                    recentLogs: scenario.recentLogs, trainingDay: scenario.day, asOf: asOf, calendar: calendar
                 )
                 XCTAssertEqual(
                     content(assemble(scenario, minutes: minutes, variation: unrelated, library: library)),
