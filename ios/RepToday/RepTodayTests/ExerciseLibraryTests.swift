@@ -54,11 +54,11 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(counts[.core], 10, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 26, "mobility group (warm-up + cooldown bookends)")
-        XCTAssertEqual(counts[.locomotion], 7, "primal group")
+        XCTAssertEqual(counts[.locomotion], 7, "primal group, retired but kept in the file")
     }
 
-    /// All three training pillars carry movements; mobility is well-represented (not a sliver),
-    /// even though strength is the primary pillar of every session (US-006).
+    /// Strength and mobility carry the offered movements, and the retired primal pillar's movements stay
+    /// in the file so logged history still resolves (ADR-0014).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
         XCTAssertEqual(counts[.strength], 43)
@@ -76,6 +76,22 @@ final class ExerciseLibraryTests: XCTestCase {
             case .primal:   XCTAssertEqual(ex.category, .primal, "\(ex.id) category")
             }
         }
+    }
+
+    // MARK: - Withdrawn movements
+
+    /// Every primal movement is retired with its pillar (ADR-0014), nothing else is, and the one movement
+    /// held for version 2 - Prone Y-T-W Raises - is the withdrawn tail at the top of the postural chain.
+    func testWithdrawnMovementsAreThePrimalPillarAndProneYTWRaises() throws {
+        let retired = Set(exercises.filter { $0.audience == .retired }.map(\.id))
+        XCTAssertEqual(retired, Set(exercises.filter { $0.pillar == .primal }.map(\.id)))
+        XCTAssertEqual(retired.count, 7)
+        XCTAssertEqual(exercises.filter { $0.audience == .version2 }.map(\.id), ["pull_ytw"])
+
+        let postural = exercises.filter { $0.progressionChainId == "pull_postural" }
+            .sorted { $0.progressionOrder < $1.progressionOrder }
+        XCTAssertEqual(postural.map(\.id), ["pull_superman", "pull_reverse_snow_angel", "pull_ytw"])
+        XCTAssertEqual(postural.last.map(MovementAccess.isWithdrawn), true, "the withdrawn rung is the chain's top")
     }
 
     // MARK: - Zero-Equipment Floor
@@ -141,17 +157,14 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
-    /// Every offered strength and primal movement sits in a real chain (one with room to regress or
-    /// progress) - never a lone movement with no path up or down. A movement withdrawn until version 2
-    /// is exempt: it is never served, and Prone Y-T-W Raises sits alone on its own withdrawn chain
-    /// because a withdrawn movement may not link into a live one (ADR-0007).
-    func testStrengthAndPrimalMovementsHaveChainRoom() {
-        let chainSizes = Dictionary(grouping: exercises, by: \.progressionChainId).mapValues(\.count)
-        for ex in exercises where (ex.pillar == .strength || ex.pillar == .primal) && !MovementAccess.isWithdrawn(ex) {
+    /// Every offered strength movement sits in a real chain of offered rungs (one with room to regress or
+    /// progress) - never a lone movement with no path up or down once the withdrawn rungs are set aside.
+    func testOfferedStrengthMovementsHaveChainRoom() {
+        let offered = exercises.filter { !MovementAccess.isWithdrawn($0) }
+        let chainSizes = Dictionary(grouping: offered, by: \.progressionChainId).mapValues(\.count)
+        for ex in offered where ex.pillar == .strength {
             XCTAssertGreaterThanOrEqual(chainSizes[ex.progressionChainId] ?? 0, 2,
                                         "\(ex.id) should belong to a multi-step progression chain")
-            XCTAssertTrue(ex.regressionId != nil || ex.progressionId != nil,
-                          "\(ex.id) has neither a regression nor a progression")
         }
     }
 
@@ -227,6 +240,10 @@ final class ExerciseLibraryTests: XCTestCase {
                     $0.movementPattern == pattern && (floor...cap).contains($0.difficulty)
                 }
                 let chains = Set(banded.map(\.progressionChainId))
+                if knownSingleChainBands.contains("\(level)/\(pattern)") {
+                    XCTAssertEqual(chains.count, 1, "\(level)/\(pattern) now has room to rotate; drop it from knownSingleChainBands")
+                    continue
+                }
                 XCTAssertGreaterThanOrEqual(
                     chains.count, 2,
                     "\(level)'s [\(floor), \(cap)] band leaves the \(pattern) pattern only "
@@ -236,13 +253,20 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
-    /// The training catalog the Start Seed band applies to: Discipline-Phase strength and primal
-    /// movements (`ColdStartOverride` bands exactly these; mobility is never floored).
+    /// The training catalog the Start Seed band applies to: offered Discipline-Phase strength movements
+    /// (`ColdStartOverride` bands the training pillars; mobility is never floored, and a withdrawn
+    /// movement is never served, so it can give the variety window nothing to rotate over).
     private var bandableCatalog: [Exercise] {
         exercises.filter {
-            $0.phase == .discipline && ($0.pillar == .strength || $0.pillar == .primal)
+            $0.phase == .discipline && $0.pillar == .strength && !MovementAccess.isWithdrawn($0)
         }
     }
+
+    /// Bands the catalog cannot fill with two chains today. The postural pull chain tops out at
+    /// difficulty 2 once Prone Y-T-W Raises (difficulty 3) is withdrawn, so an advanced user's [3, 4]
+    /// band reaches only the horizontal pull chain. Listed rather than skipped so the gap stays visible,
+    /// and asserted so the entry has to go once the catalog closes it.
+    private let knownSingleChainBands: Set<String> = ["advanced/pull"]
 
     /// Every movement pattern that catalog reaches. The band's guarantees are asserted over all of
     /// these, so a pattern the band empties fails rather than silently disappearing from the check.
@@ -257,7 +281,7 @@ final class ExerciseLibraryTests: XCTestCase {
     func testTheBandableCatalogCoversTheTrainingPatterns() {
         XCTAssertEqual(
             Set(bandablePatterns),
-            [.push, .pull, .squat, .hinge, .core, .locomotion],
+            [.push, .pull, .squat, .hinge, .core],
             "the Start Seed band's guarantees are only meaningful over the patterns it reaches"
         )
     }
@@ -342,6 +366,10 @@ final class ExerciseLibraryTests: XCTestCase {
         // gate exists to prevent. A criteria authored "3x8 clean reps per arm" (natural for the upper
         // body, and `push_one_arm` already exists) matches no template and fails loudly; the fix is then
         // a deliberate decision to extend the grammar and the flag together, not a silent default.
+        // The training movements read the rep grammar's own copy (US-TD03), with "per side" after the
+        // count; the stretches and the retired primal movements keep their older authored shapes, with
+        // "per side" at the end.
+        let grammar = #"^4 clean (?:sets|holds)(?: per side)? at the top of your (?:rep|hold) range$"#
         let body = #"(?:\d+x\d+ (?:clean |slow )?reps|\d+x\d+ steps|\d+x\d+s hold"#
             + #"|\d+ reps|hold \d+s(?: comfortably)?|flow \d+ slow reps)"#
         let perSideMarker = #"(?: (?:per|each) (?:side|leg))"#
@@ -349,19 +377,32 @@ final class ExerciseLibraryTests: XCTestCase {
 
         for ex in exercises {
             let criteria = ex.advancementCriteria.lowercased()
-            XCTAssertNotNil(
-                criteria.range(of: template, options: .regularExpression),
+            XCTAssertTrue(
+                criteria.range(of: grammar, options: .regularExpression) != nil
+                    || criteria.range(of: template, options: .regularExpression) != nil,
                 "\(ex.id): advancementCriteria \"\(ex.advancementCriteria)\" matches no recognised "
                     + "authoring template. Extend the template *and* set isPerSide deliberately - "
                     + "leaving it unrecognised would price the movement as one-sided."
             )
             let saysPerSide = criteria.range(
-                of: perSideMarker + "$", options: .regularExpression
+                of: perSideMarker + "(?: |$)", options: .regularExpression
             ) != nil
             XCTAssertEqual(
                 ex.sidesPerSet == 2, saysPerSide,
                 "\(ex.id): isPerSide is \(ex.isPerSide == true) but its criteria read \"\(ex.advancementCriteria)\""
             )
+        }
+    }
+
+    /// Every offered training movement states the one advancement rule the rep grammar applies (US-TD03):
+    /// four clean sets (or holds) at the top of the user's range, per side when the movement is per side.
+    /// No movement carries a number of its own any more - the range depends on the user's level.
+    func testTrainingMovementsStateTheRepGrammarAdvancementRule() {
+        for ex in exercises where ex.pillar == .strength {
+            let unit = ex.isHold ? "holds" : "sets"
+            let side = ex.isPerSide == true ? " per side" : ""
+            let range = ex.isHold ? "hold" : "rep"
+            XCTAssertEqual(ex.advancementCriteria, "4 clean \(unit)\(side) at the top of your \(range) range", ex.id)
         }
     }
 

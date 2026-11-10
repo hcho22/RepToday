@@ -62,35 +62,40 @@ final class FoundationsEvidenceTests: XCTestCase {
         }
     }
 
-    /// A session whose one exercise is `sets` sets of `exerciseId`, each `value` reps (or seconds).
+    /// A Training Day session whose one main station is four sets of `exerciseId` at `value` reps (or
+    /// seconds), prescribed at that value as its Earned Reps. The seeded user is intermediate, so a rep
+    /// entry clears at 30 and a hold at 60 seconds (US-TD03).
     private func work(_ exerciseId: String, _ pattern: MovementPattern, hold: Bool = false, value: Int, weeksAgo: Int, day: Int = 0) -> WorkoutLog {
-        let sets = (0..<3).map { _ in CompletedSet(reps: hold ? nil : value, durationSeconds: hold ? value : nil) }
+        let set = CompletedSet(reps: hold ? nil : value, durationSeconds: hold ? value : nil)
         return WorkoutLog(
             id: UUID(), workoutId: UUID(), completedAt: date(weeksAgo: weeksAgo, dayOffset: day),
             requestedMinutes: 20, durationMinutes: 20, wasReturn: false,
             shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
             exercises: [LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                                       movementPattern: pattern, completedSets: sets, skipped: false)]
+                                       movementPattern: pattern, completedSets: Array(repeating: set, count: RepGrammar.setsPerStation),
+                                       skipped: false, role: .main,
+                                       earnedReps: hold ? nil : value, earnedDurationSeconds: hold ? value : nil)]
         )
     }
 
     private var freshLogs: [WorkoutLog] {
-        [work("push_wall", .push, value: 8, weeksAgo: 0)]
+        [work("push_wall", .push, value: 15, weeksAgo: 0)]
     }
 
-    /// Eight steady weeks. Push climbs wall -> knee -> standard (entry cleared), the squat side climbs
-    /// from the wall sit (cleared) to the bodyweight squat, core clears its forearm plank, and hinge sits
-    /// short of its bridge criteria for weeks. Pull has only postural work, which never counts.
+    /// Eight steady weeks. Push climbs wall (cleared at 30) -> knee -> standard, the squat side climbs
+    /// from the wall sit (cleared at 60 seconds) to the bodyweight squat, core clears its forearm plank,
+    /// and hinge sits short of the top of its range for weeks. Pull has only postural work, which never
+    /// counts.
     private var midClimbLogs: [WorkoutLog] {
         showUps(weeks: 8) + [
-            work("push_wall", .push, value: 15, weeksAgo: 7, day: 1),
-            work("push_knee", .push, value: 12, weeksAgo: 4, day: 1),
-            work("push_standard", .push, value: 12, weeksAgo: 1, day: 1),
-            work("squat_wall_sit", .squat, hold: true, value: 45, weeksAgo: 6, day: 1),
+            work("push_wall", .push, value: 30, weeksAgo: 7, day: 1),
+            work("push_knee", .push, value: 20, weeksAgo: 4, day: 1),
+            work("push_standard", .push, value: 20, weeksAgo: 1, day: 1),
+            work("squat_wall_sit", .squat, hold: true, value: 60, weeksAgo: 6, day: 1),
             work("squat_bodyweight", .squat, value: 20, weeksAgo: 2, day: 1),
-            work("hinge_glute_bridge", .hinge, value: 14, weeksAgo: 5, day: 1),
-            work("hinge_glute_bridge", .hinge, value: 16, weeksAgo: 0, day: 1),
-            work("core_forearm_plank", .core, hold: true, value: 45, weeksAgo: 6, day: 2),
+            work("hinge_glute_bridge", .hinge, value: 15, weeksAgo: 5, day: 1),
+            work("hinge_glute_bridge", .hinge, value: 25, weeksAgo: 0, day: 1),
+            work("core_forearm_plank", .core, hold: true, value: 60, weeksAgo: 6, day: 2),
             work("pull_superman", .pull, hold: true, value: 30, weeksAgo: 3, day: 1),
             work("pull_reverse_snow_angel", .pull, value: 15, weeksAgo: 1, day: 2),
         ]
@@ -99,14 +104,14 @@ final class FoundationsEvidenceTests: XCTestCase {
     /// Everything cleared except Pull's horizontal chain, with a Strength-Phase rung already in use.
     private var strengthLogs: [WorkoutLog] {
         showUps(weeks: 10) + [
-            work("push_wall", .push, value: 15, weeksAgo: 9, day: 1),
-            work("push_archer", .push, value: 8, weeksAgo: 3, day: 1),
-            work("push_one_arm_assisted", .push, value: 6, weeksAgo: 0, day: 1),
-            work("squat_wall_sit", .squat, hold: true, value: 45, weeksAgo: 8, day: 1),
-            work("squat_pistol_assisted", .squat, value: 6, weeksAgo: 0, day: 2),
-            work("hinge_glute_bridge", .hinge, value: 20, weeksAgo: 8, day: 2),
-            work("hinge_long_lever_bridge", .hinge, value: 8, weeksAgo: 1, day: 2),
-            work("core_forearm_plank", .core, hold: true, value: 45, weeksAgo: 8, day: 3),
+            work("push_wall", .push, value: 30, weeksAgo: 9, day: 1),
+            work("push_archer", .push, value: 10, weeksAgo: 3, day: 1),
+            work("push_one_arm_assisted", .push, value: 5, weeksAgo: 0, day: 1),
+            work("squat_wall_sit", .squat, hold: true, value: 60, weeksAgo: 8, day: 1),
+            work("squat_pistol_assisted", .squat, value: 5, weeksAgo: 0, day: 2),
+            work("hinge_glute_bridge", .hinge, value: 30, weeksAgo: 8, day: 2),
+            work("hinge_long_lever_bridge", .hinge, value: 10, weeksAgo: 1, day: 2),
+            work("core_forearm_plank", .core, hold: true, value: 60, weeksAgo: 8, day: 3),
             work("core_tuck_l_sit", .core, hold: true, value: 20, weeksAgo: 2, day: 3),
             work("pull_superman", .pull, hold: true, value: 30, weeksAgo: 4, day: 1),
         ]
@@ -329,9 +334,9 @@ final class FoundationsEvidenceTests: XCTestCase {
         await viewModel.load()
         let appState = makeAppState(existingInstall: true, suite: "FoundationsEvidence.strength")
 
-        // The real evaluator, asked directly about this history, would not clear Pull...
+        // The real evaluator, asked directly about this history, clears every foundation but Pull...
         let evaluated = try XCTUnwrap(viewModel.phaseProgress)
-        XCTAssertFalse(evaluated.foundations[1].isCleared)
+        XCTAssertEqual(evaluated.foundations.map(\.isCleared), [true, false, true, true])
         XCTAssertFalse(evaluated.hasEarnedStrength)
         // ...but the persisted phase is what the tab reads, and it is never revoked.
         XCTAssertEqual(viewModel.phase, .strength)

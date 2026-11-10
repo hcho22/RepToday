@@ -8,8 +8,10 @@ import XCTest
 ///
 /// Coverage mirrors the PRD acceptance criteria at the unit level: consistency-only stays
 /// Discipline, competence-only stays Discipline, both-met promotes to Strength, and a fresh user is
-/// Discipline. The library is a small self-contained fixture so the evaluator is exercised as pure
-/// logic with no bundle dependency.
+/// Discipline. An entry rung clears the way the rep grammar clears any rung (US-TD03): four sets at the
+/// top of the user's range, at earned reps, in a session that counts toward advancement. The library
+/// is a small self-contained fixture so the evaluator is exercised as pure logic with no bundle
+/// dependency.
 final class PhaseEvaluatorTests: XCTestCase {
 
     // MARK: - Calendar / dates
@@ -35,8 +37,8 @@ final class PhaseEvaluatorTests: XCTestCase {
     // MARK: - Library fixture
 
     /// A minimal library covering the foundation lines. Each has a chain with an entry tier (order 0)
-    /// plus a next tier, so `AdvancementCriteria` can be cleared from a logged performance of the
-    /// entry. A rep entry and a hold entry are both represented so the `isHold` branch is exercised.
+    /// plus a next tier, so the entry can be cleared from a logged performance of it. A rep entry and a
+    /// hold entry are both represented so the `isHold` branch is exercised.
     /// Squat and hinge each carry a second chain (lunge, hip) that also counts for Legs; pull carries
     /// its counting horizontal chain and the postural chain that never counts. Mobility is present but
     /// irrelevant to competence.
@@ -46,7 +48,6 @@ final class PhaseEvaluatorTests: XCTestCase {
         pillar: Pillar,
         order: Int,
         chainId: String,
-        advancementCriteria: String,
         isHold: Bool,
         progressionId: String? = nil
     ) -> Exercise {
@@ -68,54 +69,37 @@ final class PhaseEvaluatorTests: XCTestCase {
             progressionOrder: order,
             regressionId: nil,
             progressionId: progressionId,
-            advancementCriteria: advancementCriteria,
+            advancementCriteria: isHold ? "4 clean holds at the top of your hold range" : "4 clean sets at the top of your rep range",
             apartmentFriendly: true
         )
     }
 
     private lazy var library: [Exercise] = [
-        // push: rep entry "3x15", plus a next tier.
-        exercise(id: "push_wall", pattern: .push, pillar: .strength, order: 0, chainId: "push_h",
-                 advancementCriteria: "3x15 clean reps", isHold: false, progressionId: "push_std"),
-        exercise(id: "push_std", pattern: .push, pillar: .strength, order: 1, chainId: "push_h",
-                 advancementCriteria: "3x12 clean reps", isHold: false),
-        // squat: hold entry "3x45s", plus a next tier.
-        exercise(id: "squat_wall", pattern: .squat, pillar: .strength, order: 0, chainId: "squat",
-                 advancementCriteria: "3x45s hold", isHold: true, progressionId: "squat_sumo"),
-        exercise(id: "squat_sumo", pattern: .squat, pillar: .strength, order: 1, chainId: "squat",
-                 advancementCriteria: "3x20 clean reps", isHold: false),
+        // push: a rep entry, plus a next tier.
+        exercise(id: "push_wall", pattern: .push, pillar: .strength, order: 0, chainId: "push_h", isHold: false, progressionId: "push_std"),
+        exercise(id: "push_std", pattern: .push, pillar: .strength, order: 1, chainId: "push_h", isHold: false),
+        // squat: a hold entry, plus a next tier.
+        exercise(id: "squat_wall", pattern: .squat, pillar: .strength, order: 0, chainId: "squat", isHold: true, progressionId: "squat_sumo"),
+        exercise(id: "squat_sumo", pattern: .squat, pillar: .strength, order: 1, chainId: "squat", isHold: false),
         // squat's second chain: a lunge entry also clears the squat side of Legs.
-        exercise(id: "lunge_reverse", pattern: .squat, pillar: .strength, order: 0, chainId: "lunge",
-                 advancementCriteria: "3x12 reps per side", isHold: false, progressionId: "lunge_split"),
-        exercise(id: "lunge_split", pattern: .squat, pillar: .strength, order: 1, chainId: "lunge",
-                 advancementCriteria: "3x12 reps per side", isHold: false),
-        // hinge: rep entry "3x20".
-        exercise(id: "hinge_bridge", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_b",
-                 advancementCriteria: "3x20 clean reps", isHold: false, progressionId: "hinge_slb"),
-        exercise(id: "hinge_slb", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_b",
-                 advancementCriteria: "3x12 reps per side", isHold: false),
+        exercise(id: "lunge_reverse", pattern: .squat, pillar: .strength, order: 0, chainId: "lunge", isHold: false, progressionId: "lunge_split"),
+        exercise(id: "lunge_split", pattern: .squat, pillar: .strength, order: 1, chainId: "lunge", isHold: false),
+        // hinge: a rep entry.
+        exercise(id: "hinge_bridge", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_b", isHold: false, progressionId: "hinge_slb"),
+        exercise(id: "hinge_slb", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_b", isHold: false),
         // hinge's second chain: a good-morning entry also clears the hinge side of Legs.
-        exercise(id: "hinge_good_morning", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_hip",
-                 advancementCriteria: "3x15 clean reps", isHold: false, progressionId: "hinge_sl_rdl"),
-        exercise(id: "hinge_sl_rdl", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_hip",
-                 advancementCriteria: "3x12 reps per side", isHold: false),
-        // pull: the horizontal chain counts (entry "3x12"); the postural chain never does.
-        exercise(id: "pull_scap", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_horizontal",
-                 advancementCriteria: "3x12 clean reps", isHold: false, progressionId: "pull_row"),
-        exercise(id: "pull_row", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_horizontal",
-                 advancementCriteria: "3x10 clean reps", isHold: false),
-        exercise(id: "pull_superman", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_postural",
-                 advancementCriteria: "3x30s hold", isHold: true, progressionId: "pull_ytw"),
-        exercise(id: "pull_ytw", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_postural",
-                 advancementCriteria: "3x12 clean reps", isHold: false),
-        // core: hold entry "3x30s".
-        exercise(id: "core_plank", pattern: .core, pillar: .strength, order: 0, chainId: "core_p",
-                 advancementCriteria: "3x30s hold", isHold: true, progressionId: "core_side"),
-        exercise(id: "core_side", pattern: .core, pillar: .strength, order: 1, chainId: "core_p",
-                 advancementCriteria: "3x30s hold per side", isHold: true),
+        exercise(id: "hinge_good_morning", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_hip", isHold: false, progressionId: "hinge_sl_rdl"),
+        exercise(id: "hinge_sl_rdl", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_hip", isHold: false),
+        // pull: the horizontal chain counts; the postural chain never does.
+        exercise(id: "pull_scap", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_horizontal", isHold: false, progressionId: "pull_row"),
+        exercise(id: "pull_row", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_horizontal", isHold: false),
+        exercise(id: "pull_superman", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_postural", isHold: true, progressionId: "pull_ytw"),
+        exercise(id: "pull_ytw", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_postural", isHold: false),
+        // core: a hold entry.
+        exercise(id: "core_plank", pattern: .core, pillar: .strength, order: 0, chainId: "core_p", isHold: true, progressionId: "core_side"),
+        exercise(id: "core_side", pattern: .core, pillar: .strength, order: 1, chainId: "core_p", isHold: true),
         // mobility: not a foundational pattern; never gates competence.
-        exercise(id: "mob_cat_cow", pattern: .mobility, pillar: .mobility, order: 0, chainId: "mob",
-                 advancementCriteria: "3x10 reps", isHold: false),
+        exercise(id: "mob_cat_cow", pattern: .mobility, pillar: .mobility, order: 0, chainId: "mob", isHold: false),
     ]
 
     // MARK: - Log builders
@@ -144,12 +128,10 @@ final class PhaseEvaluatorTests: XCTestCase {
         }
     }
 
-    /// A log this week whose single logged exercise *clears* the entry tier `exerciseId` - three
-    /// completed sets each meeting `value` (reps for a rep entry, seconds for a hold).
-    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
-        let sets = (0..<3).map { _ in
-            CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil)
-        }
+    /// A log this week with a single main station of `exerciseId`: `sets` sets of `value` (reps, or
+    /// seconds for a hold), prescribed at `earned` (the value itself when not given).
+    private func workedLog(_ exerciseId: String, value: Int, earned: Int? = nil, sets: Int = 4, role: StationRole? = .main) -> WorkoutLog {
+        let exercise = library.first { $0.id == exerciseId }!
         return WorkoutLog(
             id: UUID(),
             workoutId: UUID(),
@@ -165,31 +147,52 @@ final class PhaseEvaluatorTests: XCTestCase {
                     id: UUID(),
                     exerciseId: exerciseId,
                     pillar: .strength,
-                    movementPattern: pattern,
-                    completedSets: sets,
-                    skipped: false
+                    movementPattern: exercise.movementPattern,
+                    completedSets: Array(
+                        repeating: exercise.isHold ? CompletedSet(reps: nil, durationSeconds: value) : CompletedSet(reps: value, durationSeconds: nil),
+                        count: sets
+                    ),
+                    skipped: false,
+                    role: role,
+                    earnedReps: exercise.isHold || role == nil ? nil : (earned ?? value),
+                    earnedDurationSeconds: exercise.isHold && role != nil ? (earned ?? value) : nil
                 )
             ]
         )
     }
 
+    /// The top of `exerciseId`'s earned range for a user at `level`.
+    private func top(_ exerciseId: String, level: FitnessLevel = .beginner) -> Int {
+        RepGrammar.earnedRange(for: library.first { $0.id == exerciseId }!, level: level).upperBound
+    }
+
+    /// A log this week that *clears* the entry tier `exerciseId` for a user at `level`: four sets at the
+    /// top of the range, at earned reps that had reached it.
+    private func clearingLog(_ exerciseId: String, level: FitnessLevel = .beginner) -> WorkoutLog {
+        workedLog(exerciseId, value: top(exerciseId, level: level))
+    }
+
     /// Logs clearing every foundation: push, pull (horizontal), both sides of legs, and core.
     private func competenceLogs() -> [WorkoutLog] {
         [
-            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-            clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
-            clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
-            clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+            clearingLog("push_wall"),
+            clearingLog("pull_scap"),
+            clearingLog("squat_wall"),
+            clearingLog("hinge_bridge"),
+            clearingLog("core_plank"),
         ]
     }
 
-    private func evaluate(_ logs: [WorkoutLog], weeklyGoal: Int = 3) -> Phase {
-        PhaseEvaluator.evaluate(logs: logs, weeklyGoal: weeklyGoal, library: library, asOf: asOf, calendar: calendar)
+    private func evaluate(_ logs: [WorkoutLog], weeklyGoal: Int = 3, level: FitnessLevel = .beginner) -> Phase {
+        PhaseEvaluator.evaluate(logs: logs, weeklyGoal: weeklyGoal, library: library, level: level, asOf: asOf, calendar: calendar)
     }
 
-    private func progress(_ logs: [WorkoutLog], weeklyGoal: Int = 3) -> PhaseProgress {
-        PhaseEvaluator.progress(logs: logs, weeklyGoal: weeklyGoal, library: library, asOf: asOf, calendar: calendar)
+    private func progress(_ logs: [WorkoutLog], weeklyGoal: Int = 3, level: FitnessLevel = .beginner) -> PhaseProgress {
+        PhaseEvaluator.progress(logs: logs, weeklyGoal: weeklyGoal, library: library, level: level, asOf: asOf, calendar: calendar)
+    }
+
+    private func isPushCleared(_ logs: [WorkoutLog], level: FitnessLevel = .beginner) -> Bool? {
+        progress(logs, level: level).foundations.first { $0.foundation == .push }?.isCleared
     }
 
     // MARK: - Fresh user
@@ -248,10 +251,10 @@ final class PhaseEvaluatorTests: XCTestCase {
     func testThreeOfFourFoundationsIsStillDiscipline() {
         // Clear push/pull/legs but not core: competence requires all four.
         let partial = [
-            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-            clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
-            clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
+            clearingLog("push_wall"),
+            clearingLog("pull_scap"),
+            clearingLog("squat_wall"),
+            clearingLog("hinge_bridge"),
         ]
         let logs = sustainedHistory(weeks: 8) + partial
         XCTAssertEqual(evaluate(logs), .discipline, "missing one foundation keeps the user in Discipline")
@@ -263,15 +266,15 @@ final class PhaseEvaluatorTests: XCTestCase {
     /// alone) cannot stand in for the whole foundation.
     func testLegsNeedsBothItsSquatAndHingeSides() throws {
         let everythingElse = [
-            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-            clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+            clearingLog("push_wall"),
+            clearingLog("pull_scap"),
+            clearingLog("core_plank"),
         ]
         let squatOnly = sustainedHistory(weeks: 8) + everythingElse
-            + [clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45)]
+            + [clearingLog("squat_wall")]
         let hingeOnly = sustainedHistory(weeks: 8) + everythingElse
-            + [clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20)]
-        let both = squatOnly + [clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20)]
+            + [clearingLog("hinge_bridge")]
+        let both = squatOnly + [clearingLog("hinge_bridge")]
 
         XCTAssertEqual(evaluate(squatOnly), .discipline, "the squat side alone does not clear Legs")
         XCTAssertEqual(evaluate(hingeOnly), .discipline, "the hinge side alone does not clear Legs")
@@ -288,11 +291,11 @@ final class PhaseEvaluatorTests: XCTestCase {
     /// the hinge side, exactly as one chain of push always sufficed.
     func testEitherChainOfALegsSideClearsIt() {
         let logs = sustainedHistory(weeks: 8) + [
-            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-            clearingLog(exerciseId: "lunge_reverse", pattern: .squat, isHold: false, value: 12),
-            clearingLog(exerciseId: "hinge_good_morning", pattern: .hinge, isHold: false, value: 15),
-            clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+            clearingLog("push_wall"),
+            clearingLog("pull_scap"),
+            clearingLog("lunge_reverse"),
+            clearingLog("hinge_good_morning"),
+            clearingLog("core_plank"),
         ]
         XCTAssertEqual(evaluate(logs), .strength)
     }
@@ -302,7 +305,7 @@ final class PhaseEvaluatorTests: XCTestCase {
     /// The postural chain stays in sessions but never clears Pull, however well it is performed.
     func testPosturalPullNeverClearsPull() {
         let logs = sustainedHistory(weeks: 8) + competenceLogs().filter { $0.exercises.first?.exerciseId != "pull_scap" }
-            + [clearingLog(exerciseId: "pull_superman", pattern: .pull, isHold: true, value: 30)]
+            + [clearingLog("pull_superman")]
 
         XCTAssertEqual(evaluate(logs), .discipline, "a cleared postural entry does not clear Pull")
         let pull = progress(logs).foundations.first { $0.foundation == .pull }
@@ -316,26 +319,26 @@ final class PhaseEvaluatorTests: XCTestCase {
         XCTAssertEqual(evaluate(logs), .strength)
     }
 
-    /// A horizontal entry logged short of its 3x12 is not cleared, and the postural entry cannot make
-    /// up for it.
+    /// A horizontal entry logged a step short of the top of the range is not cleared, and the postural
+    /// entry cannot make up for it.
     func testShortHorizontalPullWithClearedPosturalStaysUncleared() {
         let logs = [
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 8),
-            clearingLog(exerciseId: "pull_superman", pattern: .pull, isHold: true, value: 30),
+            workedLog("pull_scap", value: top("pull_scap") - RepGrammar.step),
+            clearingLog("pull_superman"),
         ]
         XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .pull }?.isCleared, false)
     }
 
-    /// An entry logged but not *cleared* (fell short of the criteria) does not count as competence.
+    /// An entry logged but not *cleared* (short of the top of the range) does not count as competence.
     func testUnclearedEntryDoesNotCountAsCompetence() {
-        // Push short of 3x15 (only 10 reps), every other foundation line fully cleared.
-        let short = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 10)
+        // Push at 25 reps, a step short of a beginner's 30; every other foundation line fully cleared.
+        let short = workedLog("push_wall", value: 25)
         let logs = sustainedHistory(weeks: 8) + [short]
             + [
-                clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-                clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
-                clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
-                clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+                clearingLog("pull_scap"),
+                clearingLog("squat_wall"),
+                clearingLog("hinge_bridge"),
+                clearingLog("core_plank"),
             ]
         XCTAssertEqual(evaluate(logs), .discipline, "a logged-but-not-cleared entry is not competence")
     }
@@ -350,23 +353,65 @@ final class PhaseEvaluatorTests: XCTestCase {
         XCTAssertEqual(evaluate(logs), .discipline, "a skipped clearing set does not earn competence")
     }
 
-    /// A log written before the "couldn't finish" follow-up existed carries no marks, so a "too hard"
-    /// rating on it never meant "nothing tapped": the Foundation entry rung it cleared stays cleared,
-    /// exactly as before ADR-0011. Once the follow-up answered a "too hard" session with nothing tapped,
-    /// that session counts toward no line.
-    func testOldUnmarkedTooHardLogThatClearedAFoundationStaysCleared() {
+    /// A session rated "too hard" clears no Foundation line, whatever its sets logged and whether or not
+    /// the "couldn't finish" follow-up reached it (decision 15).
+    func testATooHardSessionNeverClearsAFoundation() {
         var logs = sustainedHistory(weeks: 8) + competenceLogs()
+        XCTAssertEqual(evaluate(logs), .strength)
         let pushIndex = logs.firstIndex { $0.exercises.contains { $0.exerciseId == "push_wall" } }!
         logs[pushIndex].perceivedDifficulty = .tooHard
-        XCTAssertNil(logs[pushIndex].exercises[0].couldNotFinish)
-        XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .push }?.isCleared, true,
-                       "an older too-hard log still clears its Foundation line")
-        XCTAssertEqual(evaluate(logs), .strength)
+        for mark in [nil, false, true] as [Bool?] {
+            logs[pushIndex].exercises[0].couldNotFinish = mark
+            XCTAssertEqual(isPushCleared(logs), false, "too hard, couldNotFinish \(String(describing: mark))")
+            XCTAssertEqual(evaluate(logs), .discipline)
+        }
+    }
 
-        logs[pushIndex].exercises[0].couldNotFinish = false
-        XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .push }?.isCleared, false,
-                       "a too-hard session the follow-up answered with nothing tapped clears nothing")
-        XCTAssertEqual(evaluate(logs), .discipline)
+    // MARK: - The rep grammar's bar (US-TD03)
+
+    /// The bar is four sets at the top of the range: three sets at the top, or four a step short, do not
+    /// clear an entry rung.
+    func testAnEntryClearsOnlyWithFourSetsAtTheTopOfTheRange() {
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 30, sets: 3)]), false, "three sets at the top")
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 25)]), false, "four sets a step short")
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 30)]), true, "four sets at the top")
+        XCTAssertEqual(progress([workedLog("core_plank", value: 55)]).foundations.first { $0.foundation == .core }?.isCleared, false,
+                       "a hold a step short of 60 seconds")
+        XCTAssertEqual(progress([clearingLog("core_plank")]).foundations.first { $0.foundation == .core }?.isCleared, true)
+    }
+
+    /// A log written before Training Days carries no Earned Reps and reads earned = its smallest set, so
+    /// three sets of 15, which once cleared an entry rung, no longer do, while four sets at the top still do.
+    func testALegacyThreeByFifteenLogNoLongerClearsAFoundation() {
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 15, sets: 3, role: nil)]), false)
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 30, role: nil)]), true)
+    }
+
+    /// Padding fills a long session up to the top of the range, but only Earned Reps at the top clear a
+    /// rung: four padded sets of 30 at earned 25 clear nothing.
+    func testPaddedSetsAtTheTopDoNotClearAFoundation() {
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 30, earned: 25)]), false)
+    }
+
+    /// A Practice station never moves a foundation, whatever it logged.
+    func testAPracticeStationNeverClearsAFoundation() {
+        XCTAssertEqual(isPushCleared([workedLog("push_wall", value: 30, role: .practice)]), false)
+    }
+
+    /// The top of the range is the user's level's: four sets of 30 clear a beginner's or an
+    /// intermediate's entry rung, while an advanced user's reps range runs to 50.
+    func testTheBarIsTheTopOfTheUsersLevelRange() {
+        let atThirty = [workedLog("push_wall", value: 30)]
+        XCTAssertEqual(isPushCleared(atThirty, level: .beginner), true)
+        XCTAssertEqual(isPushCleared(atThirty, level: .intermediate), true)
+        XCTAssertEqual(isPushCleared(atThirty, level: .advanced), false)
+        XCTAssertEqual(isPushCleared([clearingLog("push_wall", level: .advanced)], level: .advanced), true)
+
+        let advancedCompetence = ["push_wall", "pull_scap", "squat_wall", "hinge_bridge", "core_plank"]
+            .map { clearingLog($0, level: .advanced) }
+        XCTAssertEqual(evaluate(sustainedHistory(weeks: 8) + advancedCompetence, level: .advanced), .strength)
+        XCTAssertEqual(evaluate(sustainedHistory(weeks: 8) + competenceLogs(), level: .advanced), .discipline,
+                       "a beginner's clears are not an advanced user's")
     }
 
     // MARK: - Determinism
@@ -389,10 +434,10 @@ final class PhaseEvaluatorTests: XCTestCase {
             ("hot single week", sustainedHistory(weeks: 1) + competenceLogs()),
             ("both met", sustainedHistory(weeks: 8) + competenceLogs()),
             ("three of four", sustainedHistory(weeks: 8) + [
-                clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-                clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-                clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
-                clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
+                clearingLog("push_wall"),
+                clearingLog("pull_scap"),
+                clearingLog("squat_wall"),
+                clearingLog("hinge_bridge"),
             ]),
             ("legs half", sustainedHistory(weeks: 8) + competenceLogs().filter { $0.exercises.first?.exerciseId != "hinge_bridge" }),
         ]
@@ -409,9 +454,9 @@ final class PhaseEvaluatorTests: XCTestCase {
     /// as cleared.
     func testProgressReportsFiveOfEightWeeksAndTwoOfFourFoundations() {
         let logs = sustainedHistory(weeks: 5) + [
-            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
-            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
-            clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
+            clearingLog("push_wall"),
+            clearingLog("pull_scap"),
+            clearingLog("squat_wall"),
         ]
         let p = progress(logs)
 

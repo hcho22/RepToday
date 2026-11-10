@@ -2,8 +2,9 @@ import XCTest
 @testable import RepToday
 
 /// ADR-0007: beginner and intermediate users get staple movements only while in the Discipline Phase,
-/// advanced users keep today's variety, the Strength Phase opens everything, and three crawls plus
-/// Prone Y-T-W Raises are withdrawn until version 2.
+/// advanced users keep today's variety, and the Strength Phase opens everything. Two kinds of movement
+/// are withdrawn for everyone: the whole primal pillar, retired with its block (ADR-0014), and Prone
+/// Y-T-W Raises, held until version 2 as the withdrawn top of the postural pull chain.
 ///
 /// Everything here runs over the real bundled `Exercises.json`, so the lists below are the captain's
 /// decision as shipped data: the per-level pool contents are pinned exactly, not by a rule that could
@@ -20,13 +21,11 @@ final class StapleMovementsTests: XCTestCase {
         "squat_wall_sit", "squat_bodyweight", "lunge_reverse",
         "hinge_glute_bridge", "hinge_single_leg_bridge", "hinge_good_morning",
         "core_forearm_plank", "core_bird_dog",
-        "primal_bear_crawl",
     ]
     /// Training staples for intermediate users only.
     private let intermediateTraining: Set<String> = [
         "push_diamond", "pull_floor_row", "squat_sumo", "lunge_split_squat",
         "hinge_bridge_march", "hinge_single_leg_rdl", "core_side_plank", "core_dead_bug",
-        "primal_crab_walk",
     ]
     /// Training movements for advanced users only (Strength-Phase skills excluded).
     private let advancedTraining: Set<String> = [
@@ -35,7 +34,6 @@ final class StapleMovementsTests: XCTestCase {
         "squat_cossack", "squat_shrimp",
         "hinge_long_lever_bridge",
         "core_bear_hold", "core_hollow_hold", "core_hollow_rock", "core_tuck_l_sit",
-        "primal_ground_to_standing", "primal_bear_shoulder_tap",
     ]
     /// The existing Strength-Phase movements, which stay as they are.
     private let strengthPhaseMovements: Set<String> = [
@@ -56,10 +54,15 @@ final class StapleMovementsTests: XCTestCase {
         "mobility_frog", "mobility_lizard_lunge", "mobility_thread_needle", "mobility_puppy_pose",
         "mobility_cossack", "mobility_ankle_rocks",
     ]
-    /// Withdrawn from the app for everyone until version 2.
-    private let withdrawn: Set<String> = [
-        "primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch", "pull_ytw",
+    /// The primal pillar, retired for everyone with its block (ADR-0014).
+    private let retired: Set<String> = [
+        "primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch",
+        "primal_bear_crawl", "primal_crab_walk", "primal_ground_to_standing", "primal_bear_shoulder_tap",
     ]
+    /// Held back for everyone until version 2.
+    private let versionTwo: Set<String> = ["pull_ytw"]
+    /// Every movement no user is offered.
+    private var withdrawn: Set<String> { retired.union(versionTwo) }
 
     private func expectedPool(level: FitnessLevel, phase: Phase) -> Set<String> {
         if phase == .strength {
@@ -122,6 +125,8 @@ final class StapleMovementsTests: XCTestCase {
         calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!
     }
 
+    /// A session `daysAgo` with one station of `exerciseId`, `sets` sets of `reps` (or `seconds`), as a
+    /// log written before Training Days records it: no role, earned = performed.
     private func workLog(
         _ exerciseId: String,
         pillar: Pillar = .strength,
@@ -147,12 +152,23 @@ final class StapleMovementsTests: XCTestCase {
 
     private func ids(_ exercises: [Exercise]) -> Set<String> { Set(exercises.map(\.id)) }
 
+    /// A session that clears `exerciseId` for a user at `level`: four sets at the top of the level's range.
+    private func clearingLog(_ exerciseId: String, in library: [Exercise], level: FitnessLevel, daysAgo: Int) throws -> WorkoutLog {
+        let exercise = try XCTUnwrap(library.first { $0.id == exerciseId }, exerciseId)
+        let top = RepGrammar.earnedRange(for: exercise, level: level).upperBound
+        return workLog(
+            exerciseId, pattern: exercise.movementPattern,
+            reps: exercise.isHold ? nil : top, seconds: exercise.isHold ? top : nil, sets: RepGrammar.setsPerStation,
+            daysAgo: daysAgo
+        )
+    }
+
     // MARK: - Pool contents
 
     func testCatalogPartitionsIntoTheDecidedLists() async throws {
         let all = try fullFileLibrary()
         let partition = [beginnerTraining, intermediateTraining, advancedTraining, strengthPhaseMovements,
-                         stapleStretches, advancedStretches, withdrawn]
+                         stapleStretches, advancedStretches, retired, versionTwo]
         XCTAssertEqual(all.count, partition.reduce(0) { $0 + $1.count }, "every movement is on exactly one list")
         XCTAssertEqual(Set(all.map(\.id)), partition.reduce(into: Set<String>()) { $0.formUnion($1) })
         XCTAssertEqual(all.count, 76)
@@ -164,7 +180,8 @@ final class StapleMovementsTests: XCTestCase {
             let expected: MovementAudience
             if beginnerTraining.contains(exercise.id) || stapleStretches.contains(exercise.id) { expected = .beginner }
             else if intermediateTraining.contains(exercise.id) { expected = .intermediate }
-            else if withdrawn.contains(exercise.id) { expected = .version2 }
+            else if retired.contains(exercise.id) { expected = .retired }
+            else if versionTwo.contains(exercise.id) { expected = .version2 }
             else { expected = .advanced }
             XCTAssertEqual(exercise.audience, expected, "\(exercise.id) carries the wrong audience")
         }
@@ -189,11 +206,11 @@ final class StapleMovementsTests: XCTestCase {
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: level), recentLogs: [])
                 .filter { ($0.pillar != .mobility) == training }.count
         }
-        XCTAssertEqual(count(.beginner, training: true), 16)
+        XCTAssertEqual(count(.beginner, training: true), 15)
         XCTAssertEqual(count(.beginner, training: false), 16)
-        XCTAssertEqual(count(.intermediate, training: true), 25)
+        XCTAssertEqual(count(.intermediate, training: true), 23)
         XCTAssertEqual(count(.intermediate, training: false), 16)
-        XCTAssertEqual(count(.advanced, training: true), 38)
+        XCTAssertEqual(count(.advanced, training: true), 34)
         XCTAssertEqual(count(.advanced, training: false), 26)
     }
 
@@ -213,13 +230,13 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertTrue(kneePool.allSatisfy { $0.equipment.isEmpty })
     }
 
-    // MARK: - Version 2 withdrawals
+    // MARK: - Withdrawn movements
 
-    func testWithdrawnCrawlsAreKeptForVersionTwoButNeverServedByTheCatalogService() async throws {
+    func testWithdrawnMovementsStayInTheFileButAreNeverServedByTheCatalogService() async throws {
         let service = try MockExerciseService()
         let offered = ids(try await service.exercises())
         XCTAssertTrue(offered.isDisjoint(with: withdrawn), "the service never serves a withdrawn movement")
-        XCTAssertEqual(offered.count, 72)
+        XCTAssertEqual(offered.count, 68)
         for pillar in Pillar.allCases {
             let byPillar = try await service.exercises(for: pillar)
             XCTAssertTrue(ids(byPillar).isDisjoint(with: withdrawn))
@@ -232,29 +249,30 @@ final class StapleMovementsTests: XCTestCase {
             let found = try await service.exercise(id: id)
             XCTAssertNil(found, "\(id) is not resolvable as an offered movement")
         }
-        // Recoverable: each withdrawn chain is still in the file whole, marked for version 2, and loads
-        // with the rest - the crawls' ground-flow chain and Prone Y-T-W Raises' own one-rung chain.
-        let archived = try fullFileLibrary().filter { $0.progressionChainId == "primal_ground_flow" }
-        XCTAssertEqual(ids(archived), withdrawn.subtracting(["pull_ytw"]))
-        XCTAssertTrue(archived.allSatisfy { $0.audience == .version2 })
-        XCTAssertEqual(archived.sorted { $0.progressionOrder < $1.progressionOrder }.map(\.id),
-                       ["primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch"])
-        let ytwChain = try fullFileLibrary().filter { $0.progressionChainId == "pull_ytw" }
-        XCTAssertEqual(ids(ytwChain), ["pull_ytw"])
-        XCTAssertTrue(ytwChain.allSatisfy { $0.audience == .version2 })
+        // Recoverable: both primal chains are still in the file whole and retired, and Prone Y-T-W Raises
+        // is the withdrawn top of the postural chain, above the live ladder.
+        let file = try fullFileLibrary()
+        let primal = file.filter { $0.pillar == .primal }
+        XCTAssertEqual(ids(primal), retired)
+        XCTAssertEqual(Set(primal.map(\.progressionChainId)), ["primal_ground_flow", "primal_locomotion"])
+        XCTAssertTrue(primal.allSatisfy { $0.audience == .retired })
+        let postural = file.filter { $0.progressionChainId == "pull_postural" }.sorted { $0.progressionOrder < $1.progressionOrder }
+        XCTAssertEqual(postural.map(\.id), ["pull_superman", "pull_reverse_snow_angel", "pull_ytw"])
+        XCTAssertEqual(postural.last?.audience, .version2)
     }
 
-    /// Prone Y-T-W Raises left the top of the postural chain for its own withdrawn one-rung chain, so
-    /// Reverse Snow Angel is now that chain's top. A user who climbed through Reverse Snow Angel to
-    /// Y-T-W keeps that history and is served Reverse Snow Angel, the closest rung they get; history on
-    /// Y-T-W alone no longer places anyone on the postural chain, so such a user re-enters it at its
-    /// entry, as ADR-0007 records for history on a movement no surface can name.
+    /// Prone Y-T-W Raises is the withdrawn top of the postural chain, so the live chain a user is offered
+    /// tops out at Reverse Snow Angel. A user who climbed through Reverse Snow Angel to Y-T-W keeps that
+    /// history and is served Reverse Snow Angel, the closest rung they get; history on Y-T-W alone places
+    /// no one on the offered chain, so such a user enters it at its entry, as ADR-0007 records for history
+    /// on a movement no surface can name.
     func testProneYTWHistoryIsServedTheClosestPosturalRung() async throws {
         let library = try await offeredLibrary()
         let postural = library.filter { $0.progressionChainId == "pull_postural" }
             .sorted { $0.progressionOrder < $1.progressionOrder }
         XCTAssertEqual(postural.map(\.id), ["pull_superman", "pull_reverse_snow_angel"])
-        XCTAssertNil(postural.last?.progressionId, "Reverse Snow Angel is now the chain's top rung")
+        let next = try await MockExerciseService().nextInChain(after: "pull_reverse_snow_angel")
+        XCTAssertNil(next, "Reverse Snow Angel is the offered chain's top rung")
 
         let climbed = [
             workLog("pull_reverse_snow_angel", pattern: .pull, reps: 15, daysAgo: 6),
@@ -264,12 +282,12 @@ final class StapleMovementsTests: XCTestCase {
             from: library, user: user(level: .advanced, phase: .discipline), recentLogs: climbed
         ).map(\.id))
         XCTAssertFalse(eligible.contains("pull_ytw"))
-        let served = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: climbed)
+        let served = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: climbed, level: .advanced)
         XCTAssertEqual(served?.exercise.id, "pull_reverse_snow_angel")
 
         let ytwOnly = [workLog("pull_ytw", pattern: .pull, reps: 12, daysAgo: 2)]
-        let reentry = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: ytwOnly)
-        XCTAssertEqual(reentry?.exercise.id, "pull_superman", "Y-T-W-only history re-enters at the chain's entry")
+        let reentry = ProgressionChainSelection.selectInChain(postural, eligibleIds: eligible, recentLogs: ytwOnly, level: .advanced)
+        XCTAssertEqual(reentry?.exercise.id, "pull_superman", "Y-T-W-only history enters the offered chain at its entry")
 
         for phase in [Phase.discipline, .strength] {
             let analytics = ProgressAnalytics.from(
@@ -283,52 +301,60 @@ final class StapleMovementsTests: XCTestCase {
         }
     }
 
-    func testWithdrawnCrawlsNeverAppearInAnySessionForAnyUser() throws {
+    /// No session serves a withdrawn movement, for any user, length or Training Day - not even to a
+    /// user whose history has worked every one of them, the strongest pull toward re-serving them - and
+    /// no session has a primal block.
+    func testWithdrawnMovementsNeverAppearInAnySessionForAnyUser() throws {
         let library = try fullFileLibrary() // withdrawn movements deliberately present
         XCTAssertTrue(ids(library).isSuperset(of: withdrawn))
-        // A history that has worked every withdrawn crawl, the strongest pull toward re-serving them.
-        let logs = [
-            workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 5),
-            workLog("primal_lizard_crawl", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 4),
-            workLog("primal_underswitch", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 3),
-        ]
+        let logs = retired.sorted().enumerated().map { index, id in
+            workLog(id, pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 10 - index)
+        } + [workLog("pull_ytw", pattern: .pull, reps: 15, daysAgo: 2)]
         for level in FitnessLevel.allCases {
             for phase in [Phase.discipline, .strength] {
-                for minutes in [5, 10, 15, 20, 30, 45, 60] {
-                    for history in [[], logs] {
-                        let workout = SessionAssembly.assemble(
-                            requestedMinutes: minutes, user: user(level: level, phase: phase), library: library,
-                            recentLogs: history, asOf: asOf, calendar: calendar
-                        )
-                        let served = Set(workout.blocks.flatMap(\.exercises).map(\.exercise.id))
-                        XCTAssertTrue(
-                            served.isDisjoint(with: withdrawn),
-                            "\(level)/\(phase)/\(minutes) min served a withdrawn crawl: \(served.intersection(withdrawn))"
-                        )
+                for day in TrainingDay.rotation {
+                    for minutes in [5, 10, 15, 20, 30, 45, 60] {
+                        for history in [[], logs] {
+                            let workout = SessionAssembly.assemble(
+                                requestedMinutes: minutes, user: user(level: level, phase: phase), library: library,
+                                recentLogs: history, trainingDay: day, asOf: asOf, calendar: calendar
+                            )
+                            let served = Set(workout.blocks.flatMap(\.exercises).map(\.exercise.id))
+                            XCTAssertTrue(
+                                served.isDisjoint(with: withdrawn),
+                                "\(level)/\(phase)/\(day)/\(minutes) min served a withdrawn movement: \(served.intersection(withdrawn))"
+                            )
+                            XCTAssertFalse(workout.blocks.contains { $0.category == .primal }, "\(level)/\(phase)/\(day)/\(minutes) min")
+                        }
                     }
                 }
             }
         }
     }
 
-    func testWithdrawnCrawlsAreNeverASwapSubstitute() throws {
+    func testWithdrawnMovementsAreNeverASwapSubstitute() throws {
         let library = try fullFileLibrary()
         let advanced = user(level: .advanced, phase: .strength)
-        let workout = SessionAssembly.assemble(
-            requestedMinutes: 60, user: advanced, library: library, recentLogs: [], asOf: asOf, calendar: calendar
-        )
-        for block in workout.blocks {
-            for slot in block.exercises {
-                if case .substituted(let replacement) = ExerciseSwap.swap(
-                    slot, in: workout, user: advanced, library: library, recentLogs: []
-                ) {
-                    XCTAssertFalse(withdrawn.contains(replacement.exercise.id), "swap handed back a withdrawn crawl")
+        for day in TrainingDay.rotation {
+            let workout = SessionAssembly.assemble(
+                requestedMinutes: 60, user: advanced, library: library, recentLogs: [], trainingDay: day,
+                asOf: asOf, calendar: calendar
+            )
+            for block in workout.blocks {
+                for slot in block.exercises {
+                    if case .substituted(let replacement) = ExerciseSwap.swap(
+                        slot, in: workout, user: advanced, library: library, recentLogs: []
+                    ) {
+                        XCTAssertFalse(withdrawn.contains(replacement.exercise.id), "\(day): swap handed back \(replacement.exercise.id)")
+                    }
                 }
             }
         }
     }
 
-    func testWithdrawnCrawlLogsStillCountInHistoryButNothingNamesThem() async throws {
+    /// Retired primal work stays in the user's history wherever a surface reads the log's own pillar and
+    /// pattern, while nothing names a retired movement.
+    func testRetiredPrimalLogsStillCountInHistoryButNothingNamesThem() async throws {
         let library = try await offeredLibrary()
         let logs = [
             workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 3),
@@ -342,7 +368,7 @@ final class StapleMovementsTests: XCTestCase {
             // The history still counts where it reads the log's own pillar and pattern.
             XCTAssertEqual(analytics.personalBests.totalSessions, 3)
             let primal = analytics.pillarBalance.first { $0.pillar == .primal }
-            XCTAssertEqual(primal?.exerciseCount, 2, "past crawl work still counts toward pillar balance")
+            XCTAssertEqual(primal?.exerciseCount, 2, "past primal work still counts toward pillar balance")
             XCTAssertEqual(analytics.deep.patternBalance.first { $0.pattern == .locomotion }?.exerciseCount, 2)
             XCTAssertEqual(analytics.deep.weeklyVolume.reduce(0) { $0 + $1.sessionCount }, 3)
 
@@ -351,7 +377,7 @@ final class StapleMovementsTests: XCTestCase {
                 + analytics.chainPositions.compactMap { $0.currentExercise?.id }
                 + analytics.deep.strengthJourney.chains.flatMap { $0.milestones.map(\.exerciseId) }
                 + [analytics.personalBests.bestReps?.exerciseId, analytics.personalBests.bestHold?.exerciseId].compactMap { $0 }
-            XCTAssertTrue(Set(named).isDisjoint(with: withdrawn), "\(level): a surface named a withdrawn crawl")
+            XCTAssertTrue(Set(named).isDisjoint(with: withdrawn), "\(level): a surface named a retired movement")
             XCTAssertEqual(analytics.personalBests.bestReps?.exerciseId, "push_standard")
 
             // And the Coach's derived bundle, built from those same values, is clean as well.
@@ -368,10 +394,10 @@ final class StapleMovementsTests: XCTestCase {
     }
 
     /// The Progress tab, read through its production view model and the real exercise service, still
-    /// shows the sessions a withdrawn crawl was logged in: the calendar marks their days and the totals
-    /// count them, while nothing on the tab names the crawl.
+    /// shows the sessions retired primal work was logged in: the calendar marks their days and the totals
+    /// count them, while nothing on the tab names a retired movement.
     @MainActor
-    func testWithdrawnCrawlLogsStillShowInTheProgressTabHistory() async throws {
+    func testRetiredPrimalLogsStillShowInTheProgressTabHistory() async throws {
         let logs = [
             workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 3),
             workLog("primal_lizard_crawl", pillar: .primal, pattern: .locomotion, reps: 15, daysAgo: 2),
@@ -445,14 +471,8 @@ final class StapleMovementsTests: XCTestCase {
 
     func testABeginnerEarnsTheStrengthPhaseUsingStaplesOnly() async throws {
         let library = try await offeredLibrary()
-        let cleared: [(String, MovementPattern, Bool, Int)] = [
-            ("push_wall", .push, false, 15),
-            ("pull_wall_scapular_pull", .pull, false, 12),
-            ("squat_wall_sit", .squat, true, 45),
-            ("hinge_glute_bridge", .hinge, false, 20),
-            ("core_forearm_plank", .core, true, 45),
-        ]
-        for (id, _, _, _) in cleared {
+        let cleared = ["push_wall", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"]
+        for id in cleared {
             let exercise = try XCTUnwrap(library.first { $0.id == id })
             XCTAssertTrue(MovementAccess.isAvailable(exercise, level: .beginner, phase: .discipline), "\(id) must be a beginner staple")
         }
@@ -466,66 +486,61 @@ final class StapleMovementsTests: XCTestCase {
                 )
             }
         }
-        let clearing = cleared.map { id, pattern, isHold, value in
-            workLog(id, pattern: pattern, reps: isHold ? nil : value, seconds: isHold ? value : nil, daysAgo: 0)
-        }
-        let progress = PhaseEvaluator.progress(logs: showUps + clearing, weeklyGoal: 3, library: library, asOf: asOf, calendar: calendar)
+        // Each entry rung cleared at the top of a beginner's range: four sets of 30 reps or 60-second holds.
+        let clearing = try cleared.map { try clearingLog($0, in: library, level: .beginner, daysAgo: 0) }
+        let progress = PhaseEvaluator.progress(
+            logs: showUps + clearing, weeklyGoal: 3, library: library, level: .beginner, asOf: asOf, calendar: calendar
+        )
         XCTAssertTrue(progress.foundations.allSatisfy(\.isCleared), "every foundation clears from staples alone")
         XCTAssertTrue(progress.hasEarnedStrength)
     }
 
-    // MARK: - Sessions fit, stay even, and stay inside 2-4 rounds
+    // MARK: - Sessions stay inside the length, run four rounds, and serve only what the level gets
 
-    func testSessionsAtEveryLengthAndLevelFitStayEvenAndInsideTheRoundCap() async throws {
+    /// Staples-only pools still build every Training Day at every length: no session overruns the
+    /// tolerance (`TrainingDayFitHarnessTests` owns the fit itself, including honest shortfalls), every
+    /// circuit station runs the rep grammar's four rounds, and nothing served is a movement the level
+    /// does not get.
+    func testSessionsAtEveryLengthLevelAndDayStayInsideTheLengthAndServeOnlyWhatTheLevelGets() async throws {
         let library = try await offeredLibrary()
         for level in FitnessLevel.allCases {
-            for minutes in [5, 10, 15, 20, 30, 45, 60] {
-                let workout = SessionAssembly.assemble(
-                    requestedMinutes: minutes, user: user(level: level), library: library,
-                    recentLogs: [], asOf: asOf, calendar: calendar
-                )
-                let planned = SessionAssembly.plannedSeconds(of: workout)
-                XCTAssertLessThanOrEqual(
-                    abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
-                    "\(level) \(minutes) min planned \(planned)s, outside the +/-\(SessionAssembly.toleranceSeconds)s tolerance"
-                )
-                for block in workout.blocks where SessionAssembly.isCircuit(block.category) {
-                    XCTAssertEqual(Set(block.exercises.map(\.sets)).count, 1, "\(level) \(minutes) min: \(block.title) is uneven")
-                    for slot in block.exercises {
-                        XCTAssertTrue((2...4).contains(slot.sets), "\(level) \(minutes) min: \(slot.exercise.id) at \(slot.sets) rounds")
-                    }
-                }
-                for slot in workout.blocks.flatMap(\.exercises) {
-                    XCTAssertTrue(
-                        MovementAccess.isAvailable(slot.exercise, level: level, phase: .discipline),
-                        "\(level) \(minutes) min served \(slot.exercise.id), which that level does not get"
+            for day in TrainingDay.rotation {
+                for minutes in [5, 10, 15, 20, 30, 45, 60] {
+                    let workout = SessionAssembly.assemble(
+                        requestedMinutes: minutes, user: user(level: level), library: library,
+                        recentLogs: [], trainingDay: day, asOf: asOf, calendar: calendar
                     )
+                    let planned = SessionAssembly.plannedSeconds(of: workout)
+                    XCTAssertLessThanOrEqual(
+                        planned - minutes * 60, SessionAssembly.toleranceSeconds,
+                        "\(level) \(day) \(minutes) min planned \(planned)s, over the +\(SessionAssembly.toleranceSeconds)s tolerance"
+                    )
+                    for block in workout.blocks where SessionAssembly.isCircuit(block.category) {
+                        for slot in block.exercises {
+                            XCTAssertEqual(slot.sets, RepGrammar.setsPerStation, "\(level) \(day) \(minutes) min: \(slot.exercise.id)")
+                        }
+                    }
+                    for slot in workout.blocks.flatMap(\.exercises) {
+                        if slot.role == .practice {
+                            // A Practice Movement may sit above the staple level (ADR-0015), never past a
+                            // Strength-Phase lock or onto a withdrawn movement.
+                            XCTAssertFalse(MovementAccess.isWithdrawn(slot.exercise), "\(level) \(day) \(minutes) min: \(slot.exercise.id)")
+                            XCTAssertTrue(MovementAccess.isPhaseEarned(slot.exercise, phase: .discipline), "\(level) \(day) \(minutes) min: \(slot.exercise.id)")
+                        } else {
+                            XCTAssertTrue(
+                                MovementAccess.isAvailable(slot.exercise, level: level, phase: .discipline),
+                                "\(level) \(day) \(minutes) min served \(slot.exercise.id), which that level does not get"
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// With the Gorilla Walk chain gone the primal block has one chain, and for a beginner one movement
-    /// (Bear Crawl). The session must still land inside the tolerance with strength absorbing the leftover.
-    func testBeginnerExtendedSessionWithBearCrawlOnlyLandsInsideTheTolerance() async throws {
-        let library = try await offeredLibrary()
-        for minutes in [45, 60] {
-            let workout = SessionAssembly.assemble(
-                requestedMinutes: minutes, user: user(level: .beginner), library: library,
-                recentLogs: [], asOf: asOf, calendar: calendar
-            )
-            let primal = try XCTUnwrap(workout.blocks.first { $0.category == .primal }, "\(minutes) min is an extended blend with a primal block")
-            XCTAssertEqual(primal.exercises.map(\.exercise.id), ["primal_bear_crawl"], "a beginner's primal block is Bear Crawl alone")
-            let planned = SessionAssembly.plannedSeconds(of: workout)
-            XCTAssertLessThanOrEqual(abs(planned - minutes * 60), SessionAssembly.toleranceSeconds, "\(minutes) min planned \(planned)s")
-            let strength = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
-            XCTAssertGreaterThan(
-                SessionAssembly.blockSeconds(of: strength), SessionAssembly.blockSeconds(of: primal),
-                "strength absorbs the time the single-station primal block cannot"
-            )
-        }
-    }
-
+    /// A user whose history sits on movements they no longer get - advanced rungs, retired primal work -
+    /// still gets a session inside the length on every Training Day, built from the rungs they do get
+    /// (a Practice Movement may preview the next rung above the staple level, ADR-0015).
     func testSessionsFitForUsersWhoseHistorySitsOnMovementsTheyNoLongerGet() async throws {
         let library = try await offeredLibrary()
         let logs = [
@@ -535,17 +550,24 @@ final class StapleMovementsTests: XCTestCase {
             workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 3),
         ]
         for level in [FitnessLevel.beginner, .intermediate] {
-            for minutes in [5, 10, 15, 20, 30, 45, 60] {
-                let workout = SessionAssembly.assemble(
-                    requestedMinutes: minutes, user: user(level: level), library: library,
-                    recentLogs: logs, asOf: asOf, calendar: calendar
-                )
-                XCTAssertLessThanOrEqual(
-                    abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60), SessionAssembly.toleranceSeconds
-                )
-                XCTAssertTrue(workout.blocks.flatMap(\.exercises).allSatisfy {
-                    MovementAccess.isAvailable($0.exercise, level: level, phase: .discipline)
-                })
+            for day in TrainingDay.rotation {
+                for minutes in [5, 10, 15, 20, 30, 45, 60] {
+                    let workout = SessionAssembly.assemble(
+                        requestedMinutes: minutes, user: user(level: level), library: library,
+                        recentLogs: logs, trainingDay: day, asOf: asOf, calendar: calendar
+                    )
+                    XCTAssertLessThanOrEqual(
+                        SessionAssembly.plannedSeconds(of: workout) - minutes * 60, SessionAssembly.toleranceSeconds,
+                        "\(level) \(day) \(minutes) min"
+                    )
+                    XCTAssertFalse(workout.blocks.flatMap(\.exercises).isEmpty, "\(level) \(day) \(minutes) min")
+                    for slot in workout.blocks.flatMap(\.exercises) where slot.role != .practice {
+                        XCTAssertTrue(
+                            MovementAccess.isAvailable(slot.exercise, level: level, phase: .discipline),
+                            "\(level) \(day) \(minutes) min served \(slot.exercise.id)"
+                        )
+                    }
+                }
             }
         }
     }
@@ -565,15 +587,20 @@ final class StapleMovementsTests: XCTestCase {
     func testBookendsForBeginnerAndIntermediateUseStapleStretchesOnly() async throws {
         let library = try await offeredLibrary()
         for level in [FitnessLevel.beginner, .intermediate] {
-            for minutes in [10, 20, 45, 60] {
-                let workout = SessionAssembly.assemble(
-                    requestedMinutes: minutes, user: user(level: level), library: library,
-                    recentLogs: [], asOf: asOf, calendar: calendar
-                )
-                let stretches = workout.blocks.filter { $0.category == .warmup || $0.category == .cooldown }
-                    .flatMap(\.exercises).map(\.exercise.id)
-                XCTAssertFalse(stretches.isEmpty)
-                XCTAssertTrue(Set(stretches).isSubset(of: stapleStretches), "\(level) \(minutes) min: \(Set(stretches).subtracting(stapleStretches))")
+            for day in TrainingDay.rotation {
+                for minutes in [10, 20, 45, 60] {
+                    let workout = SessionAssembly.assemble(
+                        requestedMinutes: minutes, user: user(level: level), library: library,
+                        recentLogs: [], trainingDay: day, asOf: asOf, calendar: calendar
+                    )
+                    let stretches = workout.blocks.filter { $0.category == .warmup || $0.category == .cooldown }
+                        .flatMap(\.exercises).map(\.exercise.id)
+                    XCTAssertFalse(stretches.isEmpty)
+                    XCTAssertTrue(
+                        Set(stretches).isSubset(of: stapleStretches),
+                        "\(level) \(day) \(minutes) min: \(Set(stretches).subtracting(stapleStretches))"
+                    )
+                }
             }
         }
     }
@@ -588,7 +615,8 @@ final class StapleMovementsTests: XCTestCase {
         return ProgressionChainSelection.selectInChain(
             library.filter { $0.progressionChainId == chainId },
             eligibleIds: Set(pool.map(\.id)),
-            recentLogs: logs
+            recentLogs: logs,
+            level: level
         )
     }
 
@@ -597,14 +625,14 @@ final class StapleMovementsTests: XCTestCase {
         _ pattern: MovementPattern, level: FitnessLevel, logs: [WorkoutLog], library: [Exercise]
     ) -> ChainSelection? {
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: user(level: level), recentLogs: logs)
-        return ProgressionChainSelection.select(pattern: pattern, library: library, pool: pool, recentLogs: logs)
+        return ProgressionChainSelection.select(pattern: pattern, library: library, pool: pool, recentLogs: logs, level: level)
     }
 
     func testCossackSquatUserMovesToTheClosestSquatTheyGet() async throws {
         let library = try await offeredLibrary()
         let logs = [
             workLog("squat_bodyweight", pattern: .squat, reps: 20, daysAgo: 8),
-            workLog("squat_cossack", pattern: .squat, reps: 4, daysAgo: 1), // below its criteria: still on it
+            workLog("squat_cossack", pattern: .squat, reps: 4, daysAgo: 1), // nowhere near the top: still on it
         ]
         let original = logs
         XCTAssertEqual(selection(chain: "squat", level: .advanced, logs: logs, library: library)?.exercise.id, "squat_cossack",
@@ -806,27 +834,32 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(analytics.chainPositions.first { $0.pattern == .core }?.currentExercise?.id, "core_bird_dog")
     }
 
-    func testGorillaWalkUserIsServedTheRemainingCrawlChainAndKeepsTheHistory() async throws {
+    /// A user who trained crawls before the primal pillar retired is served no crawl at any level - no
+    /// locomotion movement is offered at all - and the past session still counts toward their history.
+    func testRetiredCrawlHistoryIsServedNoCrawlAndKeepsTheHistory() async throws {
         let library = try await offeredLibrary()
-        let logs = [workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 2)]
+        let logs = [
+            workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 4),
+            workLog("primal_bear_crawl", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 2),
+        ]
         for level in FitnessLevel.allCases {
-            let chosen = selection(.locomotion, level: level, logs: logs, library: library)
-            XCTAssertEqual(chosen?.exercise.id, "primal_bear_crawl", "\(level): the crawl they get is Bear Crawl")
-            XCTAssertEqual(chosen?.chainId, "primal_locomotion")
+            XCTAssertNil(selection(.locomotion, level: level, logs: logs, library: library), "\(level): no crawl is served")
         }
         let analytics = ProgressAnalytics.from(logs: logs, library: library, level: .beginner, phase: .discipline, asOf: asOf, calendar: calendar)
-        XCTAssertEqual(analytics.pillarBalance.first { $0.pillar == .primal }?.exerciseCount, 1, "the past session still counts")
+        XCTAssertEqual(analytics.pillarBalance.first { $0.pillar == .primal }?.exerciseCount, 2, "the past sessions still count")
     }
 
+    /// A foundation cleared on a movement the user no longer gets stays cleared: Core on Hollow Hold, an
+    /// advanced-only entry rung, and Squat on Wall Sit before the user moved on to Cossack Squat. Each was
+    /// cleared the way the rep grammar clears a rung - four 60-second holds, the top of a beginner's range.
     func testClearedFoundationsStayClearedWhateverTheyWereClearedOn() async throws {
         let library = try await offeredLibrary()
-        // Core was cleared on Hollow Hold, an advanced-only entry rung; Squat on Wall Sit, then Cossack.
         let logs = [
-            workLog("core_hollow_hold", pattern: .core, seconds: 45, daysAgo: 4),
-            workLog("squat_wall_sit", pattern: .squat, seconds: 45, daysAgo: 3),
+            try clearingLog("core_hollow_hold", in: library, level: .beginner, daysAgo: 4),
+            try clearingLog("squat_wall_sit", in: library, level: .beginner, daysAgo: 3),
             workLog("squat_cossack", pattern: .squat, reps: 10, daysAgo: 2),
         ]
-        let progress = PhaseEvaluator.progress(logs: logs, weeklyGoal: 3, library: library, asOf: asOf, calendar: calendar)
+        let progress = PhaseEvaluator.progress(logs: logs, weeklyGoal: 3, library: library, level: .beginner, asOf: asOf, calendar: calendar)
         let core = try XCTUnwrap(progress.foundations.first { $0.foundation == .core })
         XCTAssertTrue(core.isCleared, "a foundation cleared on a movement the user no longer gets stays cleared")
         let legs = try XCTUnwrap(progress.foundations.first { $0.foundation == .legs })

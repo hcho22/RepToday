@@ -172,6 +172,7 @@ final class ExercisePoolFilterTests: XCTestCase {
             exercise(id: "intermediate_up", pattern: .push, audience: .intermediate),
             exercise(id: "advanced_only", pattern: .push, audience: .advanced),
             exercise(id: "version2", pattern: .push, audience: .version2),
+            exercise(id: "retired", pattern: .push, audience: .retired),
         ]
         XCTAssertEqual(
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: .beginner), recentLogs: []).map(\.id),
@@ -184,15 +185,16 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: .advanced), recentLogs: []).map(\.id),
             ["everyone", "intermediate_up", "advanced_only"],
-            "an advanced user keeps the full variety, minus what is withdrawn until version 2"
+            "an advanced user keeps the full variety, minus what is withdrawn (version 2 or retired)"
         )
     }
 
-    func testStrengthPhaseLiftsTheStaplesRestrictionButNotTheVersionTwoWithdrawal() {
+    func testStrengthPhaseLiftsTheStaplesRestrictionButNotTheWithdrawals() {
         let library = [
             exercise(id: "everyone", pattern: .push, audience: .beginner),
             exercise(id: "advanced_only", pattern: .push, audience: .advanced),
             exercise(id: "version2", pattern: .push, audience: .version2),
+            exercise(id: "retired", pattern: .locomotion, pillar: .primal, audience: .retired),
         ]
         for level in FitnessLevel.allCases {
             XCTAssertEqual(
@@ -373,7 +375,7 @@ final class ExercisePoolFilterTests: XCTestCase {
     /// reviewable as a product-level artifact, not just an assertion.
     func testPRDValidationOverRealBundledLibrary() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(library.count, 72, "should run over the full offered library (76 minus the 4 version-2 withdrawals)")
+        XCTAssertEqual(library.count, 68, "should run over the full offered library (76 minus the 7 retired primal movements and the 1 held for version 2)")
 
         let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])
@@ -384,6 +386,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertTrue(pool.allSatisfy { $0.audience == .beginner }, "only a beginner's staples survive")
         XCTAssertFalse(pool.contains { $0.movementPattern == .squat }, "no knee-flagged (squat) exercise survives")
         XCTAssertTrue(pool.allSatisfy { $0.equipment.isEmpty }, "Zero-Equipment Floor holds")
+        XCTAssertFalse(pool.contains(where: MovementAccess.isWithdrawn), "no withdrawn movement survives")
 
         // ---- Evidence transcript ----
         let kept = Set(pool.map(\.id))
@@ -496,29 +499,32 @@ final class ExercisePoolFilterTests: XCTestCase {
                 perceivedDifficulty: nil, exercises: []
             )
         }
-        // Competence: clear an entry tier of each foundation line from the real catalog.
-        func clearing(_ exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
-            let sets = (0..<3).map { _ in CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil) }
+        // Competence: clear an entry tier of each foundation line from the real catalog, the way the rep
+        // grammar clears a rung - four sets at the top of an intermediate's range, at earned reps.
+        func clearing(_ exerciseId: String) throws -> WorkoutLog {
+            let exercise = try XCTUnwrap(library.first { $0.id == exerciseId })
+            let top = RepGrammar.earnedRange(for: exercise, level: .intermediate).upperBound
+            let set = CompletedSet(reps: exercise.isHold ? nil : top, durationSeconds: exercise.isHold ? top : nil)
             return WorkoutLog(
                 id: UUID(), workoutId: UUID(), completedAt: day(weeksAgo: 0, dayOffset: 0),
                 requestedMinutes: 20, durationMinutes: 20, shape: .singleFocus, focusPillar: .strength,
-                perceivedDifficulty: nil,
+                perceivedDifficulty: .justRight,
                 exercises: [LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                                           movementPattern: pattern, completedSets: sets, skipped: false)]
+                                           movementPattern: exercise.movementPattern,
+                                           completedSets: Array(repeating: set, count: RepGrammar.setsPerStation),
+                                           skipped: false, role: .main,
+                                           earnedReps: exercise.isHold ? nil : top,
+                                           earnedDurationSeconds: exercise.isHold ? top : nil)]
             )
         }
         let history =
             (0..<8).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
-            + [
-                clearing("push_wall", pattern: .push, isHold: false, value: 15),        // "3x15 clean reps"
-                clearing("pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12), // "3x12 clean reps"
-                clearing("squat_wall_sit", pattern: .squat, isHold: true, value: 45),    // "3x45s hold"
-                clearing("hinge_glute_bridge", pattern: .hinge, isHold: false, value: 20),// "3x20 clean reps"
-                clearing("core_forearm_plank", pattern: .core, isHold: true, value: 45),  // "3x45s hold"
-            ]
+            + (try ["push_wall", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"].map(clearing))
 
         // Step 1: evaluate phase - the earned phase must be Strength.
-        let earned = PhaseEvaluator.evaluate(logs: history, weeklyGoal: 3, library: library, asOf: anchor, calendar: cal)
+        let earned = PhaseEvaluator.evaluate(
+            logs: history, weeklyGoal: 3, library: library, level: .intermediate, asOf: anchor, calendar: cal
+        )
         XCTAssertEqual(earned, .strength, "the synthetic intermediate history must earn the Strength Phase")
 
         // Step 2: the eligible push pool for the earned Strength-Phase intermediate user includes the

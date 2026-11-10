@@ -10,39 +10,39 @@ import XCTest
 /// and validates, every touched chain stays a contiguous, cleanly doubly-linked ladder, and a
 /// Strength-Phase user advancing a chain from its discipline frontier is offered the difficulty-4
 /// bridge *before* the difficulty-5 skill. US-SP01 already lifted the effective difficulty cap, so
-/// this is purely the catalog + selection half of the story.
+/// this is purely the catalog + selection half of the story. A rung clears the way the rep grammar says
+/// (US-TD03): four sets at the top of the user's range, at earned reps.
 final class MidTierStrengthSkillTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    /// One gated chain's new three-rung, phase-gated tail: the discipline frontier, the US-SP02
-    /// mid-tier bridge, and the difficulty-5 summit, with the clearing values that advance each.
+    /// One gated chain's three-rung, phase-gated tail: the discipline frontier, the US-SP02 mid-tier
+    /// bridge, and the difficulty-5 summit.
     private struct GatedChain {
         let chainId: String
         let isHold: Bool
-        /// (id, difficulty, the per-set value that clears its advancementCriteria)
-        let frontier: (id: String, difficulty: Int, clear: Int)
-        let bridge: (id: String, difficulty: Int, clear: Int)
+        let frontier: (id: String, difficulty: Int)
+        let bridge: (id: String, difficulty: Int)
         let summit: (id: String, difficulty: Int)
     }
 
     private let gatedChains: [GatedChain] = [
         GatedChain(
             chainId: "push_horizontal", isHold: false,
-            frontier: ("push_archer", 4, 15),           // "3x15 clean reps per side"
-            bridge: ("push_one_arm_assisted", 4, 15),   // "3x15 clean reps per side"
+            frontier: ("push_archer", 4),
+            bridge: ("push_one_arm_assisted", 4),
             summit: ("push_one_arm", 5)
         ),
         GatedChain(
             chainId: "squat", isHold: false,
-            frontier: ("squat_shrimp", 4, 15),          // "3x15 clean reps per side"
-            bridge: ("squat_pistol_assisted", 4, 15),   // "3x15 clean reps per side"
+            frontier: ("squat_shrimp", 4),
+            bridge: ("squat_pistol_assisted", 4),
             summit: ("squat_pistol", 5)
         ),
         GatedChain(
             chainId: "core_hollow", isHold: true,
-            frontier: ("core_tuck_l_sit", 4, 20),       // "3x20s hold"
-            bridge: ("core_one_leg_l_sit", 4, 18),      // "3x18s hold"
+            frontier: ("core_tuck_l_sit", 4),
+            bridge: ("core_one_leg_l_sit", 4),
             summit: ("core_l_sit", 5)
         ),
     ]
@@ -51,21 +51,24 @@ final class MidTierStrengthSkillTests: XCTestCase {
         try await MockExerciseService().exercises()
     }
 
-    /// A log in which `exerciseId` was worked (non-skipped) with three sets each meeting `value`
-    /// (reps for a rep-based movement, seconds for a hold), enough to clear a `"3x{value}..."` tier.
-    private func clearingLog(_ exerciseId: String, isHold: Bool, value: Int) -> WorkoutLog {
-        let sets = (0..<3).map { _ in
-            CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil)
-        }
-        return WorkoutLog(
-            id: UUID(), workoutId: UUID(),
-            completedAt: Date(timeIntervalSince1970: 1_760_000_000),
-            requestedMinutes: 20, durationMinutes: 20, shape: .singleFocus, focusPillar: .strength,
-            perceivedDifficulty: nil,
-            exercises: [LoggedExercise(
-                id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                movementPattern: .push, completedSets: sets, skipped: false
-            )]
+    /// A Training Day log whose main station clears `exerciseId` for a user at `level`: four sets at the
+    /// top of the level's range (reps, reps per side, or hold seconds), at earned reps that had reached it.
+    private func clearingLog(_ exerciseId: String, in library: [Exercise], level: FitnessLevel) throws -> WorkoutLog {
+        let exercise = try XCTUnwrap(library.first { $0.id == exerciseId }, "\(exerciseId) must exist in the catalog")
+        let top = RepGrammar.earnedRange(for: exercise, level: level).upperBound
+        return TrainingDayFixtures.log(
+            [TrainingDayFixtures.station(exercise.id, pattern: exercise.movementPattern, value: top, earned: top, isHold: exercise.isHold)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 1)
+        )
+    }
+
+    /// The same session one step short of the top: worked, but not cleared.
+    private func shortLog(_ exerciseId: String, in library: [Exercise], level: FitnessLevel) throws -> WorkoutLog {
+        let exercise = try XCTUnwrap(library.first { $0.id == exerciseId })
+        let short = RepGrammar.earnedRange(for: exercise, level: level).upperBound - RepGrammar.step
+        return TrainingDayFixtures.log(
+            [TrainingDayFixtures.station(exercise.id, pattern: exercise.movementPattern, value: short, earned: short, isHold: exercise.isHold)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 1)
         )
     }
 
@@ -151,7 +154,8 @@ final class MidTierStrengthSkillTests: XCTestCase {
     /// Validation Test.
     func testStrengthUserStepsThroughTheMidTierBeforeTheDifficultyFiveSkill() async throws {
         let library = try await library()
-        let user = strengthUser()
+        let level = FitnessLevel.advanced
+        let user = strengthUser(level: level)
         // US-SP01: a strength-phase user's effective cap is the full 1...5 catalog, so both gated
         // skills are eligible. Reusing the real Step 4 filter proves the two halves compose.
         let eligibleIds = Set(ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: []).map(\.id))
@@ -167,9 +171,17 @@ final class MidTierStrengthSkillTests: XCTestCase {
 
             // Step 1: standing at (and having cleared) the discipline frontier, the next rung offered
             // is the difficulty-4 bridge - never a direct jump to the difficulty-5 summit.
-            let atFrontier = clearingLog(chain.frontier.id, isHold: chain.isHold, value: chain.frontier.clear)
+            // One step short of the top, the frontier holds.
+            let short = try shortLog(chain.frontier.id, in: library, level: level)
+            XCTAssertEqual(
+                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [short], level: level)?.exercise.id,
+                chain.frontier.id,
+                "\(chain.chainId): a session short of the top of the range does not clear the frontier"
+            )
+
+            let atFrontier = try clearingLog(chain.frontier.id, in: library, level: level)
             let fromFrontier = try XCTUnwrap(
-                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atFrontier]),
+                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atFrontier], level: level),
                 "chain \(chain.chainId) must resolve a tier"
             )
             XCTAssertEqual(fromFrontier.exercise.id, chain.bridge.id,
@@ -181,9 +193,9 @@ final class MidTierStrengthSkillTests: XCTestCase {
                               "the difficulty-5 skill is not offered before the mid-tier bridge")
 
             // Step 2: having now cleared the mid-tier bridge, the summit is offered.
-            let atBridge = clearingLog(chain.bridge.id, isHold: chain.isHold, value: chain.bridge.clear)
+            let atBridge = try clearingLog(chain.bridge.id, in: library, level: level)
             let fromBridge = try XCTUnwrap(
-                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atBridge])
+                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atBridge], level: level)
             )
             XCTAssertEqual(fromBridge.exercise.id, chain.summit.id,
                            "clearing the mid-tier bridge advances \(chain.chainId) to the difficulty-5 summit")
@@ -216,9 +228,9 @@ final class MidTierStrengthSkillTests: XCTestCase {
             XCTAssertFalse(eligibleIds.contains(chain.bridge.id),
                            "the phase-gated \(chain.bridge.id) must be hidden from a discipline user")
             let members = library.filter { $0.progressionChainId == chain.chainId }
-            let atFrontier = clearingLog(chain.frontier.id, isHold: chain.isHold, value: chain.frontier.clear)
+            let atFrontier = try clearingLog(chain.frontier.id, in: library, level: .advanced)
             let chosen = try XCTUnwrap(
-                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atFrontier])
+                ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: [atFrontier], level: .advanced)
             )
             XCTAssertEqual(chosen.exercise.id, chain.frontier.id,
                            "a discipline user clears the frontier but the gated bridge is out of reach, so they stay put")
