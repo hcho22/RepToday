@@ -36,41 +36,46 @@ final class ReadyViewModelTests: XCTestCase {
 
     /// A Return older than the screen's 70-day log lookback leaves no Re-entry Ramp: the engine reads
     /// the ramp from the logs it is given, so a stored policy still recording the ramp the Programmer
-    /// seeded at that Return holds nothing back, and a squat last worked at 30 is served at 30.
+    /// seeded at that Return holds nothing back - every main station is served at or above its Earned
+    /// Reps. The control, the same Return inside the lookback, serves the ramp under Earned Reps.
     func testAReturnOlderThanTheLogLookbackLeavesNoRamp() async throws {
         var user = onboardedUser(defaultMinutes: 60)
         user.profile.fitnessLevel = .beginner
+        user.profile.injuries = []
         user.coldStart = User.ColdStart(sessionsLogged: 10, active: false)
-        func squatLog(daysAgo: Int, wasReturn: Bool) -> WorkoutLog {
-            WorkoutLog(
-                id: UUID(), workoutId: UUID(), completedAt: fixedDate.addingTimeInterval(TimeInterval(-daysAgo * 86_400)),
-                requestedMinutes: 20, durationMinutes: 20, wasReturn: wasReturn, shape: .blend, focusPillar: nil,
-                perceivedDifficulty: .justRight,
-                exercises: [LoggedExercise(
-                    id: UUID(), exerciseId: "squat_bodyweight", pillar: .strength, movementPattern: .squat,
-                    completedSets: Array(repeating: CompletedSet(reps: 30, durationSeconds: nil), count: 3), skipped: false
-                )]
-            )
-        }
         var policy = SessionPolicy.default
-        policy.varietyWindow = 0
         policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 3)
-        let vm = ReadyViewModel(
-            userService: MockUserService(user: user),
-            sessionPolicyService: StubPolicyService(policy: policy),
-            workoutEngine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }),
-            workoutLogService: MockWorkoutLogService(logs: [
-                squatLog(daysAgo: 80, wasReturn: true),
-                squatLog(daysAgo: 2, wasReturn: false),
-            ]),
-            activeSessionStore: InMemoryActiveSessionStore(),
-            now: { self.fixedDate }
-        )
 
-        await vm.load()
+        func mains(returnDaysAgo: Int) async throws -> [PrescribedExercise] {
+            var returned = TrainingDayFixtures.trainingLog(
+                .legs, completedAt: fixedDate.addingTimeInterval(TimeInterval(-returnDaysAgo * 86_400))
+            )
+            returned.wasReturn = true
+            let push = TrainingDayFixtures.trainingLog(.push, completedAt: fixedDate.addingTimeInterval(-2 * 86_400))
+            let vm = ReadyViewModel(
+                userService: MockUserService(user: user),
+                sessionPolicyService: StubPolicyService(policy: policy),
+                workoutEngine: OnDeviceWorkoutEngine(exerciseService: try MockExerciseService(), now: { self.fixedDate }),
+                workoutLogService: MockWorkoutLogService(logs: [returned, push]),
+                activeSessionStore: InMemoryActiveSessionStore(),
+                now: { self.fixedDate }
+            )
+            await vm.load()
+            let workout = try XCTUnwrap(vm.workout)
+            XCTAssertFalse(workout.wasReturn, "the last session was two days ago, so today is no Return")
+            let mains = workout.blocks.flatMap(\.exercises).filter { $0.role == .main }
+            XCTAssertFalse(mains.isEmpty)
+            return mains
+        }
 
-        let squat = try XCTUnwrap(vm.workout?.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
-        XCTAssertEqual(squat.reps, 30)
+        for main in try await mains(returnDaysAgo: 80) {
+            let earned = try XCTUnwrap(main.earnedReps ?? main.earnedDurationSeconds, main.exercise.id)
+            XCTAssertGreaterThanOrEqual(main.reps ?? main.durationSeconds ?? 0, earned, "\(main.exercise.id) is held under Earned Reps")
+        }
+        for main in try await mains(returnDaysAgo: 10) {
+            let earned = try XCTUnwrap(main.earnedReps ?? main.earnedDurationSeconds, main.exercise.id)
+            XCTAssertLessThan(main.reps ?? main.durationSeconds ?? 0, earned, "\(main.exercise.id): a ramp inside the lookback holds it under")
+        }
     }
 
     /// A view model backed by a specific active-session store, so the resume/discard tests can
@@ -472,8 +477,8 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNil(engine.capturedRequestedMinutes, "the engine is never called without a user")
     }
 
-    /// A generated session that lands within ±1 of the request (using the real engine) proves the
-    /// screen shows a ~N-minute session, matching the US-I01 validation.
+    /// With the real engine, the screen shows a session built for the learned Default Duration: a warm-up,
+    /// then the circuit for the day the Rotation picked (Push, for a user with no Training Day yet).
     func testEndToEndGeneratesRequestedLengthSession() async throws {
         let exercises = try MockExerciseService()
         let engine = OnDeviceWorkoutEngine(exerciseService: exercises)
@@ -492,6 +497,8 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertEqual(workout.requestedMinutes, 15)
         XCTAssertFalse(workout.blocks.isEmpty)
         XCTAssertEqual(workout.blocks.first?.category, ExerciseCategory.warmup, "a session always opens with a warm-up")
+        XCTAssertEqual(workout.trainingDay, .push)
+        XCTAssertEqual(workout.blocks.first { $0.category == .strength }?.title, "Push Day")
     }
 
     // MARK: - Duration chip (US-J01)

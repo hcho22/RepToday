@@ -50,10 +50,32 @@ final class USCC08PaceEvidenceTests: XCTestCase {
         )
     }
 
+    /// The served library: the catalog the engine builds from, withdrawn movements excluded exactly as
+    /// `MockExerciseService` serves it.
     private func library() throws -> [Exercise] {
         let bundle = Bundle(for: AppState.self)
         let url = try XCTUnwrap(bundle.url(forResource: "Exercises", withExtension: "json"))
         return try JSONDecoder().decode([Exercise].self, from: Data(contentsOf: url))
+            .filter { !MovementAccess.isWithdrawn($0) }
+    }
+
+    /// Whether `workout` lands within the tolerance of `minutes`, or runs short only because every fit
+    /// lever is spent (an honest shortfall): the same plan, re-fit, reports `isSaturated`.
+    private func fillsOrRunsHonestlyShort(_ workout: Workout, minutes: Int, level: FitnessLevel = .intermediate) throws -> Bool {
+        let gap = SessionAssembly.plannedSeconds(of: workout) - minutes * 60
+        if abs(gap) <= SessionAssembly.toleranceSeconds { return true }
+        guard gap < 0, let day = workout.trainingDay else { return false }
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: minutes,
+            user: user(minutes: minutes, level: level),
+            library: try library(),
+            recentLogs: [],
+            trainingDay: day,
+            asOf: asOf,
+            calendar: calendar
+        )
+        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+        return plan.isSaturated
     }
 
     private func assemble(minutes: Int, level: FitnessLevel = .intermediate) throws -> Workout {
@@ -219,21 +241,28 @@ final class USCC08PaceEvidenceTests: XCTestCase {
                             holdRatios.count, holdRatios.min() ?? 0, holdRatios.max() ?? 0))
         lines.append("")
 
-        // 3. The accepted trade-off, measured: the fit still lands, at fewer rounds.
+        // 3. The fit across every length: the session lands within the tolerance, or runs honestly short
+        //    once the top of the range and the longest rests are spent.
         lines.append("[3] The fit across every length (intermediate), after pacing every rep-based set.")
-        lines.append("    tolerance = +/-\(SessionAssembly.toleranceSeconds)s")
+        lines.append("    tolerance = +/-\(SessionAssembly.toleranceSeconds)s; a shortfall is honest only when every lever is spent")
         lines.append("")
         lines.append(row([("REQUEST", 8), ("PLANNED", 8), ("ERROR", 6),
-                          ("TRAINING BLOCKS (rounds x stations)", 0)]))
+                          ("CIRCUIT (sets x stations, round rest, pause)", 0)]))
         for minutes in [5, 10, 15, 20, 30, 45, 60] {
             let session = try assemble(minutes: minutes)
             let planned = SessionAssembly.plannedSeconds(of: session)
             let error = planned - minutes * 60
             let blocks = session.blocks
                 .filter { SessionAssembly.isCircuit($0.category) }
-                .map { "\($0.title) \($0.exercises.first?.sets ?? 0) x \($0.exercises.count)" }
+                .map { block in
+                    "\(block.title) \(block.exercises.first?.sets ?? 0) x \(block.exercises.count), "
+                        + "rest \(block.exercises.first?.restSeconds ?? 0)s, pause \(block.transitionSeconds ?? SessionAssembly.transitionSeconds)s"
+                }
                 .joined(separator: ", ")
-            XCTAssertLessThanOrEqual(abs(error), SessionAssembly.toleranceSeconds)
+            XCTAssertTrue(
+                try fillsOrRunsHonestlyShort(session, minutes: minutes),
+                "\(minutes) min misses by \(error)s with fit levers left"
+            )
             lines.append(row([
                 ("\(minutes) min", 8), (clock(planned), 8),
                 ("\(error >= 0 ? "+" : "")\(error)s", 6), (blocks, 0),
@@ -241,11 +270,11 @@ final class USCC08PaceEvidenceTests: XCTestCase {
         }
 
         // 4. The knock-on the recalibration made visible: a desk worker's bookends now cost more, and
-        //    that - not any change to the training middle - is what moves a round.
+        //    that - not any change to the circuit's movements or Earned Reps - is what moves the served reps.
         lines.append("")
         lines.append("[4] The US-M03 desk-worker (sitsLong) bookend bias at 45 minutes, after pacing.")
-        lines.append("    The bias reorders the bookend pools only; the training middle must hold the same")
-        lines.append("    movements at the same per-set targets, with bookend seconds as the only channel.")
+        lines.append("    The bias reorders the bookend pools only; the circuit holds the same movements at the")
+        lines.append("    same Earned Reps, and bookend seconds are the only channel into its served reps and rest.")
         lines.append("")
         for sitsLong in [false, true] {
             let session = SessionAssembly.assemble(
@@ -271,7 +300,7 @@ final class USCC08PaceEvidenceTests: XCTestCase {
             for block in training {
                 lines.append(row([
                     ("      \(block.title)", 16),
-                    ("\(block.exercises.first?.sets ?? 0) rounds x \(block.exercises.count) stations: "
+                    ("\(block.exercises.first?.sets ?? 0) sets x \(block.exercises.count) stations: "
                      + block.exercises.map { "\($0.exercise.id) \(ActiveSessionView.targetText($0))" }
                          .joined(separator: ", "), 0),
                 ]))
