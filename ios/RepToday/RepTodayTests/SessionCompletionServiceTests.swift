@@ -176,11 +176,12 @@ final class SessionCompletionServiceTests: XCTestCase {
 
     /// The Re-entry Ramp runs its documented sessions on the real completion path and then ends, though
     /// the stored policy still records the ramp the Programmer seeded at the Return (nothing counts it
-    /// down). A beginner last at 30 squats (sumo is out of their reach) returns after a 20-day gap; each
-    /// day the engine assembles a session from the stored logs, the player plays it to the end, the user
-    /// rates it too easy, and the completion service writes the log. The Return and the three ramp
-    /// sessions are held against the pre-Return 30, and never count as capacity themselves, so the
-    /// session after the ramp is back at 30; that one counts again, and the climb resumes from it.
+    /// down). A beginner who last finished 4 x 20 squats at 20 earned returns after a 20-day gap with 25
+    /// earned; each day the engine assembles a Legs Day from the stored logs, the player plays it to the
+    /// end, the user rates it too easy, and the completion service writes the log. The Return and the
+    /// three ramp sessions serve under Earned Reps (scaled 0.7, 0.7, 0.8 and 0.9, at least a step under)
+    /// while each log records the Earned Reps it was built from, so "too easy" still climbs them a step -
+    /// here to the top of the beginner range. Once the ramp ends the squat is served at its Earned Reps.
     func testReentryRampRunsItsSessionsThroughCompletionThenTheClimbResumes() async throws {
         let library = try await MockExerciseService().exercises()
         var calendar = Calendar(identifier: .gregorian)
@@ -194,7 +195,8 @@ final class SessionCompletionServiceTests: XCTestCase {
             perceivedDifficulty: .justRight,
             exercises: [LoggedExercise(
                 id: UUID(), exerciseId: "squat_bodyweight", pillar: .strength, movementPattern: .squat,
-                completedSets: Array(repeating: CompletedSet(reps: 30, durationSeconds: nil), count: 3), skipped: false
+                completedSets: Array(repeating: CompletedSet(reps: 20, durationSeconds: nil), count: 4), skipped: false,
+                role: .main, earnedReps: 20
             )]
         )
         let logService = MockWorkoutLogService(logs: [preReturn])
@@ -204,16 +206,18 @@ final class SessionCompletionServiceTests: XCTestCase {
         policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: ReturnOverride.rampSessions)
 
         var served: [Int] = []
+        var earned: [Int] = []
         var returns: [Bool] = []
         for day in 0..<6 {
             let asOf = calendar.date(byAdding: .day, value: day, to: now)!
             let logs = try await logService.workoutLogs(from: nil, to: nil)
             let workout = SessionAssembly.assemble(
                 requestedMinutes: 60, user: user, library: library, recentLogs: logs,
-                sessionPolicy: policy, asOf: asOf, calendar: calendar
+                sessionPolicy: policy, trainingDay: .legs, asOf: asOf, calendar: calendar
             )
             let squat = try XCTUnwrap(workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
             served.append(try XCTUnwrap(squat.reps))
+            earned.append(try XCTUnwrap(squat.earnedReps))
             returns.append(workout.wasReturn)
 
             let player = ActiveSessionViewModel(
@@ -228,11 +232,12 @@ final class SessionCompletionServiceTests: XCTestCase {
         }
 
         XCTAssertEqual(returns, [true, false, false, false, false, false])
-        XCTAssertEqual(served, [20, 20, 20, 25, 30, 35],
-                       "30 held at 0.7, 0.7, 0.8 and 0.9, back at 30 once the ramp ends, then too easy adds 5")
+        XCTAssertEqual(earned, [25, 30, 30, 30, 30, 30], "too easy climbs a step, held at the beginner top")
+        XCTAssertEqual(served, [15, 20, 20, 25, 30, 30],
+                       "held under Earned Reps through the Return and ramp, then served at them once it ends")
     }
 
-    /// Plays one session of the push line's entry rung at its own advancement target for a user whose
+    /// Plays one session of the push line's entry rung at the top of the user's range for a user whose
     /// history already clears every other Foundation line with sustained consistency, runs
     /// `onCompletionScreen` on the finished player, closes the completion screen, and returns the
     /// persisted phase once every write has landed.
@@ -247,7 +252,6 @@ final class SessionCompletionServiceTests: XCTestCase {
 
         let pushLine = try XCTUnwrap(StrengthFoundation.push.lines.first)
         let rung = try XCTUnwrap(pushLine.entryExercises(in: library).first { !$0.isHold })
-        let criteria = try XCTUnwrap(AdvancementCriteria(parsing: rung.advancementCriteria))
 
         let sustained = (0..<10).flatMap { week in
             (0..<3).map { day in
@@ -276,6 +280,9 @@ final class SessionCompletionServiceTests: XCTestCase {
 
         var user = MockPersistence.sampleUser
         user.phase = .discipline
+        // Clearing a rung takes four sets at the top of the user's range, prescribed at Earned Reps that
+        // have themselves reached it (`RepGrammar.isAdvancementMet`).
+        let top = RepGrammar.earnedRange(for: rung, level: user.profile.fitnessLevel).upperBound
         let userService = MockUserService(user: user)
         let service = SessionCompletionService(
             workoutLogService: MockWorkoutLogService(logs: sustained + otherLinesCleared),
@@ -289,8 +296,8 @@ final class SessionCompletionServiceTests: XCTestCase {
             requestedMinutes: 15, wasReturn: false,
             blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [
                 PrescribedExercise(
-                    id: UUID(), exercise: rung, sets: criteria.sets, reps: criteria.target,
-                    durationSeconds: nil, restSeconds: 15
+                    id: UUID(), exercise: rung, sets: RepGrammar.setsPerStation, reps: top,
+                    durationSeconds: nil, restSeconds: 15, role: .main, earnedReps: top
                 )
             ])]
         )
