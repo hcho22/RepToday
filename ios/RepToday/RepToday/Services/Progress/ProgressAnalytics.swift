@@ -56,8 +56,11 @@ struct ProgressAnalytics: Equatable {
     ) -> ProgressAnalytics {
         let exercisesById = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let worked = workedInstances(in: logs)
+        // Where the user stands on a ladder reads only work that counts toward progression (US-TD02): a
+        // Practice Movement previews the next rung but never puts the user on it.
+        let progressed = worked.filter { $0.logged.countsForProgression }
         let access = Access(level: level, phase: phase)
-        let chainPositions = makeChainPositions(worked: worked, exercisesById: exercisesById, access: access)
+        let chainPositions = makeChainPositions(worked: progressed, exercisesById: exercisesById, access: access)
 
         return ProgressAnalytics(
             pillarBalance: makePillarBalance(worked: worked),
@@ -69,7 +72,7 @@ struct ProgressAnalytics: Equatable {
                 weeklyVolume: makeWeeklyVolume(logs: logs, worked: worked, asOf: asOf, calendar: calendar),
                 difficultyMix: makeDifficultyMix(logs: logs),
                 strengthJourney: makeStrengthJourney(
-                    worked: worked,
+                    worked: progressed,
                     exercisesById: exercisesById,
                     chainPositions: chainPositions,
                     access: access,

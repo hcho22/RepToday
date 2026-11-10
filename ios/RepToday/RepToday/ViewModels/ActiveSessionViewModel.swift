@@ -19,7 +19,7 @@ import Observation
 /// as the round while the player is inside a circuit. The two rest gaps the engine plans (US-CC04)
 /// pace the rotation: a short fixed between-station transition inside a round and the between-round
 /// rest at a round boundary; both flow through the US-K02 rest overlay, and no rest the player opens
-/// runs longer than `SessionAssembly.maxRestSeconds` (ADR-0010). Warm-up and
+/// runs longer than `SessionAssembly.maxRestSeconds` (the beginner round-rest cap, ADR-0013). Warm-up and
 /// cooldown **bookends are not circuits** - they flow linearly, one station's sets then the next.
 /// Aggregate logging is unaffected by the rotation: `completedSets` is keyed by prescription id, so a
 /// station's M sets accumulate across rounds exactly as they did set-by-set, and the `WorkoutLog` and
@@ -587,7 +587,8 @@ final class ActiveSessionViewModel {
 
     /// Build the per-exercise log rows for the eventual `WorkoutLog` (US-L01) from what was actually
     /// tracked - the completed sets and skip flags - carrying pillar/pattern inline so staleness can
-    /// be computed without re-resolving the exercise.
+    /// be computed without re-resolving the exercise, and the station's role and earned level (US-TD02)
+    /// so Padding and Practice never advance progression.
     func loggedExercises() -> [LoggedExercise] {
         steps.map { step in
             let exercise = step.prescription.exercise
@@ -597,7 +598,10 @@ final class ActiveSessionViewModel {
                 pillar: exercise.pillar,
                 movementPattern: exercise.movementPattern,
                 completedSets: completedSets[step.id] ?? [],
-                skipped: skippedStepIDs.contains(step.id)
+                skipped: skippedStepIDs.contains(step.id),
+                role: step.prescription.role,
+                earnedReps: step.prescription.earnedReps,
+                earnedDurationSeconds: step.prescription.earnedDurationSeconds
             )
         }
     }
@@ -941,8 +945,8 @@ final class ActiveSessionViewModel {
     /// `.transition` for the short between-station beat, `.roundRest` for the between-round break -
     /// without watching the clock. `nil` (the default, and always for a `.switchSides` beat) fires none.
     ///
-    /// No rest opens longer than `SessionAssembly.maxRestSeconds` (ADR-0010), so a session saved before
-    /// rests were shortened still plays short rests; the user can still ask for more with **+15s**.
+    /// No rest opens longer than `SessionAssembly.maxRestSeconds` (the beginner round-rest cap,
+    /// ADR-0013); the user can still ask for more with **+15s**.
     func startRest(seconds: Int, context: RestContext = .rest, cue: SessionCue? = nil) {
         let seconds = min(seconds, SessionAssembly.maxRestSeconds)
         guard seconds > 0 else { return }
@@ -1490,8 +1494,9 @@ final class ActiveSessionViewModel {
         if span.isCircuit {
             let round = set
             if let station = nextStation(in: span.range, after: index, round: round) {
-                // Same round, next station: the short between-station transition (US-CC04/US-CC10).
-                return (station, round, SessionAssembly.transitionSeconds, .transition)
+                // Same round, next station: the between-station pause (US-CC04/US-CC10), which a long
+                // session's fit may have grown (ADR-0013).
+                return (station, round, transitionSeconds(forStepAt: index), .transition)
             }
             let nextRound = round + 1
             if nextRound <= span.roundCount, let station = firstStation(in: span.range, round: nextRound) {
@@ -1540,6 +1545,15 @@ final class ActiveSessionViewModel {
             j += 1
         }
         return nil
+    }
+
+    /// The pause between two stations of the block holding step `index`: the block's own
+    /// `transitionSeconds` (grown by a long session's fit, ADR-0013), else the standard beat. Read off
+    /// the played `Workout`, which a resumed snapshot carries whole.
+    private func transitionSeconds(forStepAt index: Int) -> Int {
+        let step = steps[index]
+        let block = workout.blocks.first { $0.title == step.blockTitle && $0.category == step.blockCategory }
+        return block?.transitionSeconds ?? SessionAssembly.transitionSeconds
     }
 
     /// The between-round rest for the circuit block spanning `range`, read off its stations. Every

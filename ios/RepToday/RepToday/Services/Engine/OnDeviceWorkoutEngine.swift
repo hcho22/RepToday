@@ -30,6 +30,24 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
         sessionPolicy: SessionPolicy,
         variation: SessionVariation
     ) async throws -> Workout {
+        try await generateWorkout(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            variation: variation,
+            trainingDay: nil
+        )
+    }
+
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout {
         // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`.
         //
@@ -44,8 +62,14 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             variation: variation,
+            trainingDay: trainingDay,
             asOf: now()
         )
+    }
+
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.recoveryWorkout(user: user, library: library, recentLogs: recentLogs, asOf: now())
     }
 
     func swapExercise(

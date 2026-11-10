@@ -62,6 +62,7 @@ enum PhaseEvaluator {
         logs: [WorkoutLog],
         weeklyGoal: Int = ConsistencyScore.defaultWeeklyGoal,
         library: [Exercise],
+        level: FitnessLevel = .beginner,
         asOf: Date,
         calendar: Calendar = .current
     ) -> Phase {
@@ -69,6 +70,7 @@ enum PhaseEvaluator {
             logs: logs,
             weeklyGoal: weeklyGoal,
             library: library,
+            level: level,
             asOf: asOf,
             calendar: calendar
         ).hasEarnedStrength ? .strength : .discipline
@@ -83,6 +85,7 @@ enum PhaseEvaluator {
         logs: [WorkoutLog],
         weeklyGoal: Int = ConsistencyScore.defaultWeeklyGoal,
         library: [Exercise],
+        level: FitnessLevel = .beginner,
         asOf: Date,
         calendar: Calendar = .current
     ) -> PhaseProgress {
@@ -100,7 +103,7 @@ enum PhaseEvaluator {
                 lines: foundation.lines.map { line in
                     PhaseProgress.LineProgress(
                         line: line,
-                        isCleared: hasClearedEntryTier(of: line, logs: logs, library: library)
+                        isCleared: hasClearedEntryTier(of: line, logs: logs, library: library, level: level)
                     )
                 }
             )
@@ -138,28 +141,12 @@ enum PhaseEvaluator {
     private static func hasClearedEntryTier(
         of line: FoundationLine,
         logs: [WorkoutLog],
-        library: [Exercise]
+        library: [Exercise],
+        level: FitnessLevel
     ) -> Bool {
-        line.entryExercises(in: library).contains { hasCleared($0, logs: logs) }
+        line.entryExercises(in: library).contains { RepGrammar.hasCleared($0, in: logs, level: level) }
     }
 
-    /// Whether any logged performance of `entry` that counts toward advancement (one its session does not
-    /// step back, `WorkoutLog.countsTowardAdvancement(_:)`) met its advancement criteria - the
-    /// same `AdvancementCriteria` check Step 5 uses to decide a chain advance, so competence and
-    /// progression can never disagree about what "cleared a tier" means. Unparseable criteria are
-    /// never met (the user simply stays on the tier), matching Step 5.
-    private static func hasCleared(_ entry: Exercise, logs: [WorkoutLog]) -> Bool {
-        guard let criteria = AdvancementCriteria(parsing: entry.advancementCriteria) else {
-            return false
-        }
-        return logs.contains { log in
-            log.exercises.contains { logged in
-                logged.exerciseId == entry.id
-                    && log.countsTowardAdvancement(logged)
-                    && criteria.isMet(by: logged, isHold: entry.isHold)
-            }
-        }
-    }
 
     // MARK: - Week math
 
@@ -292,6 +279,7 @@ final class PhaseEvaluatorService: PhaseServiceProtocol {
             logs: recentLogs,
             weeklyGoal: user.consistency.weeklyGoal,
             library: library,
+            level: user.profile.fitnessLevel,
             asOf: now(),
             calendar: calendar
         )
@@ -303,6 +291,7 @@ final class PhaseEvaluatorService: PhaseServiceProtocol {
             logs: recentLogs,
             weeklyGoal: user.consistency.weeklyGoal,
             library: library,
+            level: user.profile.fitnessLevel,
             asOf: now(),
             calendar: calendar
         )

@@ -45,6 +45,21 @@ protocol WorkoutEngineProtocol {
         variation: SessionVariation
     ) async throws -> Workout
 
+    /// Assembles a complete session for `trainingDay` (ADR-0012); `nil` lets the Rotation decide from
+    /// `recentLogs`. Today passes the Rest Day's "Train anyway" group here.
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout
+
+    /// The Rest Day's optional Recovery flow (US-TD05): a short, mobility-only session that neither
+    /// advances the Rotation nor counts as a session.
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout
+
     /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
     /// when no safe, equivalent, in-budget movement exists - never an unsafe or off-pattern pick.
     ///
@@ -60,6 +75,31 @@ protocol WorkoutEngineProtocol {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome
+}
+
+extension WorkoutEngineProtocol {
+    /// A test double that predates Training Days ignores the requested day.
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout {
+        try await generateWorkout(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            variation: variation
+        )
+    }
+
+    /// A test double that predates the Recovery flow has none to offer.
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {
+        Workout(id: UUID(), createdAt: Date(timeIntervalSince1970: 0), shape: .singleFocus, requestedMinutes: 5, blocks: [])
+    }
 }
 
 /// Reads, re-programs, and detects triggers for the per-user Session Policy - the single seam

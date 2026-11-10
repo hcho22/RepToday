@@ -129,21 +129,25 @@ enum FitnessLevel: String, Codable, CaseIterable, Identifiable, Hashable {
 /// `.beginner` movements go to every level, `.intermediate` to intermediate and advanced users, and
 /// `.advanced` ones to advanced users only. `.version2` marks a movement withdrawn from the app for
 /// every user until version 2 - it stays in the catalog file so it is recoverable, and is never offered,
-/// whatever the level or earned phase. Earning the Strength Phase lifts the level restriction entirely
-/// (see `MovementAccess`), but never the `.version2` withdrawal.
+/// whatever the level or earned phase. `.retired` marks a movement whose whole training family left the
+/// program (ADR-0014 retired the primal crawls for home and hotel rooms); it too stays in the file so old
+/// logs and paused sessions still resolve, and is never offered. Earning the Strength Phase lifts the
+/// level restriction entirely (see `MovementAccess`), but never a withdrawal.
 enum MovementAudience: String, Codable, CaseIterable, Hashable {
     case beginner
     case intermediate
     case advanced
     case version2
+    case retired
 
-    /// The lowest fitness level this audience is a staple for, or `nil` for `.version2` (nobody).
+    /// The lowest fitness level this audience is a staple for, or `nil` for a withdrawn audience
+    /// (`.version2`, `.retired`: nobody).
     var minimumLevel: FitnessLevel? {
         switch self {
         case .beginner: return .beginner
         case .intermediate: return .intermediate
         case .advanced: return .advanced
-        case .version2: return nil
+        case .version2, .retired: return nil
         }
     }
 }

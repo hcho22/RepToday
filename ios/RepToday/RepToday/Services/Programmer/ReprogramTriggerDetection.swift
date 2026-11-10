@@ -71,7 +71,11 @@ enum ReprogramTriggerDetection {
         // The plateau signals are owned by `PlateauDiagnosis` (US-F02), the single seam so
         // detection and diagnosis can never disagree about what a stall or disengagement is.
         let disengaged = PlateauDiagnosis.isDisengaging(recentLogs: recentLogs)
-        let stalled = PlateauDiagnosis.isPhysicallyStalled(recentLogs: recentLogs, library: library)
+        let stalled = PlateauDiagnosis.isPhysicallyStalled(
+            recentLogs: recentLogs,
+            library: library,
+            level: user.profile.fitnessLevel
+        )
 
         if disengaged {
             kinds.append(.disengagement)

@@ -1,180 +1,115 @@
 import Foundation
 
-/// Pipeline Step 7 of the deterministic engine (US-C07): take everything Steps 1-6 decided and
-/// assemble a complete, playable `Workout` that opens with a warm-up, closes with a cooldown when
-/// it runs long, and lands within ±1 minute of the minutes the user asked for.
+/// Pipeline Step 7 of the deterministic engine, reshaped into the **Training Day slot plan** (US-TD04,
+/// ADR-0012, ADR-0013): turn today's Training Day into a complete, playable `Workout` of a few movements
+/// done well, filled to the requested length by reps and rest.
 ///
-/// This is the step that turns the pipeline's per-decision outputs into the structured session the
-/// active-session player renders:
-/// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend, which here is only a
-///   distinction of length band and whether primal earns its own block - **every** session is
-///   strength-led (US-001/US-002/US-M01), so there is no pillar-lead decision and no strength-vs-mobility
-///   split to size. Mobility appears only as the warm-up and cooldown bookends, never as a training
-///   block. A single-focus or shorter blend builds one strength block (primal folded in) that fills the
-///   whole training budget; an extended blend (US-E02) carves primal into its own `locomotion`-driven
-///   block, a bounded minority of the budget (`extendedTrainingBlocks`), with strength keeping the lead.
-/// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
-///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
-///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
-///   0's Start Seed (US-O02) is resolved once here and threaded into all three - it bands the
-///   strength/primal pool, tells Step 5 which chains it withheld, and sizes Step 6's no-history
-///   target - so a self-reported level reaches every part of the block that depends on it.
+/// - **Slots** (decisions 7-11). Up to two warm-up stretches, then one circuit block: the main slots for
+///   the length (5-20 min 1, 30 min 2, 45 min 3, 60 min 4) plus one Core Sprinkle (none at 5-10 min),
+///   then up to two cooldown stretches. A Push or Pull Day has two ladders, so its third and fourth
+///   main slots are Practice Movements of the first and second ladder's next harder rung; a Legs Day
+///   fills its slots from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side
+///   ladder first. Each ladder contributes its current rung, unchanged until earned. A session never
+///   mixes groups: only the Core Sprinkle and the bookends cross days.
+/// - **Sets and reps** (decisions 13-16). Every main, Practice and core station runs
+///   `RepGrammar.setsPerStation` (4) rounds. Main and core stations start at the user's served Earned
+///   Reps (`AdaptiveOverload`); a Practice Movement runs at `RepGrammar.practiceValue`.
+/// - **Fit** (decisions 16-17). Reps are the fit lever: a session over its length cuts main and core
+///   reps below Earned Reps, never under the short-session floor; a session under it **Pads** them up
+///   to the top of the level's range. Padding never moves Earned Reps or a rung - the prescription
+///   records the Earned Reps it was built from. Only then does rest grow: the rest after a round up to
+///   60 seconds on a session of 30 minutes or less, and on a 45 or 60 minute session the pause between
+///   movements up to 60 seconds and the rest after a round up to the level cap (beginner 2:00,
+///   intermediate 1:30, advanced 1:00). A session that still cannot fill runs short, honestly
+///   (`plannedSeconds`). The tolerance is `toleranceSeconds` (about three minutes).
 ///
-/// On top of those it owns two things the earlier steps deliberately left to assembly:
-/// - **Structure** - every session opens with a `.warmup` block (mobility) and, past
-///   `cooldownThresholdMinutes`, closes with a `.cooldown` block of static stretches. These bookends
-///   are the only mobility in the session (US-M01): there is no mobility middle block at any length.
-/// - **Timing fit (even-round circuit model, US-CC03; stretched work windows, ADR-0010)** - a training
-///   block is played as circuit *rounds* (one set of each exercise per round, "Round N of M"), so every
-///   exercise in a training block carries the **same** set count = the block's round count; the block is
-///   internally uniform (see ADR-0003). Its planned wall-clock is
-///   `rounds × Σ(exercise workPerSet) + rounds × between-station transitions + (rounds - 1) × round-rest`
-///   (`blockSeconds`), where `workPerSet` re-prices a rep movement's estimate as a fixed per-set setup
-///   cost plus the per-unit work of the target Step 6 actually prescribed, and charges a timed hold the
-///   seconds the player runs (see `workSecondsPerSet`).
-///   Every rest is at most `maxRestSeconds` (15s), so rest is no longer a lever. The fit first picks
-///   the coarse shape - whole rounds (uniformly) and whole exercises, never an uneven per-exercise
-///   count - and then lands the remaining gap by **stretching** the work window of the session's
-///   rep-based training sets (`stretchWorkWindows`): the extra seconds sit at the end of the set for
-///   the user to rest, the set still records what it asked for, and the capacity-relative *per-set*
-///   target from Step 6 is never touched. The warm-up/cooldown bookends and timed holds keep their
-///   prescribed lengths and flow as before. The session lands within `toleranceSeconds` of the request.
-///
-/// Identity and the reference clock enter here (the earlier steps are clock-free and id-free): the
-/// `Workout`/`WorkoutBlock`/`PrescribedExercise` ids are fresh `UUID`s and `createdAt`/staleness are
-/// measured against the caller-supplied `asOf`. The *content* of the assembled session (which
-/// exercises, in which order, at what sets/reps) is a pure, deterministic function of the inputs;
-/// only the ids vary run to run, so tests assert structure and timing rather than whole-`Workout`
-/// equality.
+/// Identity and the reference clock enter here: ids are fresh `UUID`s and `createdAt` is the
+/// caller-supplied `asOf`. The *content* of the session is a pure, deterministic function of the inputs,
+/// so tests assert structure and timing rather than whole-`Workout` equality.
 enum SessionAssembly {
 
     // MARK: - Tuning constants
 
-    /// Seconds of the fixed **between-station transition** inside a circuit round (US-CC04): the short
-    /// "Next: <exercise>, get ready" reposition beat between two consecutive exercises (e.g. Pike ->
-    /// Split Squat). It is not zero and not recovery - the recovery gap is the between-round rest below.
-    /// Counted once per gap *between* the stations of a round, and once between two adjacent blocks (the
-    /// move from the warm-up into the first station, etc.) - see `blockSeconds`/`totalSeconds`.
+    /// Seconds of the pause between two stations of a circuit round, and between two blocks: the short
+    /// "Next: <exercise>, get ready" beat. On a 45 or 60 minute session the timing fit may grow a
+    /// circuit's pause toward `maxTransitionSeconds` (stored on the block, `WorkoutBlock
+    /// .transitionSeconds`); everywhere else it is this.
     static let transitionSeconds = 15
 
-    /// The longest any rest may run (ADR-0010): the between-station transition, the between-block
-    /// transition, the between-round rest, and a bookend's between-set rest. The spare seconds at the
-    /// end of a stretched work window are part of the set, not a rest, and are not bound by it. The
-    /// player clamps every rest it opens to this too, so a session saved before the cap resumes with
-    /// short rests.
-    static let maxRestSeconds = 15
+    /// The longest a circuit's pause between movements may grow on a 45 or 60 minute session.
+    static let maxTransitionSeconds = 60
 
-    /// The **between-round rest** of a circuit training block (US-CC04, shortened by ADR-0010): fixed at
-    /// the rest cap rather than tuned, since the fit's fine lever is now the stretched work window.
-    static let roundRestSeconds = maxRestSeconds
-    /// Rest between the (single) sets of a mobility bookend movement. A bookend is one set, so this is
-    /// never actually charged (there is no between-set gap on a one-set item); kept only as the value a
-    /// materialized bookend prescription carries, at the rest cap.
-    static let mobilityRestSeconds = maxRestSeconds
-    /// The brief hands-free "Switch sides" beat between the two legs of a per-side hold (US-CC05,
-    /// ADR-0010): a get-ready pause the player runs on the shared rest countdown, and which the plan
-    /// charges inside the hold's set (`workSecondsPerSet`), so a per-side hold costs what it plays.
-    static let switchSidesSeconds = 5
-    /// The ±window the assembled session must land within around the requested time (1 minute).
-    static let toleranceSeconds = 60
+    /// The rest after a round before the fit grows it, and a bookend's (uncharged) between-set rest.
+    static let baseRoundRestSeconds = 15
+    static let mobilityRestSeconds = baseRoundRestSeconds
 
-    /// The most a rep-based training set's work window may be stretched past its generous pace
-    /// (`workSecondsPerSet`) to land the session on the requested length (ADR-0010). A safety rail, not
-    /// the target: the fit prefers whole rounds and stations that leave the stretch small, and only a
-    /// shape it cannot fill any other way leans on the rail. That shape exists: an injury flag that
-    /// removes whole patterns (a lower-back flag drops pull and hinge) leaves a 60-minute strength block
-    /// at the round cap with no station left to add, and stretching is then the only lever that lands
-    /// the session - so the rail sits at 90 seconds rather than 60, which such a session needs.
-    static let maxStretchSecondsPerSet = 90
+    /// The longest rest after a round on a session of `shortSessionMaxMinutes` or less.
+    static let shortSessionMaxRoundRestSeconds = 60
 
-    /// How the coarse fit weighs a second of stretch against a second of landing error (ADR-0010): a
-    /// stretched second counts half, so the fit prefers a shape a little short of the request (filled
-    /// by stretching) over one that overshoots by the same amount, yet still prefers adding a round or a
-    /// station over a large stretch. Expressed as an integer weight pair to keep the cost exact.
-    static let landingErrorCostWeight = 2
-    static let stretchCostWeight = 1
+    /// Sessions this long or shorter keep the pause between movements at `transitionSeconds` and the
+    /// rest after a round at most `shortSessionMaxRoundRestSeconds`.
+    static let shortSessionMaxMinutes = 30
 
-    /// Round-count rails a *training* block's uniform set count (= its round count) may move between
-    /// (US-CC03, capped by US-RC01). Every exercise in the block shares this count, so a round is
-    /// well-defined and "Round N of M" is structurally even. The per-set target (reps/seconds) from
-    /// Step 6 is never touched; only how many rounds are run is a timing lever, and only within these
-    /// rails so a fit never produces an absurd round count.
-    ///
-    /// **US-RC01 (Round Cap and Wide Circuits, ADR-0004) capped the upper rail at `4`** (down from a
-    /// prior `8`): no exercise is ever prescribed more than four times in a session, however long. A
-    /// long session is no longer filled by cranking rounds past that cap - it is filled **wider**,
-    /// with more distinct movements (`Builder.strengthBlock`'s second-chain accessories, generated by
-    /// `ProgressionChainSelection.selectAll`). The timing fit (`candidates()`) is depth-first: every
-    /// active station is taken to this cap before an accessory is ever promoted from the reserve, so
-    /// short and medium sessions stay clean one-movement-per-pattern circuits and only a long session
-    /// goes wide. The lower rail floors a circuit at a real round (never a one-off single set); a Step
-    /// 6 seed below it (`AdaptiveOverload`'s own `1...4` set clamp can return `1`) is raised to the
-    /// floor at construction (`clampTrainingSets`) rather than left for the fit to discover, since the
-    /// fit's round move only ever steps by one within these rails and an out-of-band seed would never
-    /// self-correct.
-    static let minTrainingSets = 2
-    static let maxTrainingSets = 4
-
-    /// Clamps a Step 6 per-set-target `sets` value into `minTrainingSets...maxTrainingSets` before it
-    /// seeds a training block's initial round count (US-RC01). `AdaptiveOverload`'s own set clamp
-    /// (`1...4`) can still return `1` (a single demonstrated set), which sits below this block's floor;
-    /// applying it here at construction, rather than relying on the timing fit to raise it later, is
-    /// what keeps every training-block exercise inside the rails from the moment it is seeded.
-    static func clampTrainingSets(_ sets: Int) -> Int {
-        min(max(sets, minTrainingSets), maxTrainingSets)
-    }
-
-    /// Primal's fixed share of the training budget in an extended (41-60 min) session, where it earns its
-    /// own dedicated block (`extendedTrainingBlocks`). Since US-M01 removed the Movement Practice block
-    /// and its `PillarWeights` split, the strength-vs-primal division is no longer staleness-weighted:
-    /// primal is shaped toward this fixed minority share and strength takes the rest, so strength always
-    /// leads and the minutes freed by removing mobility accrue to strength (decision 3). Kept a genuine
-    /// minority block (~4-6 sets of one locomotion movement at 45-60 min) while strength keeps a clear
-    /// majority - above the archived ~0.75-0.80 accessory-model strength share (US-M01 validation).
-    static let extendedPrimalTrainingShare = 0.15
-
-    /// Per-block ceilings on how many distinct movements each mobility-sourced bookend may draw from the
-    /// shared mobility pool. Since US-M01 the only mobility-sourced blocks are the warm-up and the
-    /// cooldown; the warm-up draws first and the cooldown before any training block is built (see
-    /// `buildBlocks`), and the strength/primal blocks draw a disjoint pool, so the cooldown is never
-    /// starved of its static holds.
-    ///
-    /// `maxWarmupExercises` is the *ceiling* the length-scaled warm-up (`warmupExerciseCount`) tops out
-    /// at, chosen so the two mobility bookends never over-drain the shared pool even in their worst case
-    /// (a long session where the warm-up hits this ceiling *and* the cooldown hits `maxCooldownExercises`):
-    /// `4 + 4 = 8` of the 26 mobility movements, leaving generous day-to-day variety headroom.
-    static let maxWarmupExercises = 4
-    static let maxCooldownExercises = 4
-
-    /// How many distinct movements the opening warm-up seeds (all active, one set each), scaled by
-    /// session length so a longer session opens with a fuller warm-up while a tiny session keeps the
-    /// warm-up lean so it does not crowd out strength: **≤10 min: 1, 11-20: 2, 21-40: 3, 41-60: 4**,
-    /// clamped to `maxWarmupExercises`.
-    ///
-    /// The warm-up is seeded at this count directly (`warmupBlock`) rather than started at one movement
-    /// and left to the global timing fit to grow, so the "more fully loosened up before the Strength
-    /// block" behavior is a deterministic property of the session shape, not an accident of whether the
-    /// fit happened to promote a reserve. The warm-up's seconds count toward the budget like any other
-    /// block, and the timing fit trims the strength/mobility training to keep the whole session inside
-    /// `toleranceSeconds` (verified across 5/10/15/20/30/45/60 in `SessionAssemblyTests`).
-    static func warmupExerciseCount(forRequestedMinutes minutes: Int) -> Int {
-        let scaled: Int
-        switch minutes {
-        case ..<11: scaled = 1
-        case ..<21: scaled = 2
-        case ..<41: scaled = 3
-        default: scaled = 4
+    /// The longest rest after a round on a 45 or 60 minute session, by level (decision 17).
+    static func roundRestCap(for level: FitnessLevel, requestedMinutes: Int) -> Int {
+        guard requestedMinutes > shortSessionMaxMinutes else { return shortSessionMaxRoundRestSeconds }
+        switch level {
+        case .beginner: return 120
+        case .intermediate: return 90
+        case .advanced: return 60
         }
-        return min(scaled, maxWarmupExercises)
     }
 
-    /// Sessions longer than this many minutes close with a cooldown stretch (so 15/20/30 get one,
-    /// 5/10 do not).
+    /// The longest any rest the player opens may run: the beginner round-rest cap. A session saved
+    /// before Training Days carries shorter rests and plays them unchanged.
+    static let maxRestSeconds = 120
+
+    /// The brief hands-free "Switch sides" beat between the two legs of a per-side hold (US-CC05,
+    /// ADR-0010), charged inside the hold's set (`workSecondsPerSet`).
+    static let switchSidesSeconds = 5
+
+    /// The window the assembled session should land within around the requested time (about three
+    /// minutes, decision 17). A session that cannot fill it runs short and shows its honest time.
+    static let toleranceSeconds = 180
+
+    /// The bookends hold at most two stretches each (decision 7).
+    static let maxWarmupExercises = 2
+    static let maxCooldownExercises = 2
+
+    /// Warm-up stretches by length: one up to 10 minutes, two beyond.
+    static func warmupExerciseCount(forRequestedMinutes minutes: Int) -> Int {
+        min(minutes <= cooldownThresholdMinutes ? 1 : 2, maxWarmupExercises)
+    }
+
+    /// Cooldown stretches by length: none up to 10 minutes, one at 15-20, two from 30.
+    static func cooldownExerciseCount(forRequestedMinutes minutes: Int) -> Int {
+        switch minutes {
+        case ...cooldownThresholdMinutes: return 0
+        case ...20: return 1
+        default: return maxCooldownExercises
+        }
+    }
+
+    /// Sessions longer than this many minutes close with a cooldown.
     static let cooldownThresholdMinutes = 10
 
-    /// Hard backstop on the timing-fit loop; each accepted step strictly shrinks the timing error, so
-    /// the loop converges well within this in practice.
-    static let maxFitIterations = 200
+    /// Main slots by length (decision 8): 5-10 min 1, 15-20 min 1, 30 min 2, 45 min 3, 60 min 4.
+    static func mainSlotCount(forRequestedMinutes minutes: Int) -> Int {
+        switch minutes {
+        case ...20: return 1
+        case ...30: return 2
+        case ...45: return 3
+        default: return 4
+        }
+    }
+
+    /// Core Sprinkles by length: none up to 10 minutes, one beyond (two with an Abs Focus Area, M2).
+    static func coreSprinkleCount(forRequestedMinutes minutes: Int) -> Int {
+        minutes <= cooldownThresholdMinutes ? 0 : 1
+    }
+
+    /// The core ladders in canonical order, the Core Sprinkle's tie-break.
+    static let coreLadders = ["core_plank", "core_stability", "core_hollow"]
 
     /// Seconds of work in one second of a prescribed hold, *per side* - the per-unit half of the work
     /// model in `workSecondsPerSet`, and the one half that needs no calibration at all: a 40-second
@@ -260,27 +195,20 @@ enum SessionAssembly {
 
     // MARK: - Entry point
 
-    /// Assembles the complete session for `requestedMinutes` (pipeline Step 7).
+    /// Assembles today's session for `requestedMinutes`.
     ///
-    /// Runs the full pipeline over `library`, `user`, and `recentLogs`, structures the result into
-    /// warm-up / training / cooldown blocks per the Step 1 shape, and timing-fits it to within
-    /// `toleranceSeconds` of the request. `asOf` is the reference "now" (used for `createdAt` and all
-    /// staleness math) so the function stays a pure function of its inputs.
+    /// `trainingDay` is the group to train; `nil` lets the Rotation decide from `recentLogs`
+    /// (`TrainingRotation.trainingDay`), which on a Rest Day is the group "Train anyway" starts - Today
+    /// decides whether to offer the Rest Day before it asks for a session.
     ///
-    /// `sessionPolicy` is the per-user program the engine runs on (US-E03): its `varietyWindow` sets
-    /// Step 5's no-repeat window and its `progressionRate` paces Step 6's overload bump (its
-    /// `pillarWeighting` is inert since US-M01 - see `SessionPolicy`). It also carries the situational
-    /// overrides the
-    /// engine reads: the `coldStartContract` for a brand-new user (US-E04). The Return and its Re-entry
-    /// Ramp (US-E06) are read from `recentLogs` instead (`ReturnOverride`). It defaults to
-    /// `SessionPolicy.default` (every lever neutral, no
-    /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
+    /// `sessionPolicy` carries the levers Step 6 reads (`progressionRate`) and the cold-start contract.
+    /// The Return and its Re-entry Ramp are read from `recentLogs` (`ReturnOverride`).
     ///
     /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
-    /// earlier presses already showed are ranked behind their alternatives at every choice point, while
-    /// every filter, frontier and fit rule above still decides each pick. When that leaves nothing new -
-    /// every alternative has been shown - the default session is returned instead, which is how a
-    /// sequence of presses cycles back. `.none`, the default, is the session exactly as before.
+    /// earlier presses showed are ranked behind their alternatives wherever the plan has a choice (which
+    /// ladders fill a short session, which stretches, which core ladder), while every filter and the fit
+    /// still decide each pick. When that leaves nothing new the default session is returned, which is how
+    /// a sequence of presses cycles back.
     static func assemble(
         requestedMinutes: Int,
         user: User,
@@ -288,9 +216,11 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
         variation: SessionVariation = .none,
+        trainingDay: TrainingDay? = nil,
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
+        let day = trainingDay ?? TrainingRotation.trainingDay(logs: recentLogs, asOf: asOf, calendar: calendar)
         if !variation.isNone {
             let varied = assemblePass(
                 requestedMinutes: requestedMinutes,
@@ -299,6 +229,7 @@ enum SessionAssembly {
                 recentLogs: recentLogs,
                 sessionPolicy: sessionPolicy,
                 offered: variation.offeredExerciseIds,
+                trainingDay: day,
                 asOf: asOf,
                 calendar: calendar
             )
@@ -311,6 +242,7 @@ enum SessionAssembly {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: [],
+            trainingDay: day,
             asOf: asOf,
             calendar: calendar
         )
@@ -325,31 +257,27 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         offered: Set<String>,
+        trainingDay: TrainingDay,
         asOf: Date,
         calendar: Calendar
     ) -> Workout {
-        let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-
-        var blocks = planBlocks(
+        var plan = planSession(
             requestedMinutes: requestedMinutes,
             user: user,
             library: library,
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: offered,
+            trainingDay: trainingDay,
             asOf: asOf,
             calendar: calendar
         )
-        // Shape the blend's two training blocks toward their staleness-weighted shares first, then let
-        // the global timing fit land the overall total within tolerance.
-        shapeTowardTargets(&blocks)
-        fit(&blocks, targetSeconds: requestedMinutes * 60)
-
+        fit(&plan, targetSeconds: requestedMinutes * 60)
         return Workout(
             id: UUID(),
             createdAt: asOf,
-            shape: template.shape,
-            focusPillar: focusPillar(of: blocks),
+            shape: SessionShapeTemplate.select(requestedMinutes: requestedMinutes).shape,
+            focusPillar: plan.stations.isEmpty ? nil : .strength,
             requestedMinutes: requestedMinutes,
             wasReturn: isReturnSession(
                 user: user,
@@ -358,16 +286,62 @@ enum SessionAssembly {
                 asOf: asOf,
                 calendar: calendar
             ),
-            blocks: blocks.compactMap { $0.materialize() }
+            blocks: plan.materialize(),
+            trainingDay: trainingDay
         )
     }
 
+    /// The Rest Day's optional **Recovery** flow (US-TD05): a short, mobility-only session of four
+    /// stretches, one set each, matched to the group just finished. Every station is a `recovery`
+    /// stretch, so the log neither advances the Rotation nor counts as a session for the Consistency
+    /// Score (`WorkoutLog.isRecovery`).
+    static func recoveryWorkout(
+        user: User,
+        library: [Exercise],
+        recentLogs: [WorkoutLog],
+        asOf: Date
+    ) -> Workout {
+        var builder = Builder(
+            library: library,
+            pool: ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+            recentLogs: recentLogs,
+            level: user.profile.fitnessLevel,
+            phase: user.phase,
+            injuries: user.profile.injuries,
+            progressionRate: SessionPolicy.default.progressionRate,
+            varietyWindow: SessionPolicy.default.varietyWindow,
+            reentryScale: AdaptiveOverload.neutralReentryScale,
+            isReturn: false,
+            startingRepMultiplier: AdaptiveOverload.neutralStartingRepMultiplier,
+            withheldByStartSeed: [],
+            sitsLong: user.profile.sitsLong,
+            offered: [],
+            asOf: asOf,
+            calendar: .current
+        )
+        let stretches = builder.recoveryStretches(count: recoveryStretchCount)
+        let block = WorkoutBlock(
+            id: UUID(),
+            title: "Recovery",
+            category: .cooldown,
+            exercises: stretches.map { $0.materialize(restSeconds: mobilityRestSeconds) }
+        )
+        return Workout(
+            id: UUID(),
+            createdAt: asOf,
+            shape: .singleFocus,
+            focusPillar: .mobility,
+            requestedMinutes: max(1, (plannedSeconds(of: [block]) + 59) / 60),
+            blocks: stretches.isEmpty ? [] : [block]
+        )
+    }
+
+    /// Stretches in the Recovery flow: about five minutes of mobility.
+    static let recoveryStretchCount = 4
+
     /// Whether this generation is a Return (US-E06): a real gap since the last logged session, but
-    /// only in the steady state - a Return is suppressed while cold-start still owns the first
-    /// sessions (the two overrides are mutually exclusive). Computed here as the single source of
-    /// truth so the pillar/pool/volume overrides in `planBlocks` and the `Workout.wasReturn` flag the
-    /// assembler stamps always agree, and the post-session log-writer (US-L01) records the same
-    /// decision the engine acted on rather than re-deriving it at a different `asOf`.
+    /// only in the steady state - a Return is suppressed while cold-start still owns the first sessions.
+    /// The single source of truth for the Return rails in `planSession` and the `Workout.wasReturn` flag.
     static func isReturnSession(
         user: User,
         recentLogs: [WorkoutLog],
@@ -379,38 +353,19 @@ enum SessionAssembly {
             && ReturnOverride.isReturn(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
     }
 
-    /// Builds the seeded block skeleton (warm-up, the leading strength training block, an optional
-    /// dedicated primal block at the extended lengths, and an optional cooldown) before the timing fit -
-    /// the structural output of Steps 1-6. Exposed internally so tests can inspect block reserves and the
-    /// extended session's per-block time targets prior to the global fit consuming them. `sessionPolicy`
-    /// threads the US-E03 levers into Steps 5/6 (see `assemble`) and the situational Step 0 cold-start
-    /// (US-E04) and Step 0.5 Return (US-E06) gentleness rails; it defaults to `SessionPolicy.default`
-    /// (neutral, no regression). `offered` are the moves a **Different workout** press ranks behind their
-    /// alternatives (see `assemble`); empty, the default, changes nothing.
-    static func planBlocks(
+    /// The slot plan before the fit: the bookends, and the circuit's main, Practice and core stations at
+    /// their starting numbers. Exposed internally so tests can inspect the plan the fit starts from.
+    static func planSession(
         requestedMinutes: Int,
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
         offered: Set<String> = [],
+        trainingDay: TrainingDay,
         asOf: Date,
         calendar: Calendar = .current
-    ) -> [PlannedBlock] {
-        let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-
-        // Step 0 (US-E04): the cold-start override runs before Steps 1-6 while a brand-new user is
-        // still finding their footing. Step 0.5 (US-E06): the Return override serves a returning user
-        // an easy, winnable session. The two are mutually exclusive - a Return is suppressed while
-        // cold-start is active, since cold-start already serves gentle, capped sessions - so the pool
-        // and volume overrides never fight over the same inputs. Both are no-ops in the steady state, so
-        // a warmed-up, present user runs exactly the US-E03 pipeline.
-        //
-        // Neither override touches pillar *selection* anymore: since US-M01 the session lead is
-        // structural - `buildBlocks` always builds a leading strength block from `template` (US-001/
-        // US-002), with the shape alone deciding whether primal is folded in or gets its own block. So
-        // cold-start and Return contribute only their gentleness rails below (the capped pool and the
-        // eased volume), never a lead override, and there is no strength-vs-mobility split to compute.
+    ) -> SessionPlan {
         let isReturn = isReturnSession(
             user: user,
             recentLogs: recentLogs,
@@ -418,22 +373,9 @@ enum SessionAssembly {
             asOf: asOf,
             calendar: calendar
         )
-
-        // The Start Seed (US-O02), resolved exactly once for the whole generation. Its two halves - the
-        // difficulty floor the training pool is banded to and the volume a no-history prescription
-        // opens at - have to move together, so all three consumers below read this one resolution
-        // rather than each re-deriving it from `recentLogs`.
-        let startSeed = ColdStartOverride.startSeed(
-            user: user,
-            sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs
-        )
-
-        // On a Return, cap the eligible difficulty so a strong pre-gap history can't serve a punishing
-        // tier (layered after the cold-start band; only one is ever active). The cold-start band is the
-        // Start Seed's floor (US-O02) applied under the cap (US-G01): together they restrict the
-        // strength/primal training pool to `[startingDifficultyFloor, cappedMaxDifficulty]` so an
-        // active user's first sessions open at the band entry rather than the absolute entry tier.
+        // Step 0: the cold-start Start Seed, resolved once (its pool band, the chains it withholds, and
+        // the opening multiplier move together), and the Return's difficulty cap and Re-entry scale.
+        let startSeed = ColdStartOverride.startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
         let pool = ReturnOverride.returnPool(
             ColdStartOverride.startBandedPool(
                 ColdStartOverride.cappedPool(
@@ -445,62 +387,31 @@ enum SessionAssembly {
             ),
             isReturn: isReturn
         )
-
-        // The Return / Re-entry Ramp holds Step 6's volume below normal: the gentle floor on the Return
-        // itself, climbing back over the ramp sessions completed since it (read from the logs). Neutral
-        // in the steady state, so it is a no-op.
-        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, recentLogs: recentLogs)
-
-        // The Start Seed's volume half: the reps/sets a no-history prescription opens at, matched to
-        // the self-reported fitness level and eased by any cold-start down-signal already logged, so it
-        // stays in step with the banded pool above. Neutral outside the cold-start window.
-        let startVolume = startSeed.volume
-
-        // The other half of the Start Seed band: the movements it withholds accrue no history, so
-        // Step 5 is told they were never on offer rather than outgrown. Without it their untouched
-        // entry tiers win the freshness preference outright the moment the band lifts.
-        //
-        // Banded over the movements this user can actually get (`MovementAccess`, ADR-0007): the band's
-        // "hardest a pattern offers" clamp must read the pool the user is served from, not a catalog
-        // whose hardest rungs sit behind the staples restriction.
-        let withheldByStartSeed = ColdStartOverride.withheldByStartSeed(
-            library: MovementAccess.available(
-                in: library,
-                level: user.profile.fitnessLevel,
-                phase: user.phase
-            ),
+        let withheld = ColdStartOverride.withheldByStartSeed(
+            library: MovementAccess.available(in: library, level: user.profile.fitnessLevel, phase: user.phase),
             user: user,
             sessionPolicy: sessionPolicy,
             seed: startSeed
         )
-
         var builder = Builder(
             library: library,
             pool: pool,
             recentLogs: recentLogs,
+            level: user.profile.fitnessLevel,
+            phase: user.phase,
+            injuries: user.profile.injuries,
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
-            reentryScale: reentryScale,
-            startVolume: startVolume,
-            withheldByStartSeed: withheldByStartSeed,
-            // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -
-            // never a direct sizing lever. It reorders the mobility bookend pool toward posture/hip
-            // openers and changes no block's count and no bookend stretch count, so it cannot re-inflate a
-            // short session or reintroduce a mobility middle block (see `orderedMobility`/`postureHipLean`).
+            reentryScale: ReturnOverride.reentryScale(isReturn: isReturn, recentLogs: recentLogs),
+            isReturn: isReturn,
+            startingRepMultiplier: startSeed.volume.repMultiplier,
+            withheldByStartSeed: withheld,
             sitsLong: user.profile.sitsLong,
-            // US-AC05: the pattern-emphasis lever biases Step 3's stalest-first ordering as a pure
-            // preference. Clamped to the policy rails here so the engine only ever sees an
-            // order-preserving positive multiplier - an out-of-range coach write can never act as a
-            // filter or invert the ordering.
-            patternEmphasis: sessionPolicy.patternEmphasis.mapValues(SessionPolicy.clampedEmphasis),
             offered: offered,
             asOf: asOf,
             calendar: calendar
         )
-        return builder.buildBlocks(
-            template: template,
-            requestedMinutes: requestedMinutes
-        )
+        return builder.plan(day: trainingDay, requestedMinutes: requestedMinutes)
     }
 
     // MARK: - Posture / hip bias (US-M03)
@@ -522,7 +433,14 @@ enum SessionAssembly {
         return complements.contains { postureHipPatterns.contains($0) }
     }
 
-    // MARK: - Focus pillar
+    /// A warm-up, cooldown or Recovery stretch's per-set number: its catalog length on the grid of
+    /// fives, never under 10 (ADR-0011).
+    static func bookendValue(for exercise: Exercise) -> Int {
+        let base = exercise.isHold ? (exercise.defaultDurationSeconds ?? 30) : (exercise.defaultReps ?? 10)
+        return max(10, RepGrammar.floored(base))
+    }
+
+    // MARK: - Pillar
 
     /// The pillar a training block trains, or `nil` for the structural bookends (`warmup`/`cooldown`).
     static func pillar(of category: ExerciseCategory) -> Pillar? {
@@ -534,20 +452,7 @@ enum SessionAssembly {
         }
     }
 
-    /// The session's reported `focusPillar`, read from the training blocks the assembly *actually*
-    /// produced. A session with a single training block (single-focus, or a shorter blend whose one
-    /// strength block folds primal in) reports that block's pillar - always `.strength` since US-M01; an
-    /// extended blend leaves two training blocks (strength + a dedicated primal, no single focus, so
-    /// `nil`), and a degenerate warmup-only session leaves none. Reading it from the built blocks keeps
-    /// the label truthful when an extended session degrades to a lone strength block because the capped
-    /// pool left no eligible locomotion movement (US-E04).
-    static func focusPillar(of blocks: [PlannedBlock]) -> Pillar? {
-        let training = blocks.filter { !$0.items.isEmpty && pillar(of: $0.category) != nil }
-        guard training.count == 1 else { return nil }
-        return pillar(of: training[0].category)
-    }
-
-    // MARK: - Planned wall-clock
+    // MARK: - Work per set
 
     /// The planned seconds one set of `exercise` takes at the per-set target Step 6 actually
     /// prescribed: for a rep movement a fixed per-set `setup` cost plus `perUnit × prescribed` of work,
@@ -653,12 +558,11 @@ enum SessionAssembly {
         )
     }
 
-    /// Whether a block of `category` is played as a circuit of even rounds (US-CC03): the strength and
-    /// dedicated-primal training blocks are; the warm-up/cooldown bookends flow linearly. Kept as the one
-    /// place the circuit/linear distinction is drawn so `blockSeconds` (over `PlannedBlock`) and
-    /// `plannedSeconds` (over a materialized `Workout`) can never disagree about how a block is priced.
-    /// The `.mobility` case is defensive only - US-M01 retired the mobility training block, so none is
-    /// emitted - and is treated as linear.
+    // MARK: - Planned wall-clock
+
+    /// Whether a block of `category` is played as a circuit of even rounds (US-CC03): the training block
+    /// is; the warm-up, cooldown and Recovery flow are linear. `.primal` stays a circuit so a session saved
+    /// before primal was retired (ADR-0014) still plays as it was planned.
     static func isCircuit(_ category: ExerciseCategory) -> Bool {
         switch category {
         case .strength, .primal: return true
@@ -666,329 +570,152 @@ enum SessionAssembly {
         }
     }
 
-    /// The planned wall-clock of an assembled `Workout` under the even-round model (US-CC03/US-CC04):
-    /// the sum of each block's `blockSeconds` plus one between-station transition between adjacent
-    /// blocks. A training block is priced as a circuit
-    /// (`rounds × Σ workPerSet + rounds × between-station transitions + (rounds - 1) × round-rest`), a
-    /// bookend as a linear one-set-each block. The same quantity the timing-fit pass minimizes against
-    /// (`totalSeconds`), exposed so callers and tests measure the session exactly as the engine sized it.
+    /// The planned wall-clock of an assembled `Workout`: each block's `blockSeconds` plus one pause
+    /// between adjacent blocks - the same quantity the fit lands, so callers measure the session exactly
+    /// as the engine sized it, and Today shows it as the honest time.
     static func plannedSeconds(of workout: Workout) -> Int {
-        let nonEmpty = workout.blocks.filter { !$0.exercises.isEmpty }
-        let blockWork = nonEmpty.reduce(0) { $0 + blockSeconds(of: $1) }
-        return blockWork + max(0, nonEmpty.count - 1) * transitionSeconds
+        plannedSeconds(of: workout.blocks)
     }
 
-    /// Planned wall-clock of one materialized `WorkoutBlock` in isolation, the mirror of
-    /// `blockSeconds(_ block: PlannedBlock)` over a finished session. A circuit training block reads its
-    /// uniform round count and round-rest off any exercise (they are all equal by construction, US-CC03);
-    /// a linear bookend is `Σ workPerSet` (one set each) plus the transitions between its stations.
+    static func plannedSeconds(of blocks: [WorkoutBlock]) -> Int {
+        let nonEmpty = blocks.filter { !$0.exercises.isEmpty }
+        return nonEmpty.reduce(0) { $0 + blockSeconds(of: $1) } + max(0, nonEmpty.count - 1) * transitionSeconds
+    }
+
+    /// Planned wall-clock of one block. A circuit is `rounds x sum(work per set) + rounds x (stations - 1)
+    /// x pause + (rounds - 1) x round rest`, reading its round count and rest off its (equal) stations and
+    /// its pause off the block; a linear block is each station's sets plus the pauses between stations.
     static func blockSeconds(of block: WorkoutBlock) -> Int {
         let exercises = block.exercises
         guard !exercises.isEmpty else { return 0 }
-        let perRoundWork = exercises.reduce(0) { $0 + workSecondsPerSet(of: $1) }
+        let gap = block.transitionSeconds ?? transitionSeconds
         let stationGaps = max(0, exercises.count - 1)
         if isCircuit(block.category) {
             let rounds = exercises[0].sets
-            let roundRest = exercises[0].restSeconds
-            return rounds * perRoundWork
-                + rounds * stationGaps * transitionSeconds
-                + max(0, rounds - 1) * roundRest
+            let perRoundWork = exercises.reduce(0) { $0 + workSecondsPerSet(of: $1) }
+            return rounds * perRoundWork + rounds * stationGaps * gap + max(0, rounds - 1) * exercises[0].restSeconds
         }
-        // Linear bookend: one set each (any multi-set is priced honestly, but bookends are single-set).
         let work = exercises.reduce(0) { sum, item in
             sum + item.sets * workSecondsPerSet(of: item) + max(0, item.sets - 1) * item.restSeconds
         }
-        return work + stationGaps * transitionSeconds
+        return work + stationGaps * gap
     }
 
     // MARK: - Timing fit
 
-    /// Lands `blocks` on `targetSeconds` (ADR-0010): first the coarse shape, then the stretch.
-    ///
-    /// A deterministic best-fit loop picks the shape: each pass tries every coarse move - add/drop a
-    /// whole round, promote/drop a whole exercise - and applies the one with the lowest `fitCost`,
-    /// only if it strictly lowers it. The cost already knows the remaining gap will be filled by
-    /// stretching rep-based work windows, so a shape a little short of the request is cheap and an
-    /// overshoot is not; a shape the stretch rail cannot fill is costed by the gap it leaves, and one
-    /// that would land outside `toleranceSeconds` is costed so high that any shape inside it wins. No
-    /// move ever makes a training block uneven: the round move touches every station equally, and a
-    /// promoted station joins at the block's round count. Every accepted step strictly lowers a
-    /// non-negative integer cost, so the loop converges. The shape is then stretched to land
-    /// (`stretchWorkWindows`).
-    static func fit(_ blocks: inout [PlannedBlock], targetSeconds: Int) {
-        for _ in 0..<maxFitIterations {
-            let cost = fitCost(blocks, targetSeconds: targetSeconds)
-            if cost == 0 { break }
-            guard let chosen = bestAdjustment(in: blocks, currentCost: cost, cost: { fitCost($0, targetSeconds: targetSeconds) }) else { break }
-            apply(chosen, to: &blocks)
+    /// Lands `plan` on `targetSeconds` (decisions 16-17), deterministically and in this order:
+    /// 1. **Cut** - while the session runs long, take a step off the main or core station with the most
+    ///    room above its short-session floor (the later station on a tie).
+    /// 2. **Pad** - while it runs short, add a step to the main or core station padded least so far (the
+    ///    earlier station on a tie), up to the top of the level's range.
+    /// 3. **Rest** - then grow the rest after a round, and on a 45 or 60 minute session the pause between
+    ///    movements, five seconds at a time up to their caps.
+    /// Each step is taken only if it brings the session closer to the target, so the loop ends at the
+    /// closest landing its levers allow; whatever gap is left is the session's honest shortfall or
+    /// overrun.
+    static func fit(_ plan: inout SessionPlan, targetSeconds: Int) {
+        func distance(_ candidate: SessionPlan) -> Int { abs(candidate.totalSeconds - targetSeconds) }
+
+        // 1. Cut reps toward the short-session floor.
+        while plan.totalSeconds > targetSeconds {
+            let cuttable = plan.stations.indices.filter { plan.stations[$0].value - RepGrammar.step >= plan.stations[$0].floor }
+            guard let index = cuttable.max(by: { lhs, rhs in
+                let l = plan.stations[lhs].value - plan.stations[lhs].floor
+                let r = plan.stations[rhs].value - plan.stations[rhs].floor
+                return l != r ? l < r : lhs < rhs
+            }) else { break }
+            var trial = plan
+            trial.stations[index].value -= RepGrammar.step
+            guard distance(trial) < distance(plan) else { break }
+            plan = trial
         }
-        stretchWorkWindows(&blocks, targetSeconds: targetSeconds)
-    }
 
-    /// The coarse fit's cost of a shape (ADR-0010): the landing error left after the shape is stretched
-    /// as far as it usefully can, weighted against the stretch it takes. Below the target the gap is
-    /// filled by stretch up to the session's `stretchCapacity`; above it nothing can shrink, so the
-    /// overshoot is the landing error. A landing outside `toleranceSeconds` adds a cost no in-tolerance
-    /// shape can reach. Pure over the blocks, read with every stretch at zero.
-    static func fitCost(_ blocks: [PlannedBlock], targetSeconds: Int) -> Int {
-        let planned = totalSeconds(blocks)
-        let landing: Int
-        let stretch: Int
-        if planned >= targetSeconds {
-            landing = planned - targetSeconds
-            stretch = 0
-        } else {
-            stretch = min(targetSeconds - planned, stretchCapacity(blocks))
-            landing = targetSeconds - planned - stretch
-        }
-        let outOfTolerance = landing > toleranceSeconds ? outOfTolerancePenalty : 0
-        return landingErrorCostWeight * landing + stretchCostWeight * stretch + outOfTolerance
-    }
-
-    /// A cost larger than any in-tolerance shape can reach, added to a shape that lands outside
-    /// `toleranceSeconds` so the fit always prefers one inside it when one exists.
-    private static let outOfTolerancePenalty = 1_000_000
-
-    /// The single best strictly-improving adjustment under `cost`, or `nil` at the local minimum.
-    /// Shared by the global `fit` and the per-block `shapeTowardTargets` so the two passes use identical
-    /// levers and tie-breaks: candidates are tried in a fixed order and the first strictly-lowest wins.
-    /// `restrictedTo` limits enumeration to one block.
-    private static func bestAdjustment(
-        in blocks: [PlannedBlock],
-        currentCost: Int,
-        restrictedTo only: Int? = nil,
-        cost: ([PlannedBlock]) -> Int
-    ) -> Adjustment? {
-        var best: (adjustment: Adjustment, cost: Int)?
-        for adjustment in candidates(in: blocks, restrictedTo: only) {
-            var trial = blocks
-            apply(adjustment, to: &trial)
-            let trialCost = cost(trial)
-            guard trialCost < currentCost else { continue }
-            if best == nil || trialCost < best!.cost {
-                best = (adjustment, trialCost)
+        // 2. Pad reps toward the top of the range.
+        while plan.totalSeconds < targetSeconds {
+            let paddable = plan.stations.indices.filter { plan.stations[$0].value + RepGrammar.step <= plan.stations[$0].ceiling }
+            let ordered = paddable.sorted { lhs, rhs in
+                let l = plan.stations[lhs].padSteps
+                let r = plan.stations[rhs].padSteps
+                return l != r ? l < r : lhs < rhs
             }
-        }
-        return best?.adjustment
-    }
-
-    /// Planned wall-clock of a set of blocks mid-assembly under the even-round model (same formula as
-    /// `plannedSeconds(of:)`): each block's `blockSeconds` plus one between-station transition between
-    /// adjacent non-empty blocks.
-    static func totalSeconds(_ blocks: [PlannedBlock]) -> Int {
-        let nonEmpty = blocks.filter { !$0.items.isEmpty }
-        let blockWork = nonEmpty.reduce(0) { $0 + blockSeconds($1) }
-        return blockWork + max(0, nonEmpty.count - 1) * transitionSeconds
-    }
-
-    /// Planned wall-clock of a single block in isolation. A **circuit** training block
-    /// (`allowSetAdjust`) is `rounds × Σ workPerSet + rounds × between-station transitions +
-    /// (rounds - 1) × round-rest`, reading its uniform round count and round-rest off its (equal) items.
-    /// A **linear** bookend is `Σ workPerSet` (one set each) plus the transitions between its stations.
-    /// `workPerSet` includes any stretch the fit gave the item. Because every timing-fit adjustment
-    /// touches exactly one block and never changes whether a block is non-empty, the between-block
-    /// transition count is invariant during the fit, so this per-block measure and the global
-    /// `totalSeconds` stay consistent and the weight-shaping pass is exact.
-    static func blockSeconds(_ block: PlannedBlock) -> Int {
-        guard !block.items.isEmpty else { return 0 }
-        let perRoundWork = block.items.reduce(0) { $0 + $1.workSecondsPerSet }
-        let stationGaps = max(0, block.items.count - 1)
-        if block.allowSetAdjust {
-            let rounds = block.items[0].sets
-            let roundRest = block.items[0].restSeconds
-            return rounds * perRoundWork
-                + rounds * stationGaps * transitionSeconds
-                + max(0, rounds - 1) * roundRest
-        }
-        let work = block.items.reduce(0) { $0 + $1.sets * $1.workSecondsPerSet + max(0, $1.sets - 1) * $1.restSeconds }
-        return work + stationGaps * transitionSeconds
-    }
-
-    // MARK: - Stretched work windows (ADR-0010)
-
-    /// Whether `item`'s work window may stretch: a rep-based set in a circuit training block. Timed
-    /// holds keep their prescribed seconds (they are definitional), and the warm-up/cooldown bookends
-    /// keep their prescribed lengths.
-    static func isStretchable(_ item: PlannedItem, in block: PlannedBlock) -> Bool {
-        block.allowSetAdjust && !item.exercise.isHold
-    }
-
-    /// The number of rep-based training sets the stretch can be spread across: every stretchable
-    /// station's round count, summed over the session.
-    static func stretchableSetCount(_ blocks: [PlannedBlock]) -> Int {
-        blocks.reduce(0) { sum, block in
-            sum + block.items.filter { isStretchable($0, in: block) }.reduce(0) { $0 + $1.sets }
-        }
-    }
-
-    /// The most the session can be lengthened by stretching: every rep-based training set at
-    /// `maxStretchSecondsPerSet`.
-    static func stretchCapacity(_ blocks: [PlannedBlock]) -> Int {
-        stretchableSetCount(blocks) * maxStretchSecondsPerSet
-    }
-
-    /// Fill the gap between the fitted shape and `targetSeconds` by lengthening the work windows of the
-    /// session's rep-based training sets (ADR-0010). The gap (capped at `stretchCapacity`) is spread
-    /// evenly across those sets: every set gets the same whole-second stretch, and the few seconds left
-    /// over go one more second per set to stations in session order, as long as a whole station's
-    /// rounds fit in what is left - so a station's stretch is the same in every round and the result is
-    /// deterministic. A shape at or over the target is left unstretched (a window never shrinks below
-    /// its generous pace).
-    static func stretchWorkWindows(_ blocks: inout [PlannedBlock], targetSeconds: Int) {
-        let gap = targetSeconds - totalSeconds(blocks)
-        let sets = stretchableSetCount(blocks)
-        guard gap > 0, sets > 0 else { return }
-        let total = min(gap, stretchCapacity(blocks))
-        let even = total / sets
-        var leftover = total - even * sets
-        for blockIndex in blocks.indices {
-            for itemIndex in blocks[blockIndex].items.indices
-            where isStretchable(blocks[blockIndex].items[itemIndex], in: blocks[blockIndex]) {
-                let rounds = blocks[blockIndex].items[itemIndex].sets
-                var stretch = even
-                if even < maxStretchSecondsPerSet, leftover >= rounds {
-                    stretch += 1
-                    leftover -= rounds
+            var improved = false
+            for index in ordered {
+                var trial = plan
+                trial.stations[index].value += RepGrammar.step
+                if distance(trial) < distance(plan) {
+                    plan = trial
+                    improved = true
+                    break
                 }
-                blocks[blockIndex].items[itemIndex].stretchSeconds = stretch
             }
+            if !improved { break }
+        }
+
+        // 3. Grow rest: the pause between movements first (long sessions only), then the rest after a round.
+        while plan.totalSeconds < targetSeconds {
+            var candidates: [SessionPlan] = []
+            if plan.transitionSeconds + RepGrammar.step <= plan.transitionCap, plan.stations.count > 1 {
+                var trial = plan
+                trial.transitionSeconds += RepGrammar.step
+                candidates.append(trial)
+            }
+            if plan.roundRestSeconds + RepGrammar.step <= plan.roundRestCap {
+                var trial = plan
+                trial.roundRestSeconds += RepGrammar.step
+                candidates.append(trial)
+            }
+            guard let best = candidates.min(by: { distance($0) < distance($1) }),
+                  distance(best) < distance(plan) else { break }
+            plan = best
         }
     }
 
-    // MARK: - Target shaping
-
-    /// Grows each block that carries a `targetSeconds` toward that share (a best-fit greedy scoped to
-    /// the single block), so an extended session's strength/primal blocks are split toward the fixed
-    /// strength-leads-primal division (`extendedTrainingBlocks`) *before* `fit` lands the overall total.
-    /// A single-block training middle carries no target and is left entirely to the global fit. It uses
-    /// the same coarse levers as the global fit - whole rounds within the rails and reserve promotion -
-    /// and never touches the capacity-relative per-set target from Step 6, nor makes the block uneven.
-    static func shapeTowardTargets(_ blocks: inout [PlannedBlock]) {
-        for index in blocks.indices {
-            guard let target = blocks[index].targetSeconds else { continue }
-            let cost: ([PlannedBlock]) -> Int = { abs(blockSeconds($0[index]) - target) }
-            for _ in 0..<maxFitIterations {
-                let current = cost(blocks)
-                if current == 0 { break }
-                guard let chosen = bestAdjustment(in: blocks, currentCost: current, restrictedTo: index, cost: cost) else { break }
-                apply(chosen, to: &blocks)
-            }
-        }
-    }
-
-    /// Every available coarse timing-fit move (ADR-0010, building on US-CC04 and US-RC01). For a
-    /// **circuit** training block: one round more or fewer for every station at once (`setRounds`,
-    /// within the rails); promoting the next reserve station - possibly a US-RC01 accessory -
-    /// **jointly** with each round count the widened block could run at (`addReserveWithRounds`), since
-    /// a new station's cost scales with the round count it joins at and pricing it only at the block's
-    /// current count can make the one widening move an overshooting jump; and dropping the last station.
-    /// A **linear** bookend grows/shrinks purely by one-set movement count. Enumerated in a fixed block
-    /// order, and per block in a fixed move order, so ties resolve deterministically. `restrictedTo`,
-    /// when set, limits enumeration to a single block.
-    private static func candidates(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [Adjustment] {
-        var result: [Adjustment] = []
-        for (blockIndex, block) in blocks.enumerated() {
-            if let only, only != blockIndex { continue }
-            guard let lead = block.items.first else { continue }
-            if block.allowSetAdjust {
-                for delta in [-1, 1] {
-                    let rounds = lead.sets + delta
-                    guard rounds >= minTrainingSets, rounds <= maxTrainingSets else { continue }
-                    result.append(.setRounds(block: blockIndex, rounds: rounds))
-                }
-                if !block.reserve.isEmpty {
-                    for rounds in minTrainingSets...maxTrainingSets {
-                        result.append(.addReserveWithRounds(block: blockIndex, rounds: rounds))
-                    }
-                }
-            } else if !block.reserve.isEmpty {
-                result.append(.addReserve(block: blockIndex))
-            }
-            if block.items.count > block.minItems {
-                result.append(.dropItem(block: blockIndex))
-            }
-        }
-        return result
-    }
-
-    private static func apply(_ adjustment: Adjustment, to blocks: inout [PlannedBlock]) {
-        switch adjustment {
-        case let .setRounds(block, rounds):
-            for index in blocks[block].items.indices {
-                blocks[block].items[index].sets = rounds
-            }
-        case let .addReserve(block):
-            // Linear bookend only (see `.addReserveWithRounds` for a circuit training block): join at
-            // one set, since a bookend is never set-adjustable.
-            var promoted = blocks[block].reserve.removeFirst()
-            promoted.sets = 1
-            blocks[block].items.append(promoted)
-        case let .addReserveWithRounds(block, rounds):
-            // Circuit training block (US-RC01): the promoted station and every existing station move to
-            // the chosen round count together, so the block stays uniform the moment the new station
-            // lands rather than joining at a stale round count a later move must reconcile.
-            var promoted = blocks[block].reserve.removeFirst()
-            promoted.restSeconds = roundRestSeconds
-            blocks[block].items.append(promoted)
-            for index in blocks[block].items.indices {
-                blocks[block].items[index].sets = rounds
-            }
-        case let .dropItem(block):
-            let removed = blocks[block].items.removeLast()
-            blocks[block].reserve.insert(removed, at: 0)
-        }
-    }
-
-    /// One coarse timing-fit move, addressed by block index into the in-progress `[PlannedBlock]`.
-    /// Every move preserves a training block's uniform round count (US-CC03): `setRounds` writes the
-    /// same round count to every station, and `addReserveWithRounds` moves the whole block, new station
-    /// included, to one round count.
-    private enum Adjustment {
-        /// Set every station of a circuit block to the same round count.
-        case setRounds(block: Int, rounds: Int)
-        /// Promote the next reserve movement into a **linear bookend** block, at one set.
-        case addReserve(block: Int)
-        /// Promote the next reserve movement into a **circuit training** block (US-RC01), and set every
-        /// station - the new one included - to the chosen round count.
-        case addReserveWithRounds(block: Int, rounds: Int)
-        /// Drop the last movement from the block back to the reserve.
-        case dropItem(block: Int)
-    }
 }
 
 // MARK: - PlannedItem
 
-/// One exercise as it is being sized during assembly: the movement, its capacity-relative per-set
-/// target (reps or hold seconds from Step 6), the current set count (= the block's round count on a
-/// circuit training block, a timing lever), and the rest that follows (the between-round rest on a
-/// circuit block, likewise a lever). Materializes into a playable `PrescribedExercise` once assembly is
-/// done. On a circuit training block every item shares one `sets` and one `restSeconds` (US-CC03);
-/// per-item seconds are therefore not meaningful in isolation - `SessionAssembly.blockSeconds` owns the
-/// round-aware wall-clock formula.
+/// One station as it is being sized: the movement, its role, its per-set number (`value`: reps, or hold
+/// seconds), the Earned Reps behind it, and the bounds the fit may move the number within - `floor` to
+/// `ceiling`, equal to `value` for a station the fit never touches (a Practice Movement, a stretch).
 struct PlannedItem: Equatable {
     let exercise: Exercise
-    let reps: Int?
-    let durationSeconds: Int?
-    /// Seconds the timing fit added to this set's work window past its generous pace (ADR-0010): the
-    /// spare time at the end of the set the user rests through. Zero until `stretchWorkWindows` runs,
-    /// and only ever set on a rep-based set in a circuit training block.
-    var stretchSeconds: Int = 0
-    /// The set count. On a circuit training block this is the block's uniform round count; the timing
-    /// fit moves it only via the block-level `setRounds`/`addReserveWithRounds` moves, so it stays equal
-    /// across the block.
-    var sets: Int
-    /// On a circuit training block this is the between-round rest (`SessionAssembly.roundRestSeconds`,
-    /// equal across the block); on a bookend it is the (uncharged) one-set rest.
-    var restSeconds: Int
+    let role: StationRole?
+    var value: Int
+    /// The served Earned Reps (or hold seconds) this station started from, recorded on the prescription
+    /// so Padding and a short session's cut never move progression. `nil` off the main and core stations.
+    let earned: Int?
+    let sets: Int
+    let floor: Int
+    let ceiling: Int
+    /// The number the station started at, so the fit can pad evenly.
+    let start: Int
 
-    /// Planned seconds for one set at this item's actual per-set target (see
-    /// `SessionAssembly.workSecondsPerSet(for:reps:durationSeconds:)`), so a seeded or
-    /// capacity-grown prescription is sized as the work it really is - plus any stretch (ADR-0010).
-    var workSecondsPerSet: Int {
-        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds) + stretchSeconds
+    init(exercise: Exercise, role: StationRole?, value: Int, earned: Int?, sets: Int, floor: Int, ceiling: Int) {
+        self.exercise = exercise
+        self.role = role
+        self.value = value
+        self.earned = earned
+        self.sets = sets
+        self.floor = min(floor, value)
+        self.ceiling = max(ceiling, value)
+        self.start = value
     }
 
-    func materialize() -> PrescribedExercise {
+    /// A station the fit never moves.
+    static func fixed(_ exercise: Exercise, role: StationRole?, value: Int, sets: Int) -> PlannedItem {
+        PlannedItem(exercise: exercise, role: role, value: value, earned: nil, sets: sets, floor: value, ceiling: value)
+    }
+
+    var reps: Int? { exercise.isHold ? nil : value }
+    var durationSeconds: Int? { exercise.isHold ? value : nil }
+    var padSteps: Int { (value - start) / RepGrammar.step }
+
+    /// Planned seconds for one set at this station's current number (`SessionAssembly.workSecondsPerSet`).
+    var workSecondsPerSet: Int {
+        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds)
+    }
+
+    func materialize(restSeconds: Int) -> PrescribedExercise {
         PrescribedExercise(
             id: UUID(),
             exercise: exercise,
@@ -996,432 +723,378 @@ struct PlannedItem: Equatable {
             reps: reps,
             durationSeconds: durationSeconds,
             restSeconds: restSeconds,
-            stretchSeconds: stretchSeconds > 0 ? stretchSeconds : nil
+            role: role,
+            earnedReps: exercise.isHold ? nil : earned,
+            earnedDurationSeconds: exercise.isHold ? earned : nil
         )
     }
 }
 
-// MARK: - PlannedBlock
+// MARK: - SessionPlan
 
-/// A session block being assembled: its title and structural `category` (warm-up / strength /
-/// mobility / cooldown), the exercises currently in it, a `reserve` of further candidates the timing
-/// fit may promote, whether its exercises' set counts are a timing lever, and the floor on how many
-/// exercises it must keep.
-struct PlannedBlock {
-    let title: String
-    let category: ExerciseCategory
-    var items: [PlannedItem]
-    var reserve: [PlannedItem]
-    /// Whether timing fit may add/drop sets on this block's exercises. The strength and primal training
-    /// blocks set it; the warm-up and cooldown bookends do not, staying at one set each and growing only
-    /// by promoting more distinct movements from their reserve.
-    let allowSetAdjust: Bool
-    /// The minimum exercises this block must retain (timing fit never trims below it).
-    let minItems: Int
-    /// The planned-seconds share this block should be shaped toward before the global timing fit, set for
-    /// an extended session's strength/primal blocks from the fixed strength-leads-primal split
-    /// (`extendedTrainingBlocks`). `nil` leaves the block to the global fit alone (the warm-up, the
-    /// cooldown, and a single-block strength training middle).
-    var targetSeconds: Int? = nil
+/// A Training Day as it is being sized: the warm-up, the circuit's stations with its pause and round
+/// rest (and their caps), and the cooldown.
+struct SessionPlan: Equatable {
+    var trainingDay: TrainingDay
+    var warmup: [PlannedItem]
+    var stations: [PlannedItem]
+    var cooldown: [PlannedItem]
+    var transitionSeconds: Int
+    var roundRestSeconds: Int
+    let transitionCap: Int
+    let roundRestCap: Int
 
-    /// The playable block, or `nil` when assembly left it empty (so empties never reach the player).
-    func materialize() -> WorkoutBlock? {
-        guard !items.isEmpty else { return nil }
-        return WorkoutBlock(
-            id: UUID(),
-            title: title,
-            category: category,
-            exercises: items.map { $0.materialize() }
-        )
+    /// The planned wall-clock, priced exactly as `SessionAssembly.plannedSeconds(of:)` prices the
+    /// materialized session.
+    var totalSeconds: Int {
+        let gap = SessionAssembly.transitionSeconds
+        func linear(_ items: [PlannedItem]) -> Int {
+            items.reduce(0) { $0 + $1.sets * $1.workSecondsPerSet } + max(0, items.count - 1) * gap
+        }
+        var blocks: [Int] = []
+        if !warmup.isEmpty { blocks.append(linear(warmup)) }
+        if !stations.isEmpty {
+            let rounds = RepGrammar.setsPerStation
+            let perRound = stations.reduce(0) { $0 + $1.workSecondsPerSet }
+            blocks.append(rounds * perRound + rounds * (stations.count - 1) * transitionSeconds + (rounds - 1) * roundRestSeconds)
+        }
+        if !cooldown.isEmpty { blocks.append(linear(cooldown)) }
+        return blocks.reduce(0, +) + max(0, blocks.count - 1) * gap
+    }
+
+    /// Whether the fit has no lever left to lengthen the session: every station at the top of its range
+    /// and both rests at their caps. A session short of its length in this state is an honest shortfall.
+    var isSaturated: Bool {
+        stations.allSatisfy { $0.value + RepGrammar.step > $0.ceiling }
+            && roundRestSeconds + RepGrammar.step > roundRestCap
+            && (stations.count <= 1 || transitionSeconds + RepGrammar.step > transitionCap)
+    }
+
+    /// The playable blocks; an empty block never reaches the player.
+    func materialize() -> [WorkoutBlock] {
+        var blocks: [WorkoutBlock] = []
+        if !warmup.isEmpty {
+            blocks.append(WorkoutBlock(
+                id: UUID(),
+                title: "Warm-Up",
+                category: .warmup,
+                exercises: warmup.map { $0.materialize(restSeconds: SessionAssembly.mobilityRestSeconds) }
+            ))
+        }
+        if !stations.isEmpty {
+            blocks.append(WorkoutBlock(
+                id: UUID(),
+                title: trainingDay.displayName,
+                category: .strength,
+                exercises: stations.map { $0.materialize(restSeconds: roundRestSeconds) },
+                transitionSeconds: transitionSeconds
+            ))
+        }
+        if !cooldown.isEmpty {
+            blocks.append(WorkoutBlock(
+                id: UUID(),
+                title: "Cooldown",
+                category: .cooldown,
+                exercises: cooldown.map { $0.materialize(restSeconds: SessionAssembly.mobilityRestSeconds) }
+            ))
+        }
+        return blocks
     }
 }
 
 // MARK: - Builder
 
-/// Generates the per-shape block skeleton (warm-up, training block(s), optional cooldown) seeded with
-/// one exercise each plus reserves, running Steps 2-6 to fill the training blocks and the shared
-/// mobility pool for the bookends. Kept a small stateful value so a single `usedIds` set stops the
-/// same movement appearing in two blocks.
+/// Fills the slot plan for one Training Day: the bookend stretches, the main stations from the day's
+/// ladders, the Practice Movements and the Core Sprinkle. A small stateful value so one `usedIds` set
+/// keeps a movement out of two slots.
 private struct Builder {
     let library: [Exercise]
+    /// The eligible pool (movement access, injuries, recent skips, the Start Seed band, the Return cap).
     let pool: [Exercise]
     let recentLogs: [WorkoutLog]
-    /// Session Policy lever (US-E03): paces Step 6's overload bump. `1.0` is neutral.
+    let level: FitnessLevel
+    let phase: Phase
+    let injuries: [String]
+    /// Session Policy pace: how many qualifying sessions a climb of Earned Reps takes.
     let progressionRate: Double
-    /// Session Policy lever (US-E03): Step 5's no-repeat variety window, also mirrored by the
-    /// mobility variety ordering so both use the same per-user window.
+    /// Session Policy variety window: stretches used in this many recent sessions go behind fresher ones.
     let varietyWindow: Int
-    /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
-    /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
+    /// Return / Re-entry Ramp: holds the prescription under Earned Reps (`< 1`), neutral otherwise.
     let reentryScale: Double
-    /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
-    /// matched to the self-reported fitness level. Applied only to the strength and primal training
-    /// blocks - the mobility bookends are one set of a stretch at every level, so the warm-up and
-    /// cooldown are identical for a beginner and an advanced user. Neutral outside the cold-start window.
-    let startVolume: ColdStartOverride.VolumeSeed
-    /// The movements Step 0's Start Seed band held out of reach (US-O02): Step 5 treats them as
-    /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
-    /// from regressing to an untouched entry tier (see `ProgressionChainSelection`).
+    let isReturn: Bool
+    /// Cold-start Start Seed: lifts a no-history opening number (never to the top of the range).
+    let startingRepMultiplier: Double
+    /// Movements the Start Seed band held out of reach, so a chain's entry is not mistaken for fresh.
     let withheldByStartSeed: Set<String>
-    /// The desk-worker `sitsLong` signal (US-M03), threaded in as a **bias**, never a direct sizing lever.
-    /// When set, the warm-up and cooldown pools are reordered to lead with posture/hip openers (see
-    /// `orderedMobility`/`postureHipLean`); it changes no block's count and no bookend stretch count, so
-    /// it can never re-inflate a short session or bring back a mobility middle block. It does change which
-    /// stretches *fill* the fixed-count bookends, though, and stretches differ in `workSecondsPerSet`, so
-    /// a desk worker's bookend duration can differ from the general profile's - and since that duration
-    /// feeds `trainingBudget` (extended path) and the global timing fit (short/full), a strength set count
-    /// can be *incidentally* coupled to bookend composition. Since US-CC08 that coupling actually **binds**
-    /// on the shipped catalog: a rep-based stretch carries the generous runtime pace while a hold stretch
-    /// does not, so a desk worker's 45-minute warm-up costs ~32s more and the fit pays it out of a whole
-    /// strength round. What is guarded is therefore the real invariant - same training movements at the
-    /// same per-set targets, with a round count differing only where the bookends really cost different
-    /// seconds (`testSitsLongChangesNoTrainingMovementOrTarget`). Since US-M01 removed the
-    /// Movement Practice accessory (the block `sitsLong` used to *size*), this is the only thing `sitsLong`
-    /// does in the engine.
+    /// The desk-worker `sitsLong` signal (US-M03): a reorder of the bookend pools toward posture and hip
+    /// openers, never a sizing lever.
     let sitsLong: Bool
-    /// Session Policy pattern-emphasis lever (US-AC05): a per-`MovementPattern` **multiplier on
-    /// staleness** biasing Step 3's stalest-first ordering, already clamped to the policy rails
-    /// (`SessionPolicy.clampedEmphasis`) when the builder is constructed. Threaded into
-    /// `orderedStrengthPatterns` only, where it reorders the strength/primal pattern list as a pure
-    /// preference: it never removes a pattern (a de-emphasized pattern still fills as an accessory when
-    /// the block widens), never makes a block uneven or changes its round count (ADR-0003), and never
-    /// reintroduces a mobility middle block. Neutral (`1.0` for every pattern) reproduces the pre-US-AC05
-    /// ordering exactly. Shaped like `sitsLong`: a reorder layered on the existing ordering, never a filter.
-    let patternEmphasis: [MovementPattern: Double]
-    /// The moves a **Different workout** press asks the session to avoid (`SessionVariation`): ranked
-    /// behind their alternatives in the strength pattern order (`orderedStrengthPatterns`), each pattern's
-    /// chain ranking (`ProgressionChainSelection.selectAll`) and the bookend pools (`orderedMobility`).
-    /// A preference, never a filter, exactly like the variety window it sits in front of. Empty for the
-    /// default session, which is then unchanged.
+    /// The moves a **Different workout** press asks the session to avoid: ranked behind their
+    /// alternatives wherever the plan has a choice, never filtered.
     let offered: Set<String>
     let asOf: Date
     let calendar: Calendar
-    /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
+    /// Movements already claimed by an earlier slot.
     var usedIds: Set<String> = []
 
-    /// Builds the ordered block skeleton for the session: a warm-up first, the leading **strength**
-    /// training block, a dedicated **primal** block on the extended lengths, and a cooldown when the
-    /// session runs past `cooldownThresholdMinutes`.
-    ///
-    /// Every session is strength-led by construction (US-001/US-002/US-M01): the training middle is
-    /// always a strength block, never a mobility one. Mobility survives only as the warm-up and cooldown
-    /// bookends - there is no Movement Practice middle block at any length (US-M01). Primal keeps its own
-    /// treatment (US-M01 decision 1): folded into the strength block on the shorter shapes, and its own
-    /// block at 41-60 min.
-    ///
-    /// The cooldown's static holds are *reserved* here, before the training middle is built (it is
-    /// constructed up front and appended last only at output time), so a blend's cooldown keeps real
-    /// holds plus reserves rather than the single leftover stretch it would get if a block claimed the
-    /// mobility pool first. The strength/primal blocks draw a disjoint pool, so the bookends' mobility
-    /// reservation is never contended by the training middle.
-    ///
-    /// `template` distinguishes an extended blend (US-E02), which promotes primal to its own block,
-    /// from the shorter shapes that keep folding primal into strength.
-    mutating func buildBlocks(
-        template: SessionShapeTemplate,
-        requestedMinutes: Int
-    ) -> [PlannedBlock] {
-        // The day's lead strength pattern (Step 3), resolved once so both bookends bias toward the
-        // same complementary stretch (US-M02). Strength-only - never primal - so the complement
-        // target is always a mapped strength pattern even on the shorter shapes that fold primal
-        // into the strength block; `nil` (a degenerate primal-only pool) simply leaves the bookends
-        // on their general variety ordering.
-        let lead = leadStrengthPattern()
-        let warmup = warmupBlock(requestedMinutes: requestedMinutes, complementing: lead)
-        let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock(complementing: lead) : nil
-
-        let middle: [PlannedBlock]
-        if template == .blendExtended {
-            middle = extendedTrainingBlocks(
-                warmup: warmup,
-                cooldown: cooldown,
-                requestedMinutes: requestedMinutes
-            )
-        } else {
-            // Single-focus and the shorter blends: one strength block (primal folded in) is the whole
-            // training middle. It carries no `targetSeconds`, so the global timing fit grows it to fill
-            // the entire training budget - which is how the minutes the retired Movement Practice block
-            // used to hold are reallocated to strength (US-M01 decision 3).
-            middle = strengthBlock(includePrimal: true).map { [$0] } ?? []
-        }
-
-        return [warmup] + middle + (cooldown.map { [$0] } ?? [])
+    init(
+        library: [Exercise],
+        pool: [Exercise],
+        recentLogs: [WorkoutLog],
+        level: FitnessLevel,
+        phase: Phase,
+        injuries: [String],
+        progressionRate: Double,
+        varietyWindow: Int,
+        reentryScale: Double,
+        isReturn: Bool,
+        startingRepMultiplier: Double,
+        withheldByStartSeed: Set<String>,
+        sitsLong: Bool,
+        offered: Set<String>,
+        asOf: Date,
+        calendar: Calendar
+    ) {
+        self.library = library
+        self.pool = pool
+        self.recentLogs = recentLogs
+        self.level = level
+        self.phase = phase
+        self.injuries = injuries
+        self.progressionRate = progressionRate
+        self.varietyWindow = varietyWindow
+        self.reentryScale = reentryScale
+        self.isReturn = isReturn
+        self.startingRepMultiplier = startingRepMultiplier
+        self.withheldByStartSeed = withheldByStartSeed
+        self.sitsLong = sitsLong
+        self.offered = offered
+        self.asOf = asOf
+        self.calendar = calendar
     }
 
-    /// The training blocks of an extended (41-60 min) session: a leading **strength** block and a
-    /// dedicated **primal** block (US-E02). The Movement Practice mobility block is gone (US-M01), so the
-    /// only split here is strength-vs-primal, and it is a **fixed** minority split rather than the
-    /// staleness-weighted one the retired `PillarWeights` drove: primal is shaped toward
-    /// `extendedPrimalTrainingShare` of the training budget and strength takes the rest. Strength always
-    /// leads and, because the freed mobility minutes now go to it, runs heavier than under the archived
-    /// accessory model (US-M01 decision 3); primal keeps the same one-movement block it had before.
-    ///
-    /// Both blocks are shaped toward their `targetSeconds` before the global timing fit lands the total.
-    /// If the capped pool leaves no eligible locomotion movement, `primalBlock()` is `nil` and the
-    /// session degrades to a single strength block (which then absorbs the whole budget) rather than
-    /// emitting an empty primal block.
-    private mutating func extendedTrainingBlocks(
-        warmup: PlannedBlock,
-        cooldown: PlannedBlock?,
-        requestedMinutes: Int
-    ) -> [PlannedBlock] {
-        // In an extended blend primal earns its own block, so the strength block must not also fold
-        // primal in (that would double-book the same locomotion movement).
-        var strength = strengthBlock(includePrimal: false)
-        var primal = primalBlock()
+    // MARK: Plan
 
-        let bookendSeconds = SessionAssembly.blockSeconds(warmup)
-            + (cooldown.map(SessionAssembly.blockSeconds) ?? 0)
-        let trainingBudget = max(0, requestedMinutes * 60 - bookendSeconds)
-        if primal != nil {
-            let primalTarget = Int((Double(trainingBudget) * SessionAssembly.extendedPrimalTrainingShare).rounded())
-            primal?.targetSeconds = primalTarget
-            strength?.targetSeconds = max(0, trainingBudget - primalTarget)
-        } else {
-            strength?.targetSeconds = trainingBudget
-        }
-
-        // Strength leads (US-002), so it comes first; the bounded-minority primal block follows.
-        return [strength, primal].compactMap { $0 }
-    }
-
-    // MARK: Blocks
-
-    /// The opening warm-up: the freshest mobility movements, one set each. Always first, and - since
-    /// US-M01 - one of only two mobility blocks in the session (the other being the cooldown), never a
-    /// lead-in to a mobility training block.
-    ///
-    /// The number of movements scales with session length (`warmupExerciseCount`), and all of them are
-    /// seeded as **active** items (not reserves) with `minItems` pinned to that count, so a longer
-    /// session deterministically opens with a fuller warm-up rather than relying on the global timing
-    /// fit to promote reserves. Like the cooldown bookend it is one set each and never set-adjustable;
-    /// the timing fit still trims the strength/primal training around it to keep the session inside
-    /// `toleranceSeconds`.
-    private mutating func warmupBlock(
-        requestedMinutes: Int,
-        complementing lead: MovementPattern? = nil
-    ) -> PlannedBlock {
-        let items = mobilityItems(
+    mutating func plan(day: TrainingDay, requestedMinutes: Int) -> SessionPlan {
+        // Both bookends lead with a stretch complementing the day's lead pattern (US-M02).
+        let lead: MovementPattern = day == .legs ? .squat : (day == .push ? .push : .pull)
+        let warmup = mobilityItems(
             from: orderedMobility(holdsOnly: false, complementing: lead),
             cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
         )
-        return PlannedBlock(
-            title: "Warm-Up",
-            category: .warmup,
-            items: items,
-            reserve: [],
-            allowSetAdjust: false,
-            minItems: max(1, items.count)
+        var cooldownPool = orderedMobility(holdsOnly: true, complementing: lead)
+        if cooldownPool.isEmpty { cooldownPool = orderedMobility(holdsOnly: false, complementing: lead) }
+        let cooldown = mobilityItems(
+            from: cooldownPool,
+            cap: SessionAssembly.cooldownExerciseCount(forRequestedMinutes: requestedMinutes)
+        )
+
+        let stations = mainStations(day: day, slots: SessionAssembly.mainSlotCount(forRequestedMinutes: requestedMinutes))
+            + coreStations(count: SessionAssembly.coreSprinkleCount(forRequestedMinutes: requestedMinutes))
+
+        let isLong = requestedMinutes > SessionAssembly.shortSessionMaxMinutes
+        return SessionPlan(
+            trainingDay: day,
+            warmup: warmup,
+            stations: stations,
+            cooldown: cooldown,
+            transitionSeconds: SessionAssembly.transitionSeconds,
+            roundRestSeconds: SessionAssembly.baseRoundRestSeconds,
+            transitionCap: isLong ? SessionAssembly.maxTransitionSeconds : SessionAssembly.transitionSeconds,
+            roundRestCap: SessionAssembly.roundRestCap(for: level, requestedMinutes: requestedMinutes)
         )
     }
 
-    /// The closing cooldown: static mobility holds (falling back to any mobility if no holds remain),
-    /// one set each. `nil` when no mobility movement is left.
-    private mutating func cooldownBlock(complementing lead: MovementPattern? = nil) -> PlannedBlock? {
-        var candidates = orderedMobility(holdsOnly: true, complementing: lead)
-        if candidates.isEmpty { candidates = orderedMobility(holdsOnly: false, complementing: lead) }
-        let items = mobilityItems(from: candidates, cap: SessionAssembly.maxCooldownExercises)
-        guard !items.isEmpty else { return nil }
-        return PlannedBlock(
-            title: "Cooldown",
-            category: .cooldown,
-            items: [items[0]],
-            reserve: Array(items.dropFirst()),
-            allowSetAdjust: false,
-            minItems: 1
-        )
+    /// The Recovery flow's stretches: two moving stretches then two holds where the pool allows, freshest
+    /// first, each one set at its catalog length.
+    mutating func recoveryStretches(count: Int) -> [PlannedItem] {
+        let moving = orderedMobility(holdsOnly: false, complementing: nil).filter { !$0.isHold }
+        var picked = Array(moving.prefix(count / 2))
+        let holds = orderedMobility(holdsOnly: true, complementing: nil).filter { hold in !picked.contains { $0.id == hold.id } }
+        picked += holds.prefix(count - picked.count)
+        if picked.count < count {
+            let rest = orderedMobility(holdsOnly: false, complementing: nil).filter { stretch in !picked.contains { $0.id == stretch.id } }
+            picked += rest.prefix(count - picked.count)
+        }
+        return picked.map { exercise in
+            usedIds.insert(exercise.id)
+            return .fixed(exercise, role: .recovery, value: SessionAssembly.bookendValue(for: exercise), sets: 1)
+        }
     }
 
-    /// The strength training block: one ability-matched exercise per strength pattern, stalest
-    /// pattern first (and never repeating the most recent session's lead pattern), each at its Step 6
-    /// capacity-relative target, plus - since US-RC01 - every further chain each pattern offers as a
-    /// **wide-circuit accessory**. When `includePrimal` is set (every shape but an extended blend), the
-    /// primal `locomotion` pattern is folded in here as before; an extended blend passes `false` so
-    /// primal instead earns its own dedicated block. `nil` when the pool has no eligible movement.
-    ///
-    /// Built in two breadth-first passes over `ProgressionChainSelection.selectAll`'s per-pattern
-    /// ranking, so the reserve widens evenly rather than doubling up on one pattern before another
-    /// pattern has even earned its primary: every pattern's primary (rank 0 chain) first, stalest
-    /// pattern first, then every pattern's further chains (rank 1+, the accessories), same pattern
-    /// order. The very first item becomes the block's sole seeded active station; everything after it -
-    /// the other patterns' primaries *and* every pattern's accessories - is reserve the depth-first
-    /// timing fit (`candidates()`) may promote once the active stations are already at the round cap.
-    private mutating func strengthBlock(includePrimal: Bool = true) -> PlannedBlock? {
-        let rankedByPattern = orderedStrengthPatterns(includePrimal: includePrimal).map { pattern in
-            ProgressionChainSelection.selectAll(
-                pattern: pattern,
-                library: library,
-                pool: pool,
+    // MARK: Main stations
+
+    /// The main and Practice stations (decisions 8-11): each due ladder's current rung, in slot order,
+    /// then - for the slots the day's ladders cannot fill - a Practice Movement for the first ladder, then
+    /// the second. A ladder with no eligible rung (movement access, an injury) contributes nothing.
+    private mutating func mainStations(day: TrainingDay, slots: Int) -> [PlannedItem] {
+        let eligibleIds = Set(pool.map(\.id))
+        let ladders = orderedLadders(for: day).compactMap { ladder -> ChainSelection? in
+            ProgressionChainSelection.selectInChain(
+                library.filter { $0.progressionChainId == ladder },
+                eligibleIds: eligibleIds,
                 recentLogs: recentLogs,
-                varietyWindow: varietyWindow,
-                withheldByStartSeed: withheldByStartSeed,
-                offered: offered
+                level: level,
+                withheldByStartSeed: withheldByStartSeed
             )
         }
-
-        var items: [PlannedItem] = []
-        for selections in rankedByPattern {
-            guard let primary = selections.first else { continue }
-            appendTrainingItem(primary, into: &items)
+        let mains = Array(ladders.prefix(slots))
+        var items = mains.compactMap { mainItem(for: $0.exercise, role: .main) }
+        for main in mains.prefix(max(0, slots - mains.count)) {
+            if let practice = practiceItem(for: main) { items.append(practice) }
         }
-        for selections in rankedByPattern {
-            for accessory in selections.dropFirst() {
-                appendTrainingItem(accessory, into: &items)
-            }
-        }
-
-        guard !items.isEmpty else { return nil }
-        return PlannedBlock(
-            title: "Strength",
-            category: .strength,
-            items: [items[0]],
-            reserve: Array(items.dropFirst()),
-            allowSetAdjust: true,
-            minItems: 1
-        )
+        return items
     }
 
-    /// Builds one training station's `PlannedItem` for `selection` (its Step 6 capacity-relative
-    /// target, round count clamped into the block rails) and appends it to `items`, claiming the
-    /// exercise id so no later chain - in this pattern or another - can reuse it. Shared by
-    /// `strengthBlock`'s primary and accessory passes and by `primalBlock` (US-RC01) so a station is
-    /// sized identically wherever it is drawn from.
-    private mutating func appendTrainingItem(_ selection: ChainSelection, into items: inout [PlannedItem]) {
-        guard !usedIds.contains(selection.exercise.id) else { return }
+    /// The day's ladders in slot order: least recently worked first (never worked ahead of worked, then
+    /// the canonical order). A Legs Day leads with one squat-side and one hinge-side ladder - the side
+    /// worked longest ago first - before the remaining two. A ladder whose current rung a Different
+    /// workout press already showed goes behind the others.
+    private func orderedLadders(for day: TrainingDay) -> [String] {
+        let ladderById = Dictionary(library.map { ($0.id, $0.progressionChainId) }, uniquingKeysWith: { first, _ in first })
+        var lastWorked: [String: Date] = [:]
+        var shownLadders: Set<String> = []
+        for log in recentLogs {
+            for logged in log.exercises where logged.countsForProgression {
+                guard let ladder = ladderById[logged.exerciseId] else { continue }
+                lastWorked[ladder] = max(lastWorked[ladder] ?? .distantPast, log.completedAt)
+            }
+        }
+        for id in offered { if let ladder = ladderById[id] { shownLadders.insert(ladder) } }
+        let canonical = day.ladders
+        func isDue(_ lhs: String, before rhs: String) -> Bool {
+            let lShown = shownLadders.contains(lhs)
+            let rShown = shownLadders.contains(rhs)
+            if lShown != rShown { return !lShown }
+            let l = lastWorked[lhs]
+            let r = lastWorked[rhs]
+            if (l == nil) != (r == nil) { return l == nil }
+            if let l, let r, l != r { return l < r }
+            return (canonical.firstIndex(of: lhs) ?? 0) < (canonical.firstIndex(of: rhs) ?? 0)
+        }
+        guard day == .legs else { return canonical.sorted(by: isDue) }
+        let sides = [["squat", "lunge"], ["hinge_bridge", "hinge_hip"]]
+            .map { $0.sorted(by: isDue) }
+            .sorted { isDue($0[0], before: $1[0]) }
+        let leads = sides.map { $0[0] }
+        let rest = sides.flatMap { $0.dropFirst() }.sorted(by: isDue)
+        return leads + rest
+    }
+
+    /// A main or core station for `exercise`: four sets at its served Earned Reps (held under them on a
+    /// Return), which the fit may cut to the short-session floor or pad to the top of the range - except
+    /// on a Return or ramp session, which is never padded.
+    private mutating func mainItem(for exercise: Exercise, role: StationRole) -> PlannedItem? {
+        guard !usedIds.contains(exercise.id) else { return nil }
+        usedIds.insert(exercise.id)
+        let kind = RepGrammar.kind(of: exercise)
         let target = AdaptiveOverload.target(
-            for: selection.exercise,
+            for: exercise,
+            level: level,
             recentLogs: recentLogs,
             progressionRate: progressionRate,
             reentryScale: reentryScale,
             steppedDownSince: ProgressionChainSelection.stepDownDate(
-                onto: selection.exercise,
+                onto: exercise,
                 library: library,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                level: level
             ),
-            startingRepMultiplier: startVolume.repMultiplier,
-            startingSets: startVolume.sets
+            startingRepMultiplier: startingRepMultiplier
         )
-        usedIds.insert(selection.exercise.id)
-        items.append(
-            PlannedItem(
-                exercise: selection.exercise,
-                reps: target.reps,
-                durationSeconds: target.durationSeconds,
-                sets: SessionAssembly.clampTrainingSets(target.sets),
-                restSeconds: SessionAssembly.roundRestSeconds
+        let isHeld = reentryScale < AdaptiveOverload.neutralReentryScale
+        return PlannedItem(
+            exercise: exercise,
+            role: role,
+            value: target.value,
+            earned: RepGrammar.served(earned: target.earned, for: kind, level: level),
+            sets: RepGrammar.setsPerStation,
+            floor: RepGrammar.shortSessionFloor(for: kind),
+            ceiling: isHeld ? target.value : RepGrammar.earnedRange(for: kind, level: level).upperBound
+        )
+    }
+
+    /// The Practice Movement for `main` (decisions 9-10, ADR-0015): the next harder rung at Practice
+    /// reps. It bypasses the staple gate but never an injury, a Strength-Phase lock or a withdrawn rung,
+    /// and is not offered on a Return. With no such rung, the rung below at volume reps; with neither,
+    /// no station.
+    private mutating func practiceItem(for main: ChainSelection) -> PlannedItem? {
+        let chain = library.filter { $0.progressionChainId == main.chainId }
+        if !isReturn, let harder = chain.first(where: { $0.progressionOrder == main.order + 1 }),
+           isPracticeEligible(harder), !usedIds.contains(harder.id) {
+            usedIds.insert(harder.id)
+            return .fixed(
+                harder,
+                role: .practice,
+                value: RepGrammar.practiceValue(for: RepGrammar.kind(of: harder)),
+                sets: RepGrammar.setsPerStation
             )
-        )
-    }
-
-    /// The dedicated primal block for an extended blend (US-E02): the ability-matched movement from
-    /// the primal `locomotion` chain at its Step 6 capacity-relative target, sets adjustable for
-    /// timing - plus, since US-RC01, `locomotion`'s own further chain as a reserve accessory exactly
-    /// like a strength pattern's. Draws only `pillar == .primal` movements from the eligible pool, so
-    /// the Zero-Equipment Floor and movement access (`MovementAccess`) still hold. `nil` when the pool
-    /// has no eligible primal movement (e.g. movement access or an injury filtered them out) - the
-    /// session then degrades gracefully to strength + mobility rather than emitting an empty block.
-    ///
-    /// The PRD's default was primal staying single-movement (strength carries all the widening),
-    /// revisited only if the primal block itself lands short under the round cap - and it does: a
-    /// beginner's 60-min session pins primal at 4 rounds/max rest with only one station and is still
-    /// short, because the cap alone cannot make up the shortfall a beginner's lower per-set entry-tier
-    /// targets leave. Enabling this one further chain here is that revisit; it changes nothing when the
-    /// depth-first fit does not need it (locomotion's second chain never gets promoted at a length the
-    /// round cap alone already carries), exactly like a strength pattern's own accessory.
-    ///
-    /// Since ADR-0007 withdrew that second chain (`primal_ground_flow`) until version 2, locomotion offers
-    /// one chain, so the block is a single station and the strength block absorbs the shortfall. The
-    /// `selectAll` path stays, so a returning chain rejoins as an accessory with no change here.
-    private mutating func primalBlock() -> PlannedBlock? {
-        let selections = ProgressionChainSelection.selectAll(
-            pattern: .locomotion,
-            library: library,
-            pool: pool,
-            recentLogs: recentLogs,
-            varietyWindow: varietyWindow,
-            withheldByStartSeed: withheldByStartSeed,
-            offered: offered
-        ).filter { $0.exercise.pillar == .primal }
-
-        var items: [PlannedItem] = []
-        for selection in selections {
-            appendTrainingItem(selection, into: &items)
         }
-        guard !items.isEmpty else { return nil }
-        return PlannedBlock(
-            title: "Primal Movement",
-            category: .primal,
-            items: [items[0]],
-            reserve: Array(items.dropFirst()),
-            allowSetAdjust: true,
-            minItems: 1
+        guard let lower = chain.first(where: { $0.progressionOrder == main.order - 1 }),
+              isPracticeEligible(lower),
+              let item = mainItem(for: lower, role: .practice) else { return nil }
+        return PlannedItem(
+            exercise: item.exercise,
+            role: .practice,
+            value: item.value,
+            earned: nil,
+            sets: item.sets,
+            floor: item.floor,
+            ceiling: item.ceiling
         )
     }
 
-    // MARK: Candidate generation
+    /// Practice eligibility: in the offered catalog (never withdrawn), its phase earned, and safe for the
+    /// user's injuries. The staple restriction does not apply (ADR-0015).
+    private func isPracticeEligible(_ exercise: Exercise) -> Bool {
+        !MovementAccess.isWithdrawn(exercise)
+            && MovementAccess.isPhaseEarned(exercise, phase: phase)
+            && ExercisePoolFilter.isInjurySafe(exercise, injuries: injuries)
+    }
 
-    /// Turns ordered mobility exercises into one-set planned items (per-set value from Step 6),
-    /// claiming each id so no later block reuses it.
+    // MARK: Core Sprinkle
+
+    /// The Core Sprinkle(s): the current rung of this Cycle's core ladder (`TrainingRotation
+    /// .coreLadderOrder`), then the next when a second is asked for.
+    private mutating func coreStations(count: Int) -> [PlannedItem] {
+        guard count > 0 else { return [] }
+        let eligibleIds = Set(pool.map(\.id))
+        let ordered = TrainingRotation.coreLadderOrder(
+            canonical: SessionAssembly.coreLadders,
+            library: library,
+            logs: recentLogs,
+            asOf: asOf,
+            calendar: calendar
+        )
+        var items: [PlannedItem] = []
+        let selections = ordered.compactMap { ladder in
+            ProgressionChainSelection.selectInChain(
+                library.filter { $0.progressionChainId == ladder },
+                eligibleIds: eligibleIds,
+                recentLogs: recentLogs,
+                level: level,
+                withheldByStartSeed: withheldByStartSeed
+            )
+        }
+        // A core rung a Different workout press already showed goes behind the other ladders' rungs.
+        let preferred = selections.filter { !offered.contains($0.exercise.id) } + selections.filter { offered.contains($0.exercise.id) }
+        for selection in preferred where items.count < count {
+            if let item = mainItem(for: selection.exercise, role: .core) { items.append(item) }
+        }
+        return items
+    }
+
+    // MARK: Bookends
+
+    /// One-set stretches at their catalog lengths, claiming each id so no later slot reuses it.
     private mutating func mobilityItems(from exercises: [Exercise], cap: Int) -> [PlannedItem] {
         exercises.prefix(cap).map { exercise in
-            let target = AdaptiveOverload.target(
-                for: exercise,
-                recentLogs: recentLogs,
-                progressionRate: progressionRate,
-                reentryScale: reentryScale
-            )
             usedIds.insert(exercise.id)
-            return PlannedItem(
-                exercise: exercise,
-                reps: target.reps,
-                durationSeconds: target.durationSeconds,
-                sets: 1,
-                restSeconds: SessionAssembly.mobilityRestSeconds
-            )
+            return .fixed(exercise, role: nil, value: SessionAssembly.bookendValue(for: exercise), sets: 1)
         }
     }
 
-    /// The strength patterns present in the pool, ordered stalest-first via `PatternFocus`, with the
-    /// most recent session's lead pattern held out of the lead slot (Step 3's no-repeat rule). Primal
-    /// `locomotion` patterns are included only when `includePrimal` is set (folded into strength for
-    /// every shape but an extended blend, which gives primal its own block instead).
-    ///
-    /// The US-AC05 `patternEmphasis` lever biases both the rank and the lead selection as a per-pattern
-    /// staleness multiplier, but purely as a reorder: the pattern set (and thus the block's structure,
-    /// its uniform round count, and every eligible movement) is untouched, so a de-emphasized pattern is
-    /// still present and still available to the block's breadth-first widening as an accessory. At
-    /// neutral emphasis this is byte-identical to the pre-US-AC05 ordering.
-    private func orderedStrengthPatterns(includePrimal: Bool) -> [MovementPattern] {
-        let patterns = Array(
-            Set(
-                pool
-                    .filter { $0.pillar == .strength || (includePrimal && $0.pillar == .primal) }
-                    .map(\.movementPattern)
-            )
-        )
-        guard !patterns.isEmpty else { return [] }
-
-        let ranked = PatternFocus.rank(
-            candidatePatterns: patterns,
-            recentLogs: recentLogs,
-            asOf: asOf,
-            calendar: calendar,
-            emphasis: patternEmphasis
-        )
-        if !offered.isEmpty {
-            return patternsLeadingWithUnoffered(ranked: ranked, candidatePatterns: patterns)
-        }
-        guard
-            let lead = PatternFocus.select(
-                candidatePatterns: patterns,
-                recentLogs: recentLogs,
-                asOf: asOf,
-                calendar: calendar,
-                emphasis: patternEmphasis
-            )
-        else { return ranked }
-        return [lead] + ranked.filter { $0 != lead }
-    }
+    // MARK: Bookend ordering
 
     /// Eligible, not-yet-claimed mobility movements ordered for variety: never-worked and longest-ago
     /// first, movements used in the last few sessions pushed back, then shortest (finest timing
@@ -1523,46 +1196,6 @@ private struct Builder {
         guard apply else { return ordered }
         return ordered.filter(SessionAssembly.isPostureHipOpener)
             + ordered.filter { !SessionAssembly.isPostureHipOpener($0) }
-    }
-
-    /// The strength pattern order for a **Different workout** press: a pattern that still has a move the
-    /// press has not shown leads ahead of a pattern whose every candidate was already shown, each group
-    /// keeping its stalest-first order, so once a pattern's chains are used up the next press leads with
-    /// another pattern. Step 3's no-repeat rule still holds: the previous session's lead pattern takes the
-    /// lead slot only when no other pattern can, exactly as `PatternFocus.select` falls back.
-    private func patternsLeadingWithUnoffered(
-        ranked: [MovementPattern],
-        candidatePatterns: [MovementPattern]
-    ) -> [MovementPattern] {
-        let unoffered = ranked.filter { pattern in
-            ProgressionChainSelection.selectAll(
-                pattern: pattern,
-                library: library,
-                pool: pool,
-                recentLogs: recentLogs,
-                varietyWindow: varietyWindow,
-                withheldByStartSeed: withheldByStartSeed
-            ).contains { !offered.contains($0.exercise.id) }
-        }
-        let ordered = unoffered + ranked.filter { !unoffered.contains($0) }
-        let blocked = PatternFocus.recentLeadPattern(
-            among: candidatePatterns,
-            recentLogs: recentLogs,
-            asOf: asOf,
-            calendar: calendar
-        )
-        guard let lead = ordered.first(where: { $0 != blocked }) ?? ordered.first else { return ordered }
-        return [lead] + ordered.filter { $0 != lead }
-    }
-
-    /// The day's lead strength pattern (Step 3) the bookends bias toward (US-M02): the stalest
-    /// strength pattern with the no-repeat rule applied, taken over strength patterns only so the
-    /// complement target is always a mapped strength pattern - never primal `locomotion`, which the
-    /// `complements` mapping does not cover - even on the shorter shapes that fold primal into the
-    /// strength block. `nil` when the pool holds no strength movement, leaving the bookends on the
-    /// general variety ordering.
-    private func leadStrengthPattern() -> MovementPattern? {
-        orderedStrengthPatterns(includePrimal: false).first
     }
 
     /// Most recent completed (non-skipped) date per mobility exercise id, for variety ordering.
