@@ -223,7 +223,7 @@ final class ReadyViewModel {
             let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
             recentLogs = try await workoutLogService.workoutLogs(from: lookback, to: nil)
             policy = try await sessionPolicyService.currentPolicy(for: user)
-            plan = TrainingRotation.plan(logs: recentLogs, asOf: now())
+            plan = try await workoutEngine.trainingPlan(user: user, recentLogs: recentLogs, asOf: now())
 
             // The profile just read is the freshest there is, so the load path needs no second fetch.
             // A Rest Day builds no session until the user asks to train anyway.
@@ -421,7 +421,7 @@ final class ReadyViewModel {
         }
         trainsAnyway = false
         variation = .none
-        plan = TrainingRotation.plan(logs: recentLogs, asOf: now())
+        plan = (try? await workoutEngine.trainingPlan(user: refreshed, recentLogs: recentLogs, asOf: now())) ?? plan
         if showsRestDay {
             workout = nil
         } else {

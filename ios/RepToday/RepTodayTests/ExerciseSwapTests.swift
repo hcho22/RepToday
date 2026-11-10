@@ -709,11 +709,7 @@ final class ExerciseSwapTests: XCTestCase {
             for: result.exercise, level: .intermediate, recentLogs: logs,
             reentryScale: ReturnOverride.reentryScale(isReturn: false, recentLogs: logs)
         ).reps
-        XCTExpectFailure(
-            "Suspected production bug: ExerciseSwap carries a held slot's ease onto the substitute as a cut, so the ramp ease applies twice."
-        ) {
-            XCTAssertEqual(result.reps, partiallyEased, "a swap mid-ramp carries the ramp's partial ease, once")
-        }
+        XCTAssertEqual(result.reps, partiallyEased, "a swap mid-ramp carries the ramp's partial ease, once")
     }
 
     /// A Return or ramp session already serves every main slot under its Earned Reps, so the gap between
@@ -741,14 +737,10 @@ final class ExerciseSwapTests: XCTestCase {
         let outcome = ExerciseSwap.swap(
             slot, in: workout([slot], wasReturn: true), user: user(), library: [standard, knee], recentLogs: logs
         )
-        XCTExpectFailure(
-            "Suspected production bug: ExerciseSwap treats a Return slot's ease as a cut and eases the substitute twice."
-        ) {
-            guard case let .substituted(result) = outcome else {
-                return XCTFail("a returning user's swap declined: the substitute was eased twice and fell out of budget")
-            }
-            XCTAssertEqual(result.reps, expected, "the substitute is eased once, by its own Return target")
+        guard case let .substituted(result) = outcome else {
+            return XCTFail("a returning user's swap declined: the substitute was eased twice and fell out of budget")
         }
+        XCTAssertEqual(result.reps, expected, "the substitute is eased once, by its own Return target")
     }
 
     /// A swap mid-ramp follows a step back taken inside the ramp: "too hard" with the move marked

@@ -5,7 +5,7 @@ Run by the `Report Trainer art gaps` build phase of the RepToday target (`ios/Re
 
     python3 tools/check-trainer-art.py <Exercises.json> <Assets.xcassets>
 
-It prints one Xcode `warning:` line per **served** movement (audience not `version2`) and Trainer
+It prints one Xcode `warning:` line per **served** movement (audience neither `version2` nor `retired`) and Trainer
 that lacks a full start/end pair, and one per Trainer image set whose name maps to no catalog
 movement or no valid pose, so a misnamed file drop is visible too.
 
@@ -67,7 +67,7 @@ def main(argv):
             present[trainer].add((match['id'], match['pose']))
 
     for entry in catalog:
-        if entry.get('audience') == 'version2':
+        if entry.get('audience') in ('version2', 'retired'):
             continue
         for trainer in TRAINERS:
             missing = [pose for pose in POSES if (entry['id'], pose) not in present[trainer]]

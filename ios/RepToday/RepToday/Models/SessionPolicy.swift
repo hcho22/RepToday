@@ -78,6 +78,10 @@ struct SessionPolicy: Codable, Equatable {
     /// Defaulted to neutral on the memberwise initializer so it is *always* present-and-neutral: a caller
     /// can never construct a policy with a missing or invalid emphasis, and existing construction sites
     /// need not restate the neutral map. `SessionPolicy.default` still sets it explicitly for clarity.
+    ///
+    /// Since Training Days (ADR-0012) the fixed Rotation decides each session's group, so the engine no
+    /// longer reads this lever; it stays decodable and writable for the Coach (ADR-0005), inert until a
+    /// later milestone gives it a role.
     var patternEmphasis: [MovementPattern: Double] = SessionPolicy.neutralPatternEmphasis
 
     /// The cold-start override contract, present only during the cold-start window (US-E04):

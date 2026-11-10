@@ -38,6 +38,15 @@ enum TrainingDay: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// The line under Today's title: what the day works, in the user's words.
+    var focusLine: String {
+        switch self {
+        case .push: return "Push work for chest, shoulders and arms."
+        case .pull: return "Pull work for your back and posture."
+        case .legs: return "Squats, lunges and hinges for legs and glutes."
+        }
+    }
+
     /// The name Today and the player show.
     var displayName: String {
         switch self {

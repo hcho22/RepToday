@@ -123,12 +123,16 @@ enum AdaptiveOverload {
             steppedDownSince: steppedDownSince,
             startingRepMultiplier: startingRepMultiplier
         )
-        var served = RepGrammar.served(earned: earned, for: kind, level: level)
-        if reentryScale < neutralReentryScale {
-            let scaled = RepGrammar.floored(Int((Double(served) * max(0, reentryScale)).rounded(.down)))
-            served = max(RepGrammar.shortSessionFloor(for: kind), min(scaled, served - step))
-        }
+        let served = held(RepGrammar.served(earned: earned, for: kind, level: level), for: kind, reentryScale: reentryScale)
         return make(exercise, value: served, earned: earned)
+    }
+
+    /// `served` held under by a Return or Re-entry Ramp (`reentryScale < 1`): scaled and floored onto the
+    /// grid, at least a step under `served`, never below the short-session floor. Unchanged at neutral.
+    static func held(_ served: Int, for kind: RepGrammar.Kind, reentryScale: Double) -> Int {
+        guard reentryScale < neutralReentryScale else { return served }
+        let scaled = RepGrammar.floored(Int((Double(served) * max(0, reentryScale)).rounded(.down)))
+        return max(RepGrammar.shortSessionFloor(for: kind), min(scaled, served - step))
     }
 
     /// An `OverloadTarget` for `exercise` at `value` per set, four sets, recording `earned`.

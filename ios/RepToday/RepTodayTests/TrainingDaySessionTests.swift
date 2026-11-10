@@ -241,4 +241,57 @@ final class TrainingDaySessionTests: XCTestCase {
             }
         }
     }
+
+    // MARK: Days an injury empties
+
+    func testADayAnInjuryEmptiesIsPassedOverSoTheRotationNeverStalls() {
+        // A wrist flag removes every push ladder: the Rotation skips Push, and a Cycle of Pull and Legs
+        // owes the Rest Day.
+        let user = TrainingDayFixtures.user(injuries: ["wrist"])
+        XCTAssertEqual(SessionAssembly.trainableDays(user: user, library: library, recentLogs: []), [.pull, .legs])
+        XCTAssertEqual(SessionAssembly.trainingPlan(user: user, library: library, recentLogs: [], asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar), .train(.pull))
+        let cycle = [
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 2)),
+            TrainingDayFixtures.trainingLog(.legs, completedAt: TrainingDayFixtures.date(daysAgo: 1)),
+        ]
+        XCTAssertEqual(
+            SessionAssembly.trainingPlan(user: user, library: library, recentLogs: cycle, asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar),
+            .rest(next: .pull, isEarly: false)
+        )
+        let workout = SessionAssembly.assemble(
+            requestedMinutes: 30,
+            user: user,
+            library: library,
+            recentLogs: [],
+            asOf: TrainingDayFixtures.asOf,
+            calendar: TrainingDayFixtures.calendar
+        )
+        XCTAssertEqual(workout.trainingDay, .pull)
+        XCTAssertTrue(stations(workout).contains { $0.role == .main })
+    }
+
+    // MARK: Practice under the cold-start cap
+
+    func testPracticeNeverExceedsTheColdStartDifficultyCap() {
+        let user = TrainingDayFixtures.user(level: .beginner)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .beginner)
+        let cap = try! XCTUnwrap(policy.coldStartContract).cappedMaxDifficulty
+        for day in TrainingDay.rotation {
+            for minutes in [45, 60] {
+                let workout = SessionAssembly.assemble(
+                    requestedMinutes: minutes,
+                    user: user,
+                    library: library,
+                    recentLogs: [],
+                    sessionPolicy: policy,
+                    trainingDay: day,
+                    asOf: TrainingDayFixtures.asOf,
+                    calendar: TrainingDayFixtures.calendar
+                )
+                for station in stations(workout) {
+                    XCTAssertLessThanOrEqual(station.exercise.difficulty, cap, "\(day) \(minutes) min: \(station.exercise.id)")
+                }
+            }
+        }
+    }
 }

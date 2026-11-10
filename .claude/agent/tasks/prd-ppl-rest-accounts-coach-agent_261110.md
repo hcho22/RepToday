@@ -1,6 +1,6 @@
 # PRD: Push/Pull/Legs Training Days, Rest Days, Accounts and the Coach Agent (2026-11-10)
 
-- Status: **Approved for documentation (2026-11-10); M1 authorized for implementation (2026-11-10).**
+- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2-M4 not started.**
   Every decision below was settled with the captain in a design grill on 2026-11-09 and 2026-11-10.
   The captain approved this PRD and its documentation changes on 2026-11-10.
   No implementation is authorized until the captain approves a milestone.
@@ -96,52 +96,52 @@ Exit criteria: all M1 stories pass; the fit harness shows every length x level x
 #### US-TD00: Fit-feasibility harness
 **Description:** As the team, we want a test that prices every length x level x Training Day so timing regressions are caught before users see them.
 **Acceptance Criteria:**
-- [ ] Test-only harness over 7 lengths x 3 levels x 3 Training Days using `SessionAssembly.workSecondsPerSet` and the real catalog.
-- [ ] Reports planned minutes vs requested; asserts decision 17 (fill within ~+/-3 min or flagged honest shortfall).
-- [ ] Runs in CI on both iOS lanes.
+- [x] Test-only harness over 7 lengths x 3 levels x 3 Training Days using `SessionAssembly.workSecondsPerSet` and the real catalog.
+- [x] Reports planned minutes vs requested; asserts decision 17 (fill within ~+/-3 min or flagged honest shortfall).
+- [x] Runs in CI on both iOS lanes.
 
 #### US-TD01: Retire primal and withdraw `pull_ytw`
 **Description:** As a home or hotel user, I want no crawling movements and no movement without a picture.
 **Acceptance Criteria:**
-- [ ] New `MovementAudience.retired`; all locomotion movements retired; `pull_ytw` withdrawn; `MovementAccess.isWithdrawn` covers both.
-- [ ] Catalog loader accepts a withdrawn rung at the top of a chain (`pull_reverse_snow_angel` -> `pull_ytw`).
-- [ ] Primal block and its machinery deleted from `SessionAssembly`; old logs and paused sessions with primal still decode.
-- [ ] Served catalog count is 68; affected tests updated.
+- [x] New `MovementAudience.retired`; all locomotion movements retired; `pull_ytw` withdrawn; `MovementAccess.isWithdrawn` covers both.
+- [x] Catalog loader accepts a withdrawn rung at the top of a chain (`pull_reverse_snow_angel` -> `pull_ytw`).
+- [x] Primal block and its machinery deleted from `SessionAssembly`; old logs and paused sessions with primal still decode.
+- [x] Served catalog count is 68; affected tests updated.
 
 #### US-TD02: Station role and earned level on every prescription and log
 **Description:** As the engine, I need to know which reps were earned and which stations were Practice so Padding and Practice never advance progression.
 **Acceptance Criteria:**
-- [ ] `PrescribedExercise` and `LoggedExercise` gain optional `role` (main / practice / core), `earnedReps`, `earnedDurationSeconds`; old JSON decodes unchanged.
-- [ ] One predicate decides what counts for progression (not skipped, not Practice), used by chain frontier, Adaptive Overload capacity, plateau diagnosis, progress analytics and foundation clearing.
-- [ ] `CompletedSet` unchanged (US-CC09 guard stays green).
-- [ ] New test: a Practice station never moves a rung or the Rep Ramp.
+- [x] `PrescribedExercise` and `LoggedExercise` gain optional `role` (main / practice / core), `earnedReps`, `earnedDurationSeconds`; old JSON decodes unchanged.
+- [x] One predicate decides what counts for progression (not skipped, not Practice), used by chain frontier, Adaptive Overload capacity, plateau diagnosis, progress analytics and foundation clearing.
+- [x] `CompletedSet` unchanged (US-CC09 guard stays green).
+- [x] New test: a Practice station never moves a rung or the Rep Ramp.
 
 #### US-TD03: 5-step rep grammar and the new advancement bar
 **Description:** As a user, I want simple, round rep targets and a clear bar for moving up.
 **Acceptance Criteria:**
-- [ ] One owner of ranges and steps (decision 14) and short-session floors (decision 16).
-- [ ] Earned Reps stored unrounded, served floored to a multiple of 5; climb and back-off per the planning default.
-- [ ] Advancement per decision 15; `advancementCriteria` text rewritten in `Exercises.json`.
-- [ ] Interim: sets fixed at 4, round rest capped at 60s; app ships and plays correctly.
+- [x] One owner of ranges and steps (decision 14) and short-session floors (decision 16).
+- [x] Earned Reps stored unrounded, served floored to a multiple of 5; climb and back-off per the planning default.
+- [x] Advancement per decision 15; `advancementCriteria` text rewritten in `Exercises.json`.
+- [x] Interim: sets fixed at 4, round rest capped at 60s; app ships and plays correctly.
 
 #### US-TD04: Training Day rotation and the slot-plan engine
 **Description:** As a user, I want each day to train one group with a few movements done well.
 **Acceptance Criteria:**
-- [ ] Pure, date-injected rotation: Training Day of a log; today's plan (train day X or rest) from logs plus a list of Outside Activities (empty until M2), including the deferral rules of decision 21; core-ladder rotation.
-- [ ] Session = up to 2 warm-up + main slots per decision 8 + Core Sprinkle + up to 2 cooldown; slot order per decisions 9-11.
-- [ ] Fit per decisions 16-17; tolerance about 3 minutes; wide-circuit accessories, round rails and reserve promotion deleted.
-- [ ] Swap keeps the slot's role.
-- [ ] Invariant guard: every main/core station has 4 sets, every rep target is a multiple of 5, no session mixes groups, no primal, no `pull_ytw`.
-- [ ] Existing tests rewritten or retired as listed in Technical Considerations.
+- [x] Pure, date-injected rotation: Training Day of a log; today's plan (train day X or rest) from logs plus a list of Outside Activities (empty until M2), including the deferral rules of decision 21; core-ladder rotation.
+- [x] Session = up to 2 warm-up + main slots per decision 8 + Core Sprinkle + up to 2 cooldown; slot order per decisions 9-11.
+- [x] Fit per decisions 16-17; tolerance about 3 minutes; wide-circuit accessories, round rails and reserve promotion deleted.
+- [x] Swap keeps the slot's role.
+- [x] Invariant guard: every main/core station has 4 sets, every rep target is a multiple of 5, no session mixes groups, no primal, no `pull_ytw`.
+- [x] Existing tests rewritten or retired as listed in Technical Considerations.
 
 #### US-TD05: Rest Day on Today
 **Description:** As a user, I want the app to tell me when to rest and let me recover or train anyway.
 **Acceptance Criteria:**
-- [ ] Today shows a Rest Day card after a completed cycle (decision 18).
-- [ ] "Recovery" starts a short mobility-only flow that neither advances the rotation nor counts as a session.
-- [ ] "Train anyway" starts the next group.
-- [ ] Test pins that rest days never lower the Consistency Score.
-- [ ] Verify in the simulator, light and dark, largest Dynamic Type.
+- [x] Today shows a Rest Day card after a completed cycle (decision 18).
+- [x] "Recovery" starts a short mobility-only flow that neither advances the rotation nor counts as a session.
+- [x] "Train anyway" starts the next group.
+- [x] Test pins that rest days never lower the Consistency Score.
+- [x] Verify in the simulator, light and dark, largest Dynamic Type.
 
 ### M2 - Welcome Page, Focus Areas and Outside Activity
 

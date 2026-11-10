@@ -147,7 +147,7 @@ enum PlateauDiagnosis {
     ///   genuinely stuck behind a gate and warrants more challenge within the tier, not a fresh
     ///   skill they cannot yet receive.
     ///
-    /// Unparseable criteria are never "met", so such a tier never reads as a stall.
+    /// A tier clears only on the advancement bar (`RepGrammar.isAdvancementMet`) at the user's level.
     static func isPhysicallyStalled(recentLogs: [WorkoutLog], library: [Exercise], level: FitnessLevel = .beginner) -> Bool {
         let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 

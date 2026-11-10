@@ -15,9 +15,9 @@ import Foundation
 ///   so "sustained over ~8 weeks" is real, not a hot streak.
 /// - **Competence** - the user has cleared every **foundation** (`StrengthFoundation`: Push, Pull,
 ///   Legs, Core). A foundation clears when each of its lines does, and a line clears when the **entry
-///   tier** of one of its counting chains is cleared. "Cleared" reuses the exact `AdvancementCriteria`
-///   mechanism Step 5 uses to advance a chain: a logged, non-skipped performance met the entry
-///   movement's advancement criteria. A line with several counting chains needs only one chain's entry
+///   tier** of one of its counting chains is cleared. "Cleared" is the exact bar Step 5 uses to advance
+///   a chain (`RepGrammar.isAdvancementMet`, US-TD03): four clean sets at the top of the user's range on
+///   the entry movement, at earned reps, in a session not rated too hard. A line with several counting chains needs only one chain's entry
 ///   cleared - demonstrating a real push / squat / hinge / core, not every variation. Legs has two
 ///   lines (Squat and Hinge) and needs both; Pull counts only its horizontal chain, so the postural
 ///   chain never clears it (ADR-0006).

@@ -350,13 +350,16 @@ enum ExerciseSwap {
             ),
             startingRepMultiplier: startVolume.repMultiplier
         )
-        // A main or core slot the fit padded above (or cut below) Earned Reps hands the substitute the
-        // same number of steps, within the substitute's own floor and range.
+        // A main or core slot the fit padded above (or cut below) its own number hands the substitute the
+        // same number of steps, within the substitute's own floor and range. The slot's own number is its
+        // recorded Earned Reps held by the same Return or ramp ease the substitute's target carries, so
+        // that ease is applied once, never again as a cut.
         let slotEarned = prescription.exercise.isHold ? prescription.earnedDurationSeconds : prescription.earnedReps
-        let slotValue = prescription.reps ?? prescription.durationSeconds
-        guard let slotEarned, let slotValue, RepGrammar.kind(of: prescription.exercise) == kind else { return target }
+        guard let slotEarned, let slotValue = prescription.reps ?? prescription.durationSeconds,
+              RepGrammar.kind(of: prescription.exercise) == kind else { return target }
+        let slotBase = AdaptiveOverload.held(slotEarned, for: kind, reentryScale: reentryScale)
         let range = RepGrammar.earnedRange(for: kind, level: level)
-        let shifted = target.value + (slotValue - slotEarned)
+        let shifted = target.value + (slotValue - slotBase)
         let value = min(max(shifted, RepGrammar.shortSessionFloor(for: kind)), max(range.upperBound, target.value))
         return AdaptiveOverload.make(exercise, value: value, earned: target.earned)
     }

@@ -71,13 +71,13 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
 /// violation (`init(library:)` is the validating core that the data/bundle inits funnel
 /// through), making a malformed library a loud startup failure rather than a silent one.
 ///
-/// The file also carries the movements **withdrawn until version 2** (`audience == .version2`,
-/// ADR-0007). They are validated with everything else so they stay recoverable in the file, but the
+/// The file also carries **withdrawn** movements - held back until version 2 (`audience == .version2`,
+/// ADR-0007) or retired with the primal family (`.retired`, ADR-0014). They are validated with everything else so they stay recoverable in the file, but the
 /// service never serves them: `exercises()` and every query below read the *offered* library only.
 /// That is what keeps them out of every session, swap, progress surface and Coach context by
 /// construction - nothing downstream has to remember to filter them.
 final class MockExerciseService: ExerciseServiceProtocol {
-    /// The movements offered to users (everything except the version-2 withdrawals).
+    /// The movements offered to users (everything except the withdrawn ones).
     private let library: [Exercise]
     /// `id -> Exercise` over the offered library, for O(1) id lookups and chain-link resolution.
     private let byId: [String: Exercise]

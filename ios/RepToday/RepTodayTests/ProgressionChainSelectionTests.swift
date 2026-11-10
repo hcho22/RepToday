@@ -173,19 +173,20 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selection?.didAdvance, false, "a lateral entry is not an advancement")
     }
 
-    /// When every eligible tier was withheld, the entry is the chain's *gentlest* eligible tier,
-    /// never its hardest. Reaching for the top of what survived would invert the very restriction
-    /// that narrowed the pool (a Return cap, an injury filter) in the first place.
-    func testNoHistoryChainWithEveryTierWithheldEntersAtItsGentlestTier() {
-        let chain = makeChain("c", [(id: "c0", difficulty: 1), (id: "c1", difficulty: 2)])
+    /// When every eligible tier was withheld, the entry is the chain's *hardest* eligible tier: the band
+    /// withholds only tiers below its floor, so the hardest survivor is the one closest to where the user
+    /// trained. It is still drawn from the eligible pool, so a Return cap or an injury filter that
+    /// narrowed the pool is never crossed.
+    func testNoHistoryChainWithEveryTierWithheldEntersAtItsHardestEligibleTier() {
+        let chain = makeChain("c", [(id: "c0", difficulty: 1), (id: "c1", difficulty: 2), (id: "c2", difficulty: 3)])
         let selection = ProgressionChainSelection.selectInChain(
             chain,
-            eligibleIds: Set(chain.map(\.id)),
+            eligibleIds: ["c0", "c1"],
             recentLogs: [],
             level: level,
-            withheldByStartSeed: ["c0", "c1"]
+            withheldByStartSeed: ["c0", "c1", "c2"]
         )
-        XCTAssertEqual(selection?.exercise.id, "c0")
+        XCTAssertEqual(selection?.exercise.id, "c1")
     }
 
     /// The default keeps the plain chain-local behavior: nothing withheld means the chain entry.

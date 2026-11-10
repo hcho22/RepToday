@@ -51,9 +51,9 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
         // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`.
         //
-        // `sessionPolicy` is threaded through the assembler (US-E03): its `pillarWeighting`,
-        // `varietyWindow`, and `progressionRate` levers reach Steps 2/5/6. With `SessionPolicy.default`
-        // (every lever neutral) that is a no-op, so output is identical to pre-policy behavior.
+        // `sessionPolicy` is threaded through the assembler: its `progressionRate` paces the climb of
+        // Earned Reps, its `varietyWindow` orders the bookend stretches, and its cold-start contract
+        // drives Step 0. `trainingDay` nil lets the Rotation decide.
         let library = try await exerciseService.exercises()
         return SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
@@ -65,6 +65,11 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
             trainingDay: trainingDay,
             asOf: now()
         )
+    }
+
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.trainingPlan(user: user, library: library, recentLogs: recentLogs, asOf: asOf)
     }
 
     func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {

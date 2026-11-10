@@ -56,6 +56,10 @@ protocol WorkoutEngineProtocol {
         trainingDay: TrainingDay?
     ) async throws -> Workout
 
+    /// Today's place in the Rotation for `user` (ADR-0012): a Training Day, or a Rest Day after a
+    /// completed Cycle. Days the user cannot train at all are passed over.
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> TrainingPlan
+
     /// The Rest Day's optional Recovery flow (US-TD05): a short, mobility-only session that neither
     /// advances the Rotation nor counts as a session.
     func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout
@@ -94,6 +98,11 @@ extension WorkoutEngineProtocol {
             sessionPolicy: sessionPolicy,
             variation: variation
         )
+    }
+
+    /// A test double that predates Training Days follows the Rotation over every group.
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+        TrainingRotation.plan(logs: recentLogs, asOf: asOf)
     }
 
     /// A test double that predates the Recovery flow has none to offer.

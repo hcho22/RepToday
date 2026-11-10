@@ -1618,7 +1618,8 @@ private struct FoundationsUpdateNote: View {
     }
 
     private var detail: String {
-        "Legs asks for both its Squat and Hinge sides, and Pull counts the row ladder. "
+        "A line clears with four clean sets at the top of your rep range, at the reps you've earned. "
+            + "Legs asks for both its Squat and Hinge sides, and Pull counts the row ladder. "
             + "We recalculated where you stand from your full history: \(standing)."
     }
 

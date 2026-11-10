@@ -52,6 +52,10 @@ enum TrainingPlan: Equatable {
 /// - **Core Sprinkle.** Each Cycle's Core Sprinkle is the core ladder worked longest before the Cycle
 ///   began, so the ladders rotate from Cycle to Cycle (`coreLadderOrder`).
 ///
+/// - **Trainable days.** A group the user cannot train at all - an injury removes every ladder it has
+///   (`SessionAssembly.trainableDays`) - is passed over and counts as done for the Cycle, so the Rotation
+///   never stalls on a day that could only ever serve stretches and a Core Sprinkle.
+///
 /// Existing users' logs carry no Training Day (their stations have no role), so they start at Push.
 enum TrainingRotation {
 
@@ -71,14 +75,16 @@ enum TrainingRotation {
     static func plan(
         logs: [WorkoutLog],
         activities: [OutsideActivity] = [],
+        trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
         asOf: Date,
         calendar: Calendar = .current
     ) -> TrainingPlan {
-        let state = state(logs: logs, activities: activities, asOf: asOf, calendar: calendar)
+        let state = state(logs: logs, activities: activities, trainable: trainable, asOf: asOf, calendar: calendar)
         return plan(
             for: state,
             on: calendar.startOfDay(for: asOf),
             activities: activities,
+            trainable: trainable,
             includingSameDay: true,
             calendar: calendar
         )
@@ -89,6 +95,7 @@ enum TrainingRotation {
     static func state(
         logs: [WorkoutLog],
         activities: [OutsideActivity] = [],
+        trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
         asOf: Date,
         calendar: Calendar = .current
     ) -> State {
@@ -104,7 +111,7 @@ enum TrainingRotation {
         while day < today {
             if let sessions = byDay[day] {
                 for log in sessions {
-                    record(log, into: &state)
+                    record(log, into: &state, trainable: trainable)
                 }
             } else if activityDays.contains(day) {
                 // An Outside Activity counts as showing up, so its day is not a rest.
@@ -114,6 +121,7 @@ enum TrainingRotation {
                 for: state,
                 on: day,
                 activities: activities,
+                trainable: trainable,
                 includingSameDay: false,
                 calendar: calendar
             ) {
@@ -126,7 +134,7 @@ enum TrainingRotation {
         // rest, and a Push session finished this morning moves today's next group on.
         for log in logs.filter({ $0.trainingDay != nil && $0.completedAt >= today && $0.completedAt <= asOf })
             .sorted(by: { $0.completedAt < $1.completedAt }) {
-            record(log, into: &state)
+            record(log, into: &state, trainable: trainable)
         }
         return state
     }
@@ -136,10 +144,11 @@ enum TrainingRotation {
     static func trainingDay(
         logs: [WorkoutLog],
         activities: [OutsideActivity] = [],
+        trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
         asOf: Date,
         calendar: Calendar = .current
     ) -> TrainingDay {
-        plan(logs: logs, activities: activities, asOf: asOf, calendar: calendar).trainingDay
+        plan(logs: logs, activities: activities, trainable: trainable, asOf: asOf, calendar: calendar).trainingDay
     }
 
     // MARK: Core Sprinkle
@@ -174,15 +183,16 @@ enum TrainingRotation {
 
     // MARK: Internals
 
-    private static func record(_ log: WorkoutLog, into state: inout State) {
+    private static func record(_ log: WorkoutLog, into state: inout State, trainable: Set<TrainingDay>) {
         guard let day = log.trainingDay else { return }
-        if state.restOwed || state.completed.count == TrainingDay.rotation.count {
+        let skipped = Set(TrainingDay.rotation).subtracting(trainable)
+        if state.restOwed || state.completed.union(skipped).count == TrainingDay.rotation.count {
             // "Train anyway": the owed rest is forfeited and a new Cycle starts.
             state = State()
         }
         if state.cycleStartedAt == nil { state.cycleStartedAt = log.completedAt }
         state.completed.insert(day)
-        guard state.completed.count == TrainingDay.rotation.count else { return }
+        guard state.completed.union(skipped).count == TrainingDay.rotation.count else { return }
         if state.restTakenEarly {
             state = State()
         } else {
@@ -196,12 +206,14 @@ enum TrainingRotation {
         for state: State,
         on day: Date,
         activities: [OutsideActivity],
+        trainable: Set<TrainingDay>,
         includingSameDay: Bool,
         calendar: Calendar
     ) -> TrainingPlan {
-        let remaining = TrainingDay.rotation.filter { !state.completed.contains($0) }
-        guard let next = remaining.first else { return .rest(next: .push, isEarly: false) }
-        if state.restOwed { return .rest(next: .push, isEarly: false) }
+        let first = TrainingDay.rotation.first { trainable.contains($0) } ?? .push
+        if state.restOwed { return .rest(next: first, isEarly: false) }
+        let remaining = TrainingDay.rotation.filter { !state.completed.contains($0) && trainable.contains($0) }
+        guard let next = remaining.first else { return .train(first) }
         let yesterday = calendar.date(byAdding: .day, value: -1, to: day) ?? day
         let rested = Set(activities.compactMap { activity -> TrainingDay? in
             let activityDay = calendar.startOfDay(for: activity.date)

@@ -1798,3 +1798,17 @@ The claim "Airplane mode on. The session still builds." had no record behind it,
 - **The guard.** `OfflineSessionGenerationTests` drives the production container through the app-open reconciliation and the Ready load with every telemetry send failing as airplane mode does, one request held open forever, the Variety Language provider failing offline, and a tripwire on `URLSession.shared`.
 - **The device check.** The real-iPhone airplane-mode cold open of an existing install passed (row 1 of the same report's device checklist).
   A fresh install through onboarding was not run on a device: the captain accepted `OfflineSessionGenerationTests.testFreshInstallOfflineOnboardsAndBuildsACompleteSession` as the evidence for that path, because a device fresh install would erase the on-device history.
+
+## Training Days, Rest Days and the set grammar (M1, US-TD00...US-TD05, 2026-11-10)
+
+M1 of the Push/Pull/Legs PRD (`.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`) reshapes every session into a Training Day.
+The decisions are ADR-0012 to ADR-0015; ADR-0013 records how M1 reconciles with ADR-0010 and ADR-0011, which the design grill did not see.
+
+- **Primal retired, `pull_ytw` re-chained (US-TD01).** Every locomotion movement is `audience: retired`; `MovementAccess.isWithdrawn` covers it; `pull_ytw` sits withdrawn at the top of the postural chain, which the loader now allows. 68 movements are served.
+- **Station roles (US-TD02).** Prescriptions and logs carry `role`, `earnedReps` and `earnedDurationSeconds`; `LoggedExercise.countsForProgression` is the one predicate behind chain frontiers, Earned Reps, plateau diagnosis, Progress and Foundation clearing.
+- **Set grammar (US-TD03).** `Services/Engine/RepGrammar.swift` owns 4 sets, steps of 5, the earned ranges, short-session floors, Practice values and the advancement bar. `AdaptiveOverload` now computes Earned Reps; the per-movement criteria parser is gone.
+- **Rotation and slot plan (US-TD04).** `Services/Engine/TrainingRotation.swift` and the rewritten `SessionAssembly` (slot plan, reps-then-rest fit, honest shortfall). The wide circuit, round rails and stretched work windows are retired; old snapshots still decode.
+- **Fit harness (US-TD00).** `TrainingDayFitHarnessTests` prices every length x level x day. Fresh beginner and intermediate users run honestly short at 20, 30 and 60 minutes (about 4, 4 and 9 minutes short at worst); a user whose Earned Reps have climbed fills almost every length.
+- **Rest Day on Today (US-TD05).** Today names the Training Day and its honest length, shows the Rest Day card after a completed Cycle with the Recovery flow and Train anyway, and moves to the next group after a session. A Recovery flow is not a session.
+- **Found while rewriting the suites.** Four engine defects were fixed before landing: a ladder wholly below the cold-start band entered at its bottom rung after the handoff; Practice ignored the cold-start difficulty cap; a swap on a Return applied the ease twice; and an injury that removes every ladder of a day stalled the Rotation on that day (such days are now passed over, `SessionAssembly.trainableDays`).
+- **Evidence.** `TrainingDayUITests` (XCUITest, on demand) onboards, plays a 45-minute Training Day end to end with Trainer art on every movement, and sees Today move on.

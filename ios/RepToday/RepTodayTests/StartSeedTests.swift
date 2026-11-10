@@ -1577,7 +1577,8 @@ final class StartSeedTests: XCTestCase {
         // The harder half, and the one the generated session above does not necessarily reach: a ladder
         // the cold-start week never touched at all. Strip every `pull` entry from the history and resolve
         // each Pull ladder directly through Step 5 - it now has no history, and without the withheld set
-        // its entry would be the gentlest rung (`pull_superman`, difficulty 1).
+        // its entry would be the gentlest rung (`pull_superman`, difficulty 1). The postural ladder sits
+        // wholly below the band, so it enters at its hardest offered rung.
         let withoutPull = logs.map { log -> WorkoutLog in
             var stripped = log
             stripped.exercises = log.exercises.filter { $0.movementPattern != .pull }
@@ -1599,12 +1600,6 @@ final class StartSeedTests: XCTestCase {
             let entry = try XCTUnwrap(untrained, ladder).exercise
             let offered = pool.filter { $0.progressionChainId == ladder }
             let expectedFloor = min(seededFloor, try XCTUnwrap(offered.map(\.difficulty).max()))
-            if ladder == "pull_postural" {
-                // Known gap: the band clamps its floor per movement pattern, and Pull's hardest rung (on
-                // the horizontal ladder) sits above the floor, so every postural rung is withheld and the
-                // ladder falls back to its gentlest rung (`pull_superman`) rather than the hardest it offers.
-                XCTExpectFailure("an untouched ladder whose every rung the band withheld enters at its gentlest rung")
-            }
             XCTAssertGreaterThanOrEqual(
                 entry.difficulty, expectedFloor,
                 "the untouched \(ladder) ladder regressed to \(entry.id)"

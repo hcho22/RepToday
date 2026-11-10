@@ -113,7 +113,7 @@ enum ProgressionChainSelection {
     ///   eligible - is a step back at the floor (`AdaptiveOverload.floorStepBackDate`), the tier below it
     ///   becomes the current tier, and the same check repeats on that tier for outcomes after the step
     ///   down (ADR-0011).
-    /// - When the current tier's `advancementCriteria` are met in the logs (after the last step down,
+    /// - When the current tier is cleared in the logs (`RepGrammar.hasCleared`; after the last step down,
     ///   if there was one) and its next tier exists, the desired tier is that next tier; otherwise it
     ///   is the current tier itself. With no step down the current tier is the frontier.
     /// - The desired tier is then clamped to what is eligible: the highest eligible tier no higher
@@ -147,8 +147,11 @@ enum ProgressionChainSelection {
 
         guard let frontier = frontierTier(in: sorted, recentLogs: recentLogs) else {
             // No history in this chain: enter at the gentlest eligible tier the band did not
-            // withhold, falling back to the gentlest tier the chain offers when it withheld them all.
-            let entry = eligible.first { !withheldByStartSeed.contains($0.id) } ?? lowestEligible
+            // withhold. The band withholds only tiers below its floor, so when it withheld every tier
+            // the chain offers, the hardest of them is the one closest to the level the user trained
+            // at - a whole ladder below the band (a Training Day serves every ladder of its group)
+            // must not drop an advanced user to its entry rung after the handoff.
+            let entry = eligible.first { !withheldByStartSeed.contains($0.id) } ?? eligible.last ?? lowestEligible
             return ChainSelection(
                 exercise: entry,
                 chainId: entry.progressionChainId,
@@ -204,9 +207,8 @@ enum ProgressionChainSelection {
     /// Ranks **every** chain available for `pattern`, best first, in the same preference order
     /// `select` singles a winner out of - freshness, then the chain the user is actively
     /// progressing, then the gentler option, deterministically. `select` is exactly `.first` of
-    /// this; US-RC01's wide-circuit accessories are every result *after* the first, each an honest
-    /// frontier of its own chain (`selectInChain`'s existing earned-progression and Start-Seed-band
-    /// rules apply per chain, so an accessory is bound by them exactly like a primary).
+    /// this; every result after the first is an honest frontier of its own chain (`selectInChain`'s
+    /// earned-progression and Start-Seed-band rules apply per chain).
     ///
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each
@@ -265,12 +267,12 @@ enum ProgressionChainSelection {
         let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
-        // Every chain's candidate is ranked, not filtered out - US-RC01 needs every one of them as a
-        // possible accessory, not just the single winner `select` (`.first`) reads off the front. Both
+        // Every chain's candidate is ranked, not filtered out, so a caller reading past `.first` sees every
+        // chain's frontier, not just the single winner `select` reads off the front. Both
         // "never on offer" and "not fresh" are preferences, expressed as leading sort keys rather than
         // pre-filters-with-fallback: a withheld or recently-used candidate sorts *behind* an in-band,
         // fresh one, but is never dropped, so a chain the user happens to be actively working (and is
-        // therefore "not fresh") still has an honest shot at being ranked - just lower - as an accessory.
+        // therefore "not fresh") still has an honest shot at being ranked - just lower.
         // This reproduces `select`'s old filter-with-fallback exactly at `.first` (when a dimension
         // cannot differentiate - e.g. every candidate is equally withheld - sorting on it is a no-op,
         // the same as the old fallback-to-the-whole-scope behavior), while no longer silently discarding

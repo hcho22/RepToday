@@ -266,8 +266,10 @@ struct ReadyView: View {
     /// The header subtitle *is* the Variety Language line when there is one - the honest "what today
     /// is" contrast the engine produced (US-G03). It falls back to a neutral line for a degenerate
     /// warm-up-only session that has no lead pillar to name.
+    /// What today's Training Day works; the pillar contrast line the Variety Language writes has nothing
+    /// left to contrast once every session is a strength Training Day.
     private var subtitle: String {
-        viewModel.varietyNote?.text ?? "A complete session, ready to go."
+        viewModel.trainingDay?.focusLine ?? viewModel.varietyNote?.text ?? "A complete session, ready to go."
     }
 
     // MARK: - Duration chips

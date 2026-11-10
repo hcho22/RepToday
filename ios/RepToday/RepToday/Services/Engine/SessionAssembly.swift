@@ -187,10 +187,9 @@ enum SessionAssembly {
     /// coupling itself is the point: it is what forbids a screen window roomier than the plan. A fast
     /// user simply finishes early and taps **Done**.
     ///
-    /// - Note: The specific round/station counts this paragraph originally measured (e.g. "45 min: 8
-    ///   rounds x 4 stations") predate US-RC01, which capped `maxTrainingSets` at `4` and replaced
-    ///   "add more rounds" with "add more stations" as the lever for a long session - see that
-    ///   constant. This factor's own pacing math and calibration are unaffected.
+    /// - Note: The round and station counts this paragraph originally measured predate Training Days,
+    ///   which fix every station at 4 rounds and fill a long session with reps and rest. This factor's
+    ///   own pacing math and calibration are unaffected.
     static let workPaceGenerosityFactor = 1.25
 
     // MARK: - Entry point
@@ -220,7 +219,12 @@ enum SessionAssembly {
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
-        let day = trainingDay ?? TrainingRotation.trainingDay(logs: recentLogs, asOf: asOf, calendar: calendar)
+        let day = trainingDay ?? TrainingRotation.trainingDay(
+            logs: recentLogs,
+            trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
+            asOf: asOf,
+            calendar: calendar
+        )
         if !variation.isNone {
             let varied = assemblePass(
                 requestedMinutes: requestedMinutes,
@@ -312,6 +316,7 @@ enum SessionAssembly {
             varietyWindow: SessionPolicy.default.varietyWindow,
             reentryScale: AdaptiveOverload.neutralReentryScale,
             isReturn: false,
+            practiceDifficultyCap: nil,
             startingRepMultiplier: AdaptiveOverload.neutralStartingRepMultiplier,
             withheldByStartSeed: [],
             sitsLong: user.profile.sitsLong,
@@ -333,6 +338,25 @@ enum SessionAssembly {
             focusPillar: .mobility,
             requestedMinutes: max(1, (plannedSeconds(of: [block]) + 59) / 60),
             blocks: stretches.isEmpty ? [] : [block]
+        )
+    }
+
+    /// The Training Days this user can train at all: those with at least one ladder holding a rung the
+    /// eligible pool offers. An injury can remove every ladder of a day (a wrist flag empties Push), and
+    /// the Rotation passes such a day over rather than serve it as stretches and a Core Sprinkle.
+    static func trainableDays(user: User, library: [Exercise], recentLogs: [WorkoutLog]) -> Set<TrainingDay> {
+        let ladders = Set(ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs).map(\.progressionChainId))
+        return Set(TrainingDay.rotation.filter { day in day.ladders.contains(where: ladders.contains) })
+    }
+
+    /// Today's plan for this user (ADR-0012): the Rotation over their logs, passing over any day they
+    /// cannot train.
+    static func trainingPlan(user: User, library: [Exercise], recentLogs: [WorkoutLog], asOf: Date, calendar: Calendar = .current) -> TrainingPlan {
+        TrainingRotation.plan(
+            logs: recentLogs,
+            trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
+            asOf: asOf,
+            calendar: calendar
         )
     }
 
@@ -404,6 +428,7 @@ enum SessionAssembly {
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: ReturnOverride.reentryScale(isReturn: isReturn, recentLogs: recentLogs),
             isReturn: isReturn,
+            practiceDifficultyCap: user.coldStart.active ? sessionPolicy.coldStartContract?.cappedMaxDifficulty : nil,
             startingRepMultiplier: startSeed.volume.repMultiplier,
             withheldByStartSeed: withheld,
             sitsLong: user.profile.sitsLong,
@@ -765,7 +790,8 @@ struct SessionPlan: Equatable {
     /// Whether the fit has no lever left to lengthen the session: every station at the top of its range
     /// and both rests at their caps. A session short of its length in this state is an honest shortfall.
     var isSaturated: Bool {
-        stations.allSatisfy { $0.value + RepGrammar.step > $0.ceiling }
+        guard !stations.isEmpty else { return true }
+        return stations.allSatisfy { $0.value + RepGrammar.step > $0.ceiling }
             && roundRestSeconds + RepGrammar.step > roundRestCap
             && (stations.count <= 1 || transitionSeconds + RepGrammar.step > transitionCap)
     }
@@ -822,6 +848,10 @@ private struct Builder {
     /// Return / Re-entry Ramp: holds the prescription under Earned Reps (`< 1`), neutral otherwise.
     let reentryScale: Double
     let isReturn: Bool
+    /// The cold-start difficulty cap in force (`SessionPolicy.ColdStartContract.cappedMaxDifficulty`),
+    /// `nil` outside the cold-start window. A Practice Movement bypasses the staple gate only, never
+    /// this safety cap.
+    let practiceDifficultyCap: Int?
     /// Cold-start Start Seed: lifts a no-history opening number (never to the top of the range).
     let startingRepMultiplier: Double
     /// Movements the Start Seed band held out of reach, so a chain's entry is not mistaken for fresh.
@@ -848,6 +878,7 @@ private struct Builder {
         varietyWindow: Int,
         reentryScale: Double,
         isReturn: Bool,
+        practiceDifficultyCap: Int?,
         startingRepMultiplier: Double,
         withheldByStartSeed: Set<String>,
         sitsLong: Bool,
@@ -865,6 +896,7 @@ private struct Builder {
         self.varietyWindow = varietyWindow
         self.reentryScale = reentryScale
         self.isReturn = isReturn
+        self.practiceDifficultyCap = practiceDifficultyCap
         self.startingRepMultiplier = startingRepMultiplier
         self.withheldByStartSeed = withheldByStartSeed
         self.sitsLong = sitsLong
@@ -1015,8 +1047,8 @@ private struct Builder {
     }
 
     /// The Practice Movement for `main` (decisions 9-10, ADR-0015): the next harder rung at Practice
-    /// reps. It bypasses the staple gate but never an injury, a Strength-Phase lock or a withdrawn rung,
-    /// and is not offered on a Return. With no such rung, the rung below at volume reps; with neither,
+    /// reps. It bypasses the staple gate but never an injury, a Strength-Phase lock, a withdrawn rung or
+    /// the cold-start difficulty cap, and is not offered on a Return. With no such rung, the rung below at volume reps; with neither,
     /// no station.
     private mutating func practiceItem(for main: ChainSelection) -> PlannedItem? {
         let chain = library.filter { $0.progressionChainId == main.chainId }
@@ -1044,12 +1076,14 @@ private struct Builder {
         )
     }
 
-    /// Practice eligibility: in the offered catalog (never withdrawn), its phase earned, and safe for the
-    /// user's injuries. The staple restriction does not apply (ADR-0015).
+    /// Practice eligibility: in the offered catalog (never withdrawn), its phase earned, safe for the
+    /// user's injuries, and inside the cold-start difficulty cap while that is in force. Only the staple
+    /// restriction does not apply (ADR-0015).
     private func isPracticeEligible(_ exercise: Exercise) -> Bool {
         !MovementAccess.isWithdrawn(exercise)
             && MovementAccess.isPhaseEarned(exercise, phase: phase)
             && ExercisePoolFilter.isInjurySafe(exercise, injuries: injuries)
+            && practiceDifficultyCap.map { exercise.difficulty <= $0 } ?? true
     }
 
     // MARK: Core Sprinkle

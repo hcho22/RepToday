@@ -104,12 +104,11 @@ extension WorkoutLog {
         return logged.couldNotFinish == true || !exercises.contains { $0.couldNotFinish == true }
     }
 
-    /// Whether `logged` may count toward clearing a tier's advancement criteria (and a Foundation line,
-    /// and so the earned Strength Phase). In a session the "couldn't finish" follow-up answered (any move
-    /// carries a mark), only when the session does not step it back: a move stepped back still recorded
-    /// the target it asked for (prescribed = performed), so its sets would otherwise read as met. A log
-    /// the follow-up never reached - every log written before it existed - counts every move it did not
-    /// skip, exactly as it always has, so a tier or Foundation line it cleared stays cleared.
+    /// Whether `logged` may count toward clearing a rung (and a Foundation line, and so the earned
+    /// Strength Phase): never a Practice station or a skip; in a session the "couldn't finish" follow-up
+    /// answered (any move carries a mark), only when the session does not step it back, since a move
+    /// stepped back still recorded the target it asked for (prescribed = performed). The advancement bar
+    /// itself (`RepGrammar.isAdvancementMet`) also rejects any session rated too hard (decision 15).
     func countsTowardAdvancement(_ logged: LoggedExercise) -> Bool {
         guard logged.countsForProgression else { return false }
         return exercises.contains { $0.couldNotFinish != nil } ? !stepsBack(logged) : !logged.skipped
