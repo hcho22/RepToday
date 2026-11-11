@@ -262,7 +262,7 @@ struct ServiceContainer {
         let exerciseService = try! MockExerciseService()
         let userService = CoreDataUserService(context: context)
         let workoutLogService = CoreDataWorkoutLogService(context: context)
-        // Logged Outside Activities (US-HO04), in the CloudKit-mirrored `Cloud` store beside the logs.
+        // Logged Outside Activities (US-HO04), in the on-device `Local` store; they never sync to iCloud.
         let outsideActivityService = CoreDataOutsideActivityService(context: context)
         // One policy store shared by the Programmer (re-programs) and the completion recorder
         // (the cold-start handoff's reconciled policy, US-G04).

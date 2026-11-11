@@ -591,7 +591,7 @@ struct RestDayCard: View {
             }
             .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .accessibilityHint("Starts a five-minute stretch. Today stays a Rest Day.")
+            .accessibilityHint("Starts a five-minute stretch. Today stays a \(WelcomeCopy.restTitle(for: reason)).")
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Button(action: onTrainAnyway) {

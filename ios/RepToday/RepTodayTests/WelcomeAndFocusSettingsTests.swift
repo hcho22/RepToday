@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import RepToday
 
@@ -125,13 +126,29 @@ final class WelcomeAndFocusSettingsTests: XCTestCase {
         await today.load()
         XCTAssertEqual(today.dayTitle, "Day Off")
         XCTAssertEqual(today.dayDetail, "You worked Legs outside today, so it gets a day off.")
-        XCTAssertEqual(today.steps.map(\.title), ["Push", "Pull", "Day off", "Rest", "Legs"])
+        XCTAssertEqual(today.steps.map(\.title), ["Push", "Pull", "Off", "Rest", "Legs"])
 
         let tomorrow = try welcome(logs: cycle, activities: [run], daysFromNow: 1)
         await tomorrow.load()
         XCTAssertEqual(tomorrow.dayTitle, "Rest Day")
         XCTAssertEqual(tomorrow.dayDetail, "Your outside workout covered Legs, so rest comes early.")
         XCTAssertEqual(tomorrow.steps.map(\.status), [.done, .done, .today, .upcoming])
+    }
+
+    /// Today's card on a day off says so all the way through: its headline gives the reason and the
+    /// Recovery hint never calls the day a Rest Day.
+    func testTheRestDayCardOnADayOffNeverCallsItARestDay() throws {
+        let card = RestDayCard(
+            next: .legs,
+            reason: .workedOutside(groups: [.legs], today: true),
+            onRecovery: {},
+            onTrainAnyway: {}
+        )
+        let (_, window) = HostedSurface.host(card, size: CGSize(width: 375, height: 600))
+        let spoken = AccessibilityTree.spokenStrings(in: try XCTUnwrap(window.rootViewController?.view))
+        XCTAssertTrue(spoken.contains { $0.contains("You worked Legs outside today, so it gets a day off.") }, "\(spoken)")
+        XCTAssertTrue(spoken.contains("Starts a five-minute stretch. Today stays a Day Off."), "\(spoken)")
+        XCTAssertFalse(spoken.contains { $0.contains("Rest Day") }, "\(spoken)")
     }
 
     func testTheGreetingFollowsTheClockAndWorksWithoutAName() async throws {

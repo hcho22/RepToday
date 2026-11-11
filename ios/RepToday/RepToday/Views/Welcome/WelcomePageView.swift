@@ -117,12 +117,10 @@ struct WelcomePageView: View {
 // MARK: - Cycle strip
 
 /// The Cycle strip (decision 19): the groups done this Cycle, today, and what is still to come, ending
-/// with the Rest Day. A row of steps at ordinary text sizes, a list at the accessibility sizes so no name
-/// is squeezed. Read by VoiceOver as one sentence.
+/// with the Rest Day. A row of equal columns when every name fits in full, otherwise a list, so no name
+/// is ever squeezed or cut off at any text size or screen width. Read by VoiceOver as one sentence.
 struct CycleStripView: View {
     let steps: [CycleStep]
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -131,12 +129,16 @@ struct CycleStripView: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .textCase(.uppercase)
 
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
-                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.sm))
-            layout {
-                ForEach(steps) { step in
-                    CycleStepView(step: step, isCompact: !dynamicTypeSize.isAccessibilitySize)
+            ViewThatFits(in: .horizontal) {
+                EqualColumnsLayout(spacing: Theme.Spacing.sm) {
+                    ForEach(steps) { step in
+                        CycleStepView(step: step, isCompact: true)
+                    }
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    ForEach(steps) { step in
+                        CycleStepView(step: step, isCompact: false)
+                    }
                 }
             }
         }
@@ -149,6 +151,29 @@ struct CycleStripView: View {
 
     private var accessibilityText: String {
         "\(WelcomeCopy.stripTitle): " + steps.map(\.accessibilityLabel).joined(separator: ". ") + "."
+    }
+}
+
+/// The strip's row: one column per step, all as wide as the widest step needs. Its ideal width is the
+/// width that shows every name in full, so `ViewThatFits` picks the list whenever the row cannot.
+private struct EqualColumnsLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let ideal = (sizes.map(\.width).max() ?? 0) * CGFloat(subviews.count) + spacing * CGFloat(subviews.count - 1)
+        let width = proposal.width.map { $0.isFinite ? max($0, ideal) : ideal } ?? ideal
+        return CGSize(width: width, height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let column = (bounds.width - spacing * CGFloat(subviews.count - 1)) / CGFloat(subviews.count)
+        for (index, subview) in subviews.enumerated() {
+            let x = bounds.minX + CGFloat(index) * (column + spacing)
+            subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: column, height: bounds.height))
+        }
     }
 }
 
@@ -170,7 +195,6 @@ private struct CycleStepView: View {
                 .font(step.status == .today ? Theme.Typography.headline : Theme.Typography.body)
                 .foregroundStyle(step.status == .upcoming ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: isCompact ? .infinity : nil, alignment: isCompact ? .center : .leading)
     }

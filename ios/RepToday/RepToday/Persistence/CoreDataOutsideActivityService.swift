@@ -58,8 +58,8 @@ final class CoreDataOutsideActivityService: OutsideActivityServiceProtocol, @unc
     }
 
     func deleteAll() async throws {
-        // Object by object rather than a batch delete, so the tombstones flow through the view context
-        // and CloudKit mirroring the way `CoreDataWorkoutLogService.deleteAllLogs()` does.
+        // Object by object rather than a batch delete, so the deletions flow through the view context
+        // and every observer sees them; the records live in the on-device Local store and never sync.
         try await context.perform {
             for record in try self.context.fetch(CDOutsideActivity.fetchRequest()) {
                 self.context.delete(record)

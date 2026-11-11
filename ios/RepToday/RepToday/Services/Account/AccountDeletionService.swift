@@ -40,8 +40,8 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     private let activeSessionStore: any ActiveSessionStore
     private let authService: any AuthServiceProtocol
     private let coachAuthenticationCleanup: (@Sendable () async -> Void)?
-    /// Logged Outside Activities (US-HO04), a Cloud record type beside the logs. Optional so a caller
-    /// that predates them still composes the teardown.
+    /// Logged Outside Activities (US-HO04), kept in the on-device Local store and never synced to
+    /// iCloud. Optional so a caller that predates them still composes the teardown.
     private let outsideActivityService: (any OutsideActivityServiceProtocol)?
 
     init(
