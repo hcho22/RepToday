@@ -193,6 +193,7 @@ final class AccountSignInViewModel {
 
     private func runFinish(_ identity: AccountIdentity) async {
         activity = .finishing
+        message = nil
         defer { activity = nil }
         do {
             try await finish(identity)

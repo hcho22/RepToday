@@ -95,6 +95,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
+        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         appState.markWelcomeSeen()
         let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
@@ -161,6 +162,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
+        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         XCTAssertTrue(appState.isWelcomePending)
         let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
@@ -231,6 +233,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
+        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         appState.markStrengthGraduationCelebrated()
         let userService = CountingUserService(user: MockPersistence.sampleUser)
@@ -263,6 +266,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
+        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         // Past the cold-launch Welcome Page ("Let's go"), where the graduation reveal is shown.
         appState.markWelcomeSeen()

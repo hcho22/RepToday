@@ -100,7 +100,12 @@ final class TestApp {
         answersHealthPrompt: Bool = true,
         passesWelcomePage: Bool = true
     ) {
-        app.launchArguments = ["-AppState.isOnboarded", onboarded ? "YES" : "NO"] + posture.arguments
+        // Sign-in is the on-device stub (`-RepTodayAccountStub YES`): no XCUITest talks to Clerk, and
+        // with no session token nothing syncs. An onboarded launch is also linked to an account, so it
+        // opens past the one-time sign-in a pre-account user would meet.
+        app.launchArguments = ["-AppState.isOnboarded", onboarded ? "YES" : "NO", "-RepTodayAccountStub", "YES"]
+            + (onboarded ? ["-AppState.accountUserId", "uitest-account"] : [])
+            + posture.arguments
         app.launch()
         if onboarded && passesWelcomePage {
             passWelcomePage()

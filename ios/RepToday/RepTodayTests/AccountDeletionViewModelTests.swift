@@ -212,7 +212,7 @@ final class AccountDeletionViewModelTests: XCTestCase {
             "the shipped confirmation did not plainly warn that App Store billing continues: \(spoken)"
         )
         XCTAssertEqual(
-            spoken.contains { $0.contains("Sign in with Apple link") },
+            spoken.contains { $0.contains("which you sign in to with Apple") },
             !excludesAppleLink,
             "the confirmation drifted between the Apple-linked and local-only variants: \(spoken)"
         )

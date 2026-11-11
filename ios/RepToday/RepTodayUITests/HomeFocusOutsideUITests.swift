@@ -34,11 +34,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         app.buttons["Abs"].tap()
         XCTAssertTrue(chest.isSelected)
         attach("01-onboarding-focus-areas")
-        let startMoving = app.buttons["Start moving"]
-        for _ in 0..<6 where !startMoving.exists {
-            app.buttons["Continue"].tap()
-        }
-        startMoving.tap()
+        finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
 
         // A new user starts at Push; play a short session so the Rotation reaches Pull.

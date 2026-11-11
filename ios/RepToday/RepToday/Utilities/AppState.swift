@@ -371,10 +371,12 @@ final class AppState {
 
     /// Links the device to the account the user just signed in to. For a user who onboarded before
     /// accounts - the only onboarded user who can be unlinked, since onboarding now ends by signing
-    /// in - this starts the move of their history (`importingFromICloud`).
+    /// in - the first link starts the move of their history (`importingFromICloud`). Signing in again,
+    /// or to another account, is never a migration.
     func linkAccount(_ identity: AccountIdentity) {
+        let wasUnlinked = account == nil
         account = identity
-        if isOnboarded, legacyMigrationStage == nil || legacyMigrationStage == .awaitingSignIn {
+        if legacyMigrationStage == .awaitingSignIn || (isOnboarded && wasUnlinked && legacyMigrationStage == nil) {
             legacyMigrationStage = .importingFromICloud
         }
     }

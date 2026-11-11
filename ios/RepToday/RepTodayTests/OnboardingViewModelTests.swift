@@ -256,112 +256,111 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isFinishing, "the in-flight flag resets after failure")
     }
 
-    // MARK: - Identity (US-N01)
+    // MARK: - Identity and "Save your plan" (US-AU02)
 
-    /// With no auth service wired, identity falls back to the local identifier and the sign-in
-    /// affordance is not offered - the offline-first core loop is never gated on Apple.
-    func testNoAuthServiceFallsBackToLocalIdentifier() async throws {
+    /// A new user's record is keyed by a local id: the account owns the data on the server, so the key
+    /// never has to change when the user signs in on another phone.
+    func testFinishKeysUserByLocalIdentifier() async throws {
         let users = MockUserService()
         let vm = makeViewModel(userService: users)
         fillAnswers(vm)
-        XCTAssertFalse(vm.canSignInWithApple)
 
         let finished = await vm.finish()
         XCTAssertTrue(finished)
         let saved = try await users.currentUser()
-        XCTAssertEqual(saved?.id, "onboarding-test-user", "the local fallback keys the record")
+        XCTAssertEqual(saved?.id, "onboarding-test-user", "the local id keys the record")
     }
 
-    /// A previously-persisted Sign in with Apple identity keys the user record without any in-flow
-    /// sign-in - `finish()` reads it from the auth service and keys by it.
-    func testFinishKeysUserByPersistedAppleIdentifier() async throws {
+    /// Signing in to an account with no plan creates the plan from the answers.
+    func testSignInToANewAccountCreatesThePlan() async throws {
         let users = MockUserService()
+        let policies = RecordingSessionPolicyService()
+        let restorer = StubAccountRestorer(result: .success([]))
         let vm = OnboardingViewModel(
             userService: users,
-            sessionPolicyService: MockSessionPolicyService(),
-            authService: MockAuthService(userIdentifier: "apple-persisted"),
-            userIdentifier: { "local-fallback" },
+            sessionPolicyService: policies,
+            accountRestorer: restorer,
+            userIdentifier: { "new-user" },
             now: { self.fixedDate }
         )
         fillAnswers(vm)
 
-        let finished = await vm.finish()
-        XCTAssertTrue(finished)
+        let completion = try await vm.completeSignIn(as: Self.identity)
+        XCTAssertEqual(completion, .created)
         let saved = try await users.currentUser()
-        XCTAssertEqual(saved?.id, "apple-persisted", "the persisted Apple identifier keys the record")
+        XCTAssertEqual(saved?.id, "new-user")
+        XCTAssertEqual(policies.seededUserIds, ["new-user"], "the cold-start policy is seeded for the new plan")
+        let restoreCalls = await restorer.calls
+        XCTAssertEqual(restoreCalls, 1, "the account is checked before anything is written")
     }
 
-    /// Completing the official Sign in with Apple button during the flow records the identifier
-    /// (through `completeSignIn`, the button-completion path) and keys the user by it.
-    func testCompleteSignInKeysUserByIdentifier() async throws {
+    /// Signing in to an account that already holds a plan - the same person on a new phone - brings it
+    /// back; the answers given in this onboarding are not saved over it and no new policy is seeded.
+    func testSignInToAnExistingAccountRestoresItsPlan() async throws {
         let users = MockUserService()
-        let auth = MockAuthService()
+        let policies = RecordingSessionPolicyService()
+        let restored = MockPersistence.sampleUser
+        let restorer = StubAccountRestorer(result: .success([.profile, .workoutLog])) {
+            try await users.save(restored)
+        }
+        let analytics = MockAnalyticsService()
         let vm = OnboardingViewModel(
             userService: users,
-            sessionPolicyService: MockSessionPolicyService(),
-            authService: auth,
-            userIdentifier: { "local-fallback" },
+            sessionPolicyService: policies,
+            accountRestorer: restorer,
+            analytics: analytics,
+            userIdentifier: { "would-be-new-user" },
             now: { self.fixedDate }
         )
+        vm.onboardingStarted()
         fillAnswers(vm)
-        XCTAssertTrue(vm.canSignInWithApple)
 
-        await vm.completeSignIn(identifier: "apple-from-button")
-        XCTAssertEqual(vm.signedInIdentifier, "apple-from-button")
-        XCTAssertFalse(vm.canSignInWithApple, "no re-sign-in once signed in")
-        let persisted = try await auth.currentUserIdentifier()
-        XCTAssertEqual(persisted, "apple-from-button", "the identifier is persisted through the store")
-
-        let finished = await vm.finish()
-        XCTAssertTrue(finished)
+        let completion = try await vm.completeSignIn(as: Self.identity)
+        XCTAssertEqual(completion, .restored)
         let saved = try await users.currentUser()
-        XCTAssertEqual(saved?.id, "apple-from-button")
+        XCTAssertEqual(saved, restored, "the account's plan is what the phone now holds")
+        XCTAssertTrue(policies.seededUserIds.isEmpty, "a restored plan keeps its own policy")
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.onboardingStarted, .onboardingCompleted])
     }
 
-    /// The programmatic `signInWithApple()` path still records and keys by the returned identifier.
-    func testSignInWithAppleKeysUserByReturnedIdentifier() async throws {
+    /// When the account cannot be reached, nothing is saved, so a returning user's plan is never
+    /// overwritten by a fresh one; the user can try again.
+    func testAnUnreachableAccountSavesNothing() async throws {
         let users = MockUserService()
+        let policies = RecordingSessionPolicyService()
         let vm = OnboardingViewModel(
             userService: users,
-            sessionPolicyService: MockSessionPolicyService(),
-            authService: MockAuthService(),
-            userIdentifier: { "local-fallback" },
-            now: { self.fixedDate }
-        )
-        fillAnswers(vm)
-        XCTAssertTrue(vm.canSignInWithApple)
-
-        await vm.signInWithApple()
-        XCTAssertEqual(vm.signedInIdentifier, "mock-apple-user")
-        XCTAssertFalse(vm.canSignInWithApple, "no re-sign-in once signed in")
-
-        let finished = await vm.finish()
-        XCTAssertTrue(finished)
-        let saved = try await users.currentUser()
-        XCTAssertEqual(saved?.id, "mock-apple-user")
-    }
-
-    /// A failed sign-in is swallowed (non-gating): no identifier is recorded and `finish()` falls
-    /// back to the local identifier, so the first session is never blocked.
-    func testSignInFailureFallsBackToLocalIdentifier() async throws {
-        let users = MockUserService()
-        let vm = OnboardingViewModel(
-            userService: users,
-            sessionPolicyService: MockSessionPolicyService(),
-            authService: FailingAuthService(),
-            userIdentifier: { "onboarding-test-user" },
+            sessionPolicyService: policies,
+            accountRestorer: StubAccountRestorer(result: .failure(SyncRemoteError.unreachable)),
+            userIdentifier: { "new-user" },
             now: { self.fixedDate }
         )
         fillAnswers(vm)
 
-        await vm.signInWithApple()
-        XCTAssertNil(vm.signedInIdentifier, "a failed sign-in records nothing")
-
-        let finished = await vm.finish()
-        XCTAssertTrue(finished)
+        do {
+            _ = try await vm.completeSignIn(as: Self.identity)
+            XCTFail("an unreachable account must not finish onboarding")
+        } catch let error as OnboardingViewModel.CompletionError {
+            XCTAssertEqual(error, .accountUnreachable)
+        }
         let saved = try await users.currentUser()
-        XCTAssertEqual(saved?.id, "onboarding-test-user", "identity falls back to the local identifier")
+        XCTAssertNil(saved)
+        XCTAssertTrue(policies.seededUserIds.isEmpty)
     }
+
+    /// A build with no account backend creates the plan on the phone.
+    func testSignInWithNoAccountBackendCreatesThePlan() async throws {
+        let users = MockUserService()
+        let vm = makeViewModel(userService: users)
+        fillAnswers(vm)
+        let completion = try await vm.completeSignIn(as: Self.identity)
+        XCTAssertEqual(completion, .created)
+        let saved = try await users.currentUser()
+        XCTAssertNotNil(saved)
+    }
+
+    private static let identity = AccountIdentity(userId: "user_123", email: "riley@example.com", method: .email)
 
     // MARK: - Navigation
 
@@ -395,11 +394,24 @@ final class OnboardingViewModelTests: XCTestCase {
 
     func testDurationStepIsAlwaysReady() {
         let vm = makeViewModel()
-        // Walk to the last step.
+        while vm.step != .duration { vm.advance() }
+        XCTAssertTrue(vm.canAdvance, "a duration is preselected; the flow is never gated on it")
+    }
+
+    /// "Save your plan" is the last step, and signing in is the only way past it (decision 23).
+    func testSaveYourPlanIsTheRequiredLastStep() {
+        let vm = makeViewModel()
+        vm.displayName = "Riley"
         for _ in OnboardingViewModel.Step.allCases.dropFirst() { vm.advance() }
-        XCTAssertEqual(vm.step, .duration)
+        XCTAssertEqual(vm.step, .saveYourPlan)
         XCTAssertTrue(vm.isLastStep)
-        XCTAssertTrue(vm.canAdvance, "a duration is preselected; finish is never gated")
+        XCTAssertFalse(vm.canAdvance, "there is no Continue past sign-in")
+        XCTAssertEqual(OnboardingViewModel.Step.allCases.last, .saveYourPlan)
+        XCTAssertEqual(
+            OnboardingViewModel.Step.allCases.firstIndex(of: .saveYourPlan),
+            OnboardingViewModel.Step.allCases.firstIndex(of: .duration).map { $0 + 1 },
+            "sign-in comes straight after the onboarding answers"
+        )
     }
 
     // MARK: - Onboarding funnel telemetry (US-T08)
@@ -513,12 +525,34 @@ private struct FailingUserService: UserServiceProtocol {
     func deleteCurrentUser() async throws {}
 }
 
-/// An auth service whose `signInWithApple()` always fails, to prove sign-in is non-gating.
-private struct FailingAuthService: AuthServiceProtocol {
-    func currentUserIdentifier() async throws -> String? { nil }
-    func signInWithApple() async throws -> String { throw AuthError.failed("stub failure") }
-    func completeSignIn(identifier: String) async throws { throw AuthError.failed("stub failure") }
-    func signOut() async throws {}
+/// Restores from a scripted account: the result to return and what the restore writes on the way.
+private actor StubAccountRestorer: AccountRestoring {
+    private let result: Result<Set<SyncRecordType>, Error>
+    private let sideEffect: (@Sendable () async throws -> Void)?
+    private(set) var calls = 0
+
+    init(result: Result<Set<SyncRecordType>, Error>, sideEffect: (@Sendable () async throws -> Void)? = nil) {
+        self.result = result
+        self.sideEffect = sideEffect
+    }
+
+    func restoreFromAccount() async throws -> Set<SyncRecordType> {
+        calls += 1
+        try await sideEffect?()
+        return try result.get()
+    }
+}
+
+/// Records which users had a cold-start policy seeded.
+private final class RecordingSessionPolicyService: SessionPolicyServiceProtocol, @unchecked Sendable {
+    private(set) var seededUserIds: [String] = []
+    func currentPolicy(for user: User) async throws -> SessionPolicy { .default }
+    func seedInitialPolicy(for user: User) async throws -> SessionPolicy {
+        seededUserIds.append(user.id)
+        return .default
+    }
+    func reprogram(user: User, recentLogs: [WorkoutLog], trigger: ReprogramTrigger) async throws -> SessionPolicy { .default }
+    func dueTriggers(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> [ReprogramTrigger] { [] }
 }
 
 /// A minimal, empty-library exercise service so the deterministic policy service stays hermetic in
