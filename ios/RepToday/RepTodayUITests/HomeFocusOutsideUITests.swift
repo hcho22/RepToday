@@ -14,8 +14,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
     }
 
     func testFocusAreasOutsideActivityAndTheWelcomePage() {
-        app.terminate()
-        app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false)
+        resetThroughAccountDeletion(in: app)
         defer { app.terminate() }
 
         // Onboarding, with Chest and Abs as Focus Areas.
@@ -42,18 +41,10 @@ final class HomeFocusOutsideUITests: XCTestCase {
         startMoving.tap()
         app.answerHealthPromptIfPresented()
 
-        // A fresh user starts at Push. Play a short Push session so the next day is Pull.
-        XCTAssertNotNil(label(beginningWith: "Push Day: ", timeout: 20), "a new user starts at Push")
-        attach("02-today-push-with-focus")
-        app.buttons["5 minute session"].tap()
-        XCTAssertNotNil(label(beginningWith: "Push Day: 5", timeout: 10))
-        app.buttons["Start"].tap()
-        playToTheEnd()
-        for close in ["Done", "Close"] where app.buttons[close].waitForExistence(timeout: 3) {
-            app.buttons[close].tap()
-            break
-        }
-        XCTAssertNotNil(label(beginningWith: "Pull Day: ", timeout: 20), "Today moved on to Pull")
+        // A new user starts at Push; play a short session so the Rotation reaches Pull.
+        XCTAssertTrue(app.buttons["Start"].waitForExistence(timeout: 20), "Today never offered a session")
+        attach("02-today-with-focus")
+        XCTAssertTrue(advanceToTrainingDay("Pull Day", in: app), "Today never reached Pull Day")
 
         // A swim works Pull, so Pull swaps behind Legs - on Today, at once.
         let logButton = app.buttons["Log outside activity"]
@@ -150,28 +141,6 @@ final class HomeFocusOutsideUITests: XCTestCase {
     }
 
     // MARK: Helpers
-
-    /// Plays the session on screen to its completion screen, advancing every set early.
-    private func playToTheEnd() {
-        for _ in 0..<200 {
-            if app.staticTexts["You showed up."].exists { return }
-            for choice in ["Got it", "Start session"] where app.buttons[choice].exists {
-                app.buttons[choice].tap()
-            }
-            if app.buttons["Skip rest"].exists {
-                app.buttons["Skip rest"].tap()
-            } else if let advance = ["Done", "Complete set", "Finish exercise", "Finish session"]
-                .map({ app.buttons[$0] })
-                .first(where: { $0.exists && $0.isHittable }) {
-                advance.tap()
-            } else if app.buttons["Start hold"].exists {
-                app.buttons["Start hold"].tap()
-            } else {
-                _ = app.buttons["Done"].waitForExistence(timeout: 1)
-            }
-        }
-        XCTFail("the session never reached its completion screen")
-    }
 
     private func label(beginningWith prefix: String, timeout: TimeInterval) -> String? {
         let element = app.descendants(matching: .any)

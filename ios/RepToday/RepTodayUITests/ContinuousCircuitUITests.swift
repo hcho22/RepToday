@@ -41,6 +41,7 @@ final class ContinuousCircuitUITests: XCTestCase {
 
     func testStrengthSetShowsAWorkWindowAndDoneAdvancesIt() {
         app.launch(.optedOutWithNoProbe) // onboarded, lands on the main tabs (Today = Ready Screen)
+        onboardIfNoProfile(in: app)
 
         // Ready Screen -> Start the already-generated session.
         let start = app.buttons["Start"]
@@ -89,6 +90,7 @@ final class ContinuousCircuitUITests: XCTestCase {
     /// finger reaches, not a view-model call.
     func testStrengthBlockRotatesThroughRoundsHandsFree() {
         app.launch(.optedOutWithNoProbe)
+        onboardIfNoProfile(in: app)
 
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
@@ -139,6 +141,7 @@ final class ContinuousCircuitUITests: XCTestCase {
     /// running circuit and watching the skipped movement stay gone through rounds 2 and 3.
     func testMidCircuitSkipRemovesExerciseFromLaterRoundsHandsFree() {
         app.launch(.optedOutWithNoProbe)
+        onboardIfNoProfile(in: app)
 
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
@@ -216,6 +219,7 @@ final class ContinuousCircuitUITests: XCTestCase {
     /// mode entered.
     func testPauseFreezesTheWorkWindowWithoutBackgroundingAndResumeContinues() {
         app.launch(.optedOutWithNoProbe)
+        onboardIfNoProfile(in: app)
 
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
@@ -278,6 +282,7 @@ final class ContinuousCircuitUITests: XCTestCase {
     /// wait long, so this case is run on demand.
     func testWarmupBookendHoldsRunHandsFreeIncludingSwitchSides() {
         app.launch(.optedOutWithNoProbe)
+        onboardIfNoProfile(in: app)
 
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
