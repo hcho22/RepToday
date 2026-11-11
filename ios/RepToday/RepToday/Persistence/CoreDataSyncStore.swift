@@ -200,6 +200,8 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
             user.id = localId
             let localPhase = existing?.phaseRaw.flatMap(Phase.init(rawValue:))
             let merged = localPhase.map { user.advancingPhase(to: $0) } ?? user
+            // This device's own upload coming back changes nothing, so it writes nothing.
+            if let current = try? existing?.toUser(), current == merged { return false }
             try (existing ?? CDUser(context: context)).update(from: merged)
             if merged.phase != user.phase {
                 // An earned phase is never given back: the device keeps it and tells the account.
@@ -211,14 +213,17 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
             let policy = try SyncPayloadCoder.decode(SessionPolicy.self, from: payload)
             let userId = try context.fetch(CDUser.fetchRequest()).first?.id ?? record.recordId
             guard try takesPrecedence(record, over: .sessionPolicy, recordId: userId) else { return false }
-            let stored = try context.fetch(CDSessionPolicy.fetchRequest(userId: userId)).first ?? CDSessionPolicy(context: context)
-            try stored.update(from: policy, userId: userId)
+            let existing = try context.fetch(CDSessionPolicy.fetchRequest(userId: userId)).first
+            if let current = try? existing?.toSessionPolicy(), current == policy { return false }
+            try (existing ?? CDSessionPolicy(context: context)).update(from: policy, userId: userId)
             return true
 
         case (.workoutLog, .workoutLog(let payload, _)):
             guard try takesPrecedence(record, over: .workoutLog, recordId: record.recordId) else { return false }
             let log = try SyncPayloadCoder.decode(WorkoutLog.self, from: payload)
-            try (try fetchLog(id: log.id) ?? CDWorkoutLog(context: context)).update(from: log)
+            let existing = try fetchLog(id: log.id)
+            if let current = try? existing?.toWorkoutLog(), current == log { return false }
+            try (existing ?? CDWorkoutLog(context: context)).update(from: log)
             return true
 
         case (.workoutLog, .deleted):
@@ -231,7 +236,9 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
         case (.outsideActivity, .outsideActivity(let payload, _)):
             guard try takesPrecedence(record, over: .outsideActivity, recordId: record.recordId) else { return false }
             let activity = try SyncPayloadCoder.decode(OutsideActivity.self, from: payload)
-            (try fetchActivity(id: activity.id) ?? CDOutsideActivity(context: context)).update(from: activity)
+            let existing = try fetchActivity(id: activity.id)
+            if let current = try? existing?.toOutsideActivity(), current == activity { return false }
+            (existing ?? CDOutsideActivity(context: context)).update(from: activity)
             return true
 
         case (.outsideActivity, .deleted):

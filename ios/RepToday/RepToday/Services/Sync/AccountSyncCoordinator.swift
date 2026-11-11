@@ -83,7 +83,8 @@ final class AccountSyncCoordinator {
         self.now = now
         self.beginBackgroundWork = beginBackgroundWork
         self.onRemoteChangesApplied = onRemoteChangesApplied
-        status = appState.account == nil ? .signedOut : (engine == nil ? .localOnly : .upToDate)
+        // Nothing is claimed as saved before the first cycle has run; `start` runs one at once.
+        status = appState.account == nil ? .signedOut : (engine == nil ? .localOnly : .syncing)
     }
 
     // MARK: - Triggers

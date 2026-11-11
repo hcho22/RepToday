@@ -99,6 +99,22 @@ final class AccountEndToEndUITests: XCTestCase {
         confirm.tap()
         XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30), "deletion returns to onboarding")
         snapshot("b2-onboarding-after-deletion")
+
+        // The deleted account's session is gone from the device: "Save your plan" offers the three
+        // choices, not the deleted account back.
+        app.buttons["Continue"].tap()
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Riley\n")
+        let saveYourPlan = app.staticTexts["Save your plan"]
+        for _ in 0..<10 where !saveYourPlan.exists {
+            app.buttons["Continue"].tap()
+        }
+        XCTAssertTrue(saveYourPlan.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Continue with email"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Use a different account"].exists, "the deleted account is not offered back")
+        snapshot("b3-save-your-plan-after-deletion")
     }
 
     // MARK: - C: an existing user's one-time sign-in

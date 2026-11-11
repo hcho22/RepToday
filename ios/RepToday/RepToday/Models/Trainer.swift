@@ -50,7 +50,7 @@ extension UserServiceProtocol {
     ///
     /// It re-reads the stored user immediately before saving and changes only `profile.trainer`, so a
     /// caller holding an older snapshot never rolls back what another writer (session completion, a
-    /// CloudKit import, the injury control) saved since - the same re-read `InjuryFlagsViewModel` and
+    /// change pulled from the account, the injury control) saved since - the same re-read `InjuryFlagsViewModel` and
     /// `SessionCompletionService` do, because `save(_:)` writes the whole aggregate.
     ///
     /// - Returns: the user as saved.

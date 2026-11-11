@@ -220,9 +220,9 @@ struct ServiceContainer {
     }
 
     /// Production wiring (US-N02): the same real services as `mock()`, but backed by the
-    /// CloudKit-enabled CoreData stack rather than in-memory stores, so the user, their
-    /// history, and the in-force policy persist across relaunch and sync across devices, while
-    /// the transient active session stays on-device (the `Local` store configuration).
+    /// on-device CoreData stack rather than in-memory stores, so the user, their history, and the
+    /// in-force policy persist across relaunch and, through the sync outbox, reach the user's account
+    /// (M3), while the transient active session stays on-device (the `Local` store configuration).
     ///
     /// The one shared `context` (the app's `viewContext`) backs every CoreData store, and a
     /// single `CoreDataSessionPolicyStore` / user / log / consistency service is shared between
@@ -302,7 +302,8 @@ struct ServiceContainer {
         let exerciseService = try! MockExerciseService()
         let userService = CoreDataUserService(context: context)
         let workoutLogService = CoreDataWorkoutLogService(context: context)
-        // Logged Outside Activities (US-HO04), in the on-device `Local` store; they never sync to iCloud.
+        // Logged Outside Activities (US-HO04), in the on-device `Local` store: never in iCloud, synced to
+        // the account through the outbox like every other record.
         let outsideActivityService = CoreDataOutsideActivityService(context: context)
         // One policy store shared by the Programmer (re-programs) and the completion recorder
         // (the cold-start handoff's reconciled policy, US-G04).
@@ -443,8 +444,8 @@ struct ServiceContainer {
             analyticsService: resolvedAnalyticsService,
             // The account-deletion orchestrator (US-AD03), over the same CoreData user/log/policy and
             // device-local active-session stores plus the Keychain-backed auth this container wires -
-            // so a delete tombstones the CloudKit-mirrored records, drops the local active session,
-            // and clears the reinstall-surviving Keychain identifier in one pass.
+            // so a delete removes the account on the server first, then the device's records, the local
+            // active session, the outbox and the reinstall-surviving Keychain identifier in one pass.
             accountDeletionService: AccountDeletionService(
                 userService: userService,
                 workoutLogService: workoutLogService,

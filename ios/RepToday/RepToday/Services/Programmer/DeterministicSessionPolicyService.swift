@@ -252,7 +252,8 @@ protocol SessionPolicyStore {
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy?
     /// Delete every stored policy record, regardless of user id, for account deletion
-    /// (US-AD02/US-AD03), then save so the CloudKit mirror propagates the tombstone. Rep Today is
+    /// (US-AD02/US-AD03), then save. It queues nothing for sync: account deletion removes the server
+    /// copy itself. Rep Today is
     /// single-user, so this clears the one stored policy without needing a decodable user id - so
     /// teardown completes even when the `CDUser` aggregate is corrupt. A no-op (never an error) when
     /// none is stored.

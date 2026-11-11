@@ -27,9 +27,15 @@ It names no account, email address, token or key value.
 | Wire shape and error mapping against the backend's validators | `ConvexSyncRemoteTests` | Pass |
 | Sign-in panel, onboarding completion (create vs restore vs unreachable), Account screen copy | `AccountSignInTests`, `OnboardingViewModelTests` | Pass |
 | "Save your plan", the existing-user sign-in and the Account screen in light, dark, the largest text size and 375x667, with VoiceOver labels | `AccountScreensEvidenceTests` | Pass |
-| Simulator walks against the development Clerk instance and dev backend | `AccountEndToEndUITests` (opt-in) | See the PR for the run; simulator only |
+| Fresh install: real email-code sign-up at "Save your plan", then "Everything is saved" | `AccountEndToEndUITests` A, development Clerk + dev backend | Pass (simulator) |
+| Seeded existing user: an install onboarded and played by the pre-account build (main at `d5556bf`) upgraded in place, "Keep your history" first, history moved | `AccountEndToEndUITests` C, then the dev backend read with the Convex CLI | Pass (simulator): the profile, Focus Areas, policy and the played session reached the account |
+| Offline session then sync: a session played with the backend cut off, "2 changes will save when you're online", then saved after relaunch online | `AccountEndToEndUITests` A | Pass (simulator) |
+| Account deletion: back to onboarding, the account's rows purged, its account row removed after the grace period, the Clerk user unknown afterwards; another account untouched | `AccountEndToEndUITests` B, Convex CLI, Clerk Frontend API sign-in probe | Pass (simulator) |
 
-Simulator-only: the walks use Clerk's development test email addresses (fixed code 424242) and a Debug-only switch (`-RepTodaySyncOffline YES`) standing in for airplane mode, because the Simulator shares the Mac's network.
+The walks ran on 2026-11-11 on an iPhone 16 simulator (iOS 18.6, Xcode 26.5) against the development Clerk instance and dev deployment `courteous-dogfish-560`.
+Simulator-only: they use Clerk's development test email addresses (fixed code 424242), which send no mail, and a Debug-only switch (`-RepTodaySyncOffline YES`) standing in for airplane mode, because the Simulator shares the Mac's network.
+Real Apple and Google sign-in, real airplane mode, real iCloud data and VoiceOver itself were not exercised; they are the device checks below.
+Two findings from the walks were fixed: the Account screen wrapped a long email mid-word and misaligned its second line, and a sign-in session left in the Keychain by an earlier install is (correctly) offered back on "Save your plan", which the walk now handles.
 
 ## Owed on a device (exit criteria)
 

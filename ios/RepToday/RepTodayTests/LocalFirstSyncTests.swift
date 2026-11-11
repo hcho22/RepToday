@@ -209,6 +209,19 @@ final class LocalFirstSyncTests: XCTestCase {
         XCTAssertEqual(pushed, 0)
     }
 
+    /// The pull after an upload returns the device's own records; they change nothing, so they write
+    /// nothing and do not make Today reload.
+    func testThisDevicesOwnUploadsComingBackChangeNothing() async throws {
+        let stack = SyncTestStack()
+        try await stack.users.save(SyncFixtures.user())
+        try await stack.policies.save(.default, for: SyncFixtures.user().id)
+        try await stack.logs.save(SyncFixtures.log(daysAgo: 1))
+        try await stack.activities.save(SyncFixtures.activity(daysAgo: 1))
+        let report = try await stack.engine(FakeAccountServer()).sync()
+        XCTAssertEqual(report.uploaded, 4)
+        XCTAssertEqual(report.applied, 0, "the echo of this device's own uploads is not a change")
+    }
+
     func testAPulledDeletionRemovesTheRecord() async throws {
         let stack = SyncTestStack()
         let log = SyncFixtures.log(daysAgo: 1)

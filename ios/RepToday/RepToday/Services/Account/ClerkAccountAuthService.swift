@@ -152,7 +152,13 @@ final class ClerkAccountAuthService: AccountAuthServiceProtocol, @unchecked Send
     @MainActor
     private func mapped(_ method: AccountSignInMethod, _ flow: () async throws -> TransferFlowResult) async throws -> AccountIdentity {
         do {
-            let result = try await flow()
+            let result: TransferFlowResult
+            do {
+                result = try await flow()
+            } catch let error as ClerkAPIError where error.code == "session_exists" {
+                // A session restored after this screen loaded: carry on as that account.
+                return try signedInIdentity(method: method)
+            }
             switch result {
             case .signIn(let signIn) where signIn.status != .complete:
                 throw AccountAuthError.failed("Sign-in needs another step.")
