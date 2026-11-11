@@ -326,9 +326,17 @@ struct ServiceContainer {
         let accountAuthService = resolveAccountAuthService(bundle: accountConfiguration)
         let syncStore = CoreDataSyncStore(context: context)
         let syncCursorStore = DefaultsSyncCursorStore()
+        let syncSession: URLSession
+        #if DEBUG
+        syncSession = SyncOfflineSimulation.isActive ? SyncOfflineSimulation.offlineSession() : .shared
+        #else
+        syncSession = .shared
+        #endif
         let syncRemote: (any SyncRemote)? = accountAuthService.isConfigured
             ? AccountBackendConfiguration.convexURL(bundle: accountConfiguration).map { url in
-                ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url) { try await accountAuthService.sessionToken() })
+                ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url, session: syncSession) {
+                    try await accountAuthService.sessionToken()
+                })
             }
             : nil
         let syncEngine = syncRemote.map { SyncEngine(store: syncStore, remote: $0, cursorStore: syncCursorStore) }

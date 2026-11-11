@@ -163,6 +163,8 @@ final class AccountSignInTests: XCTestCase {
         XCTAssertEqual(waiting.headline, "1 change will save when you're online.")
         let saved = AccountStatusPresentation(account: account, status: .upToDate, pendingCount: 0, lastSyncedAt: now, migrationStage: nil, now: now)
         XCTAssertEqual(saved.detail, "Last saved just now.")
+        XCTAssertEqual(saved.accountLine, "Signed in with email")
+        XCTAssertEqual(saved.accountDetail, "riley@example.com")
         let moving = AccountStatusPresentation(account: account, status: .syncing, pendingCount: 12, lastSyncedAt: nil, migrationStage: .uploading, now: now)
         XCTAssertEqual(moving.headline, "Moving your history to your account.")
         XCTAssertEqual(moving.detail, "12 changes to go. You can keep training while it saves.")

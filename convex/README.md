@@ -1,4 +1,6 @@
-# Rep Today telemetry sink (US-T03)
+# Rep Today telemetry sink (US-T03) and account data (M3)
+
+This deployment holds two backends that share no table: the anonymous telemetry sink described first, and, since M3, the users' account data (see "Account data (M3, ADR-0016)" below).
 
 The whole analytics backend: **one immutable evidence table, one idempotent-insert mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
 The Waitlist landing pages' two anonymous events have a second, separate route and insert mutation into the same table, with its own guard (US-WL05, "Web events" below).
@@ -547,6 +549,20 @@ named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes 
 duplicate requested ids are deduplicated, matching rows retain exactly the five analytic fields, and
 unrelated or absent installs are excluded.
 
+## Account data (M3, ADR-0016)
+
+The users' own data: the server copy of what each phone holds first in Core Data. It shares the deployment with the telemetry sink but no table, function or rule with it; the telemetry routes stay anonymous and never read an identity.
+
+- **Auth.** `convex/auth.config.ts` makes Clerk the auth provider. `CLERK_FRONTEND_API_URL` (the Clerk instance's Frontend API URL, an issuer, not a secret) must be set on the deployment with `npx convex env set` before a push is accepted; Clerk's Convex integration stamps the session token with the `convex` audience. The app sends that token as the bearer on every call.
+- **Ownership.** `convex/ownership.ts` is the one place a function learns whose data it may touch: `requireOwner` reads the verified identity (`tokenIdentifier`), no function takes an owner argument, and every read and write is scoped by it. The public API is exactly `sync:push`, `sync:pull` and `accounts:deleteAccount`; `convex/sync.test.ts` fails if another public function appears.
+- **Tables.** `users` (one per identity: the Clerk user id, the owner's change counter `changeSeq`, the deletion mark), and the owned record tables `profiles`, `focusAreas`, `sessionPolicies` (one row per owner), `workoutLogs`, `outsideActivities` (one row per record id), plus `customWorkouts` and `coachMemory`, which no function writes until M4. A record row carries the app's own JSON as a string `payload` (so a field name Convex would refuse can never fail an upload), `clientUpdatedAt`, `serverSeq` and a `deleted` tombstone flag.
+- **`sync:push`.** Up to 50 changes in one transaction, each at most 64 KiB. A change lands on the row keyed by owner and record id; a change older than the row is `stale`, an identical replay is `unchanged` and writes nothing, anything else is `applied` and takes the owner's next `serverSeq`. Malformed changes are refused (`invalid_change`) before anything is written.
+- **`sync:pull`.** The owner's rows with `serverSeq` after `since`, oldest first, paged (`cursor`, `hasMore`); the profile comes back with its Focus Areas.
+- **`accounts:deleteAccount`.** Marks the account (every later write is refused with `account_deleting`) and schedules the finishing job in one transaction, deletes the Clerk user through Clerk's Backend API with `CLERK_SECRET_KEY` (a 404 counts as already deleted), purges the owner's rows in batches, and removes the account row after `DELETION_GRACE_MS` (ten minutes), when every session token issued before the Clerk user was deleted has expired. If Clerk fails, the mark is cleared and nothing is deleted; without `CLERK_SECRET_KEY` nothing is touched (`deletion_unavailable`).
+- **Errors.** Refusals are `ConvexError`s with a `code` (`unauthenticated`, `account_deleting`, `invalid_change`, `deletion_unavailable`, `deletion_failed`), which the app reads to tell a refusal from an outage.
+- **Tests.** `convex/sync.test.ts` and `convex/accounts.test.ts` run under `npm test` with `withIdentity`, so they need no Clerk instance; Clerk's Backend API is a stubbed `fetch`.
+- **Deployments.** The dev deployment carries the development Clerk instance's issuer and secret key. Production gets the production instance's, and this schema, only as a release step (`artifacts/reports/accounts-m3/validation.md`).
+
 ## Layout and deployment
 
 Standard Convex layout: the npm project lives at the repo root (`package.json`, `package-lock.json`)
@@ -579,6 +595,8 @@ test file had quietly pulled the test toolchain into.
 fresh clone with no deployment configured.
 `.env.local` (which holds `CONVEX_DEPLOYMENT`) is gitignored and must never be committed - it is
 per-developer deployment state, not project configuration.
+Since M3, `npx convex codegen` and `npx convex dev` upload the functions for analysis, so they need a
+deployment whose `CLERK_FRONTEND_API_URL` is set (`convex/auth.config.ts`).
 
 Live validation evidence for the sink as US-T03 shipped it is in
 `artifacts/reports/US-T03/validation.md`: the `204`s,

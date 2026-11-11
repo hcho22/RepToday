@@ -7,8 +7,10 @@ import Foundation
 /// is one. Nothing is ever described as lost, because nothing is - the phone keeps every change until
 /// the account has it.
 struct AccountStatusPresentation: Equatable {
-    /// Who is signed in.
+    /// How the user signs in ("Signed in with Apple").
     let accountLine: String
+    /// The account's email address, on its own line so a long one wraps cleanly.
+    let accountDetail: String?
     /// Where the data stands.
     let headline: String
     /// A second line, when there is something more to say.
@@ -26,7 +28,8 @@ struct AccountStatusPresentation: Equatable {
         migrationStage: LegacyAccountMigrationStage?,
         now: Date
     ) {
-        accountLine = account.map(AccountSignInPanel.signedInText) ?? "Not signed in"
+        accountLine = account.map { Self.methodLine($0.method) } ?? "Not signed in"
+        accountDetail = account?.email.flatMap { $0.isEmpty ? nil : $0 }
         offersSignIn = status == .needsSignIn
 
         let moving = migrationStage == .importingFromICloud || migrationStage == .uploading
@@ -60,6 +63,14 @@ struct AccountStatusPresentation: Equatable {
             headline = "Not signed in."
             detail = nil
             symbol = "person.crop.circle"
+        }
+    }
+
+    private static func methodLine(_ method: AccountSignInMethod) -> String {
+        switch method {
+        case .apple: return "Signed in with Apple"
+        case .google: return "Signed in with Google"
+        case .email: return "Signed in with email"
         }
     }
 

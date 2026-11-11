@@ -55,6 +55,16 @@
       </CommandLineArguments>
       <EnvironmentVariables>
          <EnvironmentVariable
+            key = "REPTODAY_E2E_ACCOUNTS"
+            value = "$(REPTODAY_E2E_ACCOUNTS)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "REPTODAY_E2E_EXISTING_USER"
+            value = "$(REPTODAY_E2E_EXISTING_USER)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
             key = "REPTODAY_EVIDENCE_DIR"
             value = "$(REPTODAY_EVIDENCE_DIR)"
             isEnabled = "YES">

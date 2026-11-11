@@ -149,8 +149,8 @@ final class AccountScreensEvidenceTests: XCTestCase {
                     .environment(appState),
                 size: phone, style: style
             )
-            waitFor("Signed in as riley@example.com", in: host.view)
-            XCTAssertNotNil(AccessibilityTree.element(whereLabel: { $0.contains("Signed in as riley@example.com") }, in: host.view),
+            waitFor("Signed in with Apple, riley@example.com", in: host.view)
+            XCTAssertNotNil(AccessibilityTree.element(whereLabel: { $0.contains("Signed in with Apple") && $0.contains("riley@example.com") }, in: host.view),
                             "\(AccessibilityTree.labels(in: host.view))")
             XCTAssertNotNil(AccessibilityTree.element(whereLabel: { $0.contains("keeps your data on this phone only") }, in: host.view),
                             "with no account backend the screen says the data stays on the phone")

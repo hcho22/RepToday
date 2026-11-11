@@ -23,37 +23,16 @@ struct AccountView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 card {
-                    Label {
-                        Text(presentation.accountLine)
-                            .font(Theme.Typography.headline)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: "person.crop.circle.fill")
-                            .foregroundStyle(Theme.Colors.accent)
-                    }
-                    .accessibilityElement(children: .combine)
+                    row(
+                        symbol: "person.crop.circle.fill",
+                        title: presentation.accountLine,
+                        detail: presentation.accountDetail,
+                        detailIsAddress: true
+                    )
                 }
 
                 card {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        Label {
-                            Text(presentation.headline)
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: presentation.symbol)
-                                .foregroundStyle(Theme.Colors.accent)
-                        }
-                        if let detail = presentation.detail {
-                            Text(detail)
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
+                    row(symbol: presentation.symbol, title: presentation.headline, detail: presentation.detail)
                 }
 
                 if presentation.offersSignIn, let reSignIn {
@@ -83,6 +62,37 @@ struct AccountView: View {
             }
         }
         .task { await syncCoordinator?.syncNow() }
+    }
+
+    /// An icon beside a title and an optional second line, the second line aligned under the title.
+    /// An address stays on one line, shortened in the middle if it must be: wrapping would hyphenate
+    /// it and misstate it. VoiceOver reads it in full.
+    private func row(symbol: String, title: String, detail: String?, detailIsAddress: Bool = false) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(title)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail, detailIsAddress {
+                    Text(detail)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .minimumScaleFactor(0.8)
+                } else if let detail {
+                    Text(detail)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } icon: {
+            Image(systemName: symbol)
+                .foregroundStyle(Theme.Colors.accent)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

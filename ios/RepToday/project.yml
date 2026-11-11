@@ -279,3 +279,6 @@ schemes:
       environmentVariables:
         REPTODAY_WRITE_EVIDENCE: "$(REPTODAY_WRITE_EVIDENCE)"
         REPTODAY_EVIDENCE_DIR: "$(REPTODAY_EVIDENCE_DIR)"
+        # Opt-in M3 walks against the development Clerk instance and backend (`AccountEndToEndUITests`).
+        REPTODAY_E2E_ACCOUNTS: "$(REPTODAY_E2E_ACCOUNTS)"
+        REPTODAY_E2E_EXISTING_USER: "$(REPTODAY_E2E_EXISTING_USER)"

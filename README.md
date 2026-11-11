@@ -99,7 +99,7 @@ The [foundation update decision](docs/adr/0006-foundations-push-pull-legs-core.m
 
 ### Account and Premium access
 
-Open **Profile → Account** to sign in with Apple after onboarding or view your stored sign-in status. Sign-in is optional and keeps your existing workouts and history; it does not unlock Premium or recover another account's data.
+Every user has a Rep Today account (M3, ADR-0016): onboarding ends at **Save your plan**, where you sign in with Apple, Google or an email code, and someone who onboarded before accounts signs in once on their next launch while their history moves to the account. Your plan and sessions live on the phone first and save to the account whenever you're connected, so the app keeps working offline and your history survives a phone change. **Profile → Account** shows who is signed in and what is saved. Signing in does not unlock Premium.
 
 On the free tier, open the Premium paywall from **Progress** or **Profile → Coach**. Purchases and **Restore purchases** use your App Store account independently of app sign-in. “No active Premium subscription was found” means restore found no current qualifying entitlement; it does not say you never purchased a subscription.
 
@@ -110,7 +110,7 @@ The [Premium access validation report](artifacts/reports/premium-access/validati
 ### Privacy
 
 - **Anonymous usage data, disclosed and optional** - the first onboarding screen says in one sentence what is collected and where the off switch is, and Profile -> Settings -> Privacy carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. It is on by default (opt-out, not opt-in), counted against a random per-install number that is never a name, an email, or a device identifier. Turning it off leaves that number untouched; deleting the account rotates it so later events cannot be linked to the pre-deletion install identity.
-- **Account deletion is separate from subscription cancellation** - Profile -> Settings -> Delete Account permanently removes the account data named in its final confirmation, but does not cancel an App Store subscription. Both the Apple-linked and local-only confirmation variants warn about that before the destructive action; the subscription must be managed or canceled separately through Apple. Deletion also unlinks the local Coach verification key and, when the verification transport is available, makes a bounded signed attempt to remove its server record; an offline record expires after 30 days without accepted verification activity.
+- **Account deletion is separate from subscription cancellation** - Profile -> Settings -> Delete Account permanently removes the account - its data on Rep Today's servers, the sign-in identity and the data on the device - but does not cancel an App Store subscription. It needs a connection, and deletes nothing if the server step cannot run. Both the Apple-linked and local-only confirmation variants warn about that before the destructive action; the subscription must be managed or canceled separately through Apple. Deletion also unlinks the local Coach verification key and, when the verification transport is available, makes a bounded signed attempt to remove its server record; an offline record expires after 30 days without accepted verification activity.
 - **Emitting the whole funnel** - the pipeline is complete, consented, and gated, and every call site now feeds it: app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`). All 13 events now have their emission sites, and every emission is read against the opt-out flag afresh, so an opted-out build sends nothing either way.
 - **Coach data is disclosed before use** - a Coach turn sends the user's message, the audited non-identifying training summary, and a separate random Coach abuse-prevention pseudonym to Rep Today's proxy, which forwards the pseudonym as OpenAI's `safety_identifier`. The proxy stores no request or response content and sets `store: false`; under standard retention, OpenAI may still retain the prompt and reply in abuse-monitoring logs for up to 30 days. The deployed Apple-verification gateway retains only bounded public verification keys, counters, expiry fields, and replay-prevention metadata, with a 30-day inactivity expiry. The pseudonym is not the telemetry `installId` or an account value, remains stable across launches, and rotates on account deletion. The acknowledgement is account-scoped and versioned: deletion clears it, and a materially changed disclosure requires acknowledgement again.
 - **The hosted policy source lives here** - `gtm/03-site/privacy.html` is the canonical source for the hosted policy and deploys with the static `reptoday.app` site. It remains visibly marked as an engineering draft that needs qualified legal review; editing the source does not authorize or perform a production deployment.
@@ -121,13 +121,14 @@ The [Premium access validation report](artifacts/reports/premium-access/validati
 
 | Layer | Technology |
 |-------|-----------|
-| **Platform** | iOS 17.0+, Swift 5.9, Xcode 16.3 |
+| **Platform** | iOS 17.0+, Swift 5.9 language mode, Xcode 26+ (Clerk's ClerkKit needs Swift tools 6.2) |
 | **UI Framework** | SwiftUI with the Observation framework (`@Observable`) |
 | **Architecture** | MVVM + protocol-based service injection |
-| **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) |
+| **Persistence** | CoreData, local-first (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`, `CDOutsideActivity`, and the sync outbox `CDSyncChange`); changes sync to the account on Convex (M3). The iCloud mirror runs only for a pre-account user's one-time import |
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
-| **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
-| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) and a shared-secret + per-caller rate-limit abuse guard fronts (US-T14) |
+| **Apple integrations** | Sign in with Apple (through Clerk), HealthKit, StoreKit 2; CloudKit only to read a pre-account user's iCloud history once |
+| **Accounts** | Clerk (`ClerkKit`, the app's one third-party Swift package) for Apple, Google and email-code sign-in |
+| **Backend** | None behind the core loop; `convex/` holds the account data the app syncs to in the background (M3, owned per Clerk identity) and, separately, the anonymous-telemetry sink (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) and a shared-secret + per-caller rate-limit abuse guard fronts (US-T14) |
 | **LLM proxy** | `proxy/` is a content-stateless Cloudflare Worker: Anthropic `claude-opus-4-8` remains independently configurable for deferred Variety Language, while the premium Coach is source-pinned to OpenAI `gpt-5.6-luna`; the deployed App Attest gateway retains only bounded security metadata, and neither route is behind the deterministic core loop |
 | **Bundle ID** | `com.reptoday.app` |
 
@@ -163,7 +164,7 @@ The Phase-2 premium Coach is implemented; its authoritative deployment and QA st
 **Key design decisions:**
 
 - **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched. Service methods are `async throws`, with one deliberate exception: `AnalyticsServiceProtocol.record(_:)` is synchronous and never throws, because anonymous telemetry synchronously transfers ownership into a bounded buffer while encoding, persistence, retry, and delivery remain off the product path.
-- **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; CloudKit handles sync and backup when available.
+- **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; every change also lands in a sync outbox in the same save and uploads to the account when online (M3).
 - **Deterministic engine** - the workout engine runs entirely on-device with no network or LLM calls (see below).
 - **Environment-based DI** - `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
 
@@ -195,7 +196,7 @@ RepToday/
 │   ├── App/                 # App entry point (RepTodayApp.swift)
 │   ├── DesignSystem/        # Theme tokens (Theme.swift)
 │   ├── Models/              # Domain enums and Codable structs
-│   ├── Persistence/         # CoreData stack (NSPersistentCloudKitContainer) + conversions
+│   ├── Persistence/         # CoreData stack, conversions, and the sync outbox store
 │   ├── Services/
 │   │   ├── Protocols/       # Service protocol definitions
 │   │   ├── Mock/            # Mock implementations wired in ServiceContainer
@@ -249,7 +250,7 @@ Always check the PRD for the relevant story before building a feature.
 
 ### Prerequisites
 
-- **Xcode 16.3+**
+- **Xcode 26+** (Clerk's ClerkKit package needs Swift tools 6.2)
 - **iOS 17.0+ Simulator or device**
 - **XcodeGen** (to generate the project from `project.yml`)
 
@@ -317,7 +318,7 @@ US-T04 added the behavioural boundary suite (`convex/http.test.ts`), and the US-
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` gates every PR into `main` (and pushes to it, except the two iOS jobs, which run on pull requests only to save billed Mac minutes on the private repository) in parallel jobs, including the [offline Coach diagnostics gate](docs/coach-final-auth-diagnostics.md#validation), `sink` (ubuntu: `npm ci` + `npm run typecheck` + `npm run test`) and `ios` (macos-15, Xcode 16.4, iPhone 16 / iOS 18.5 simulator - `xcodegen generate`, fails if any build setting commits a usage-data secret (`tools/check-no-committed-telemetry-secret.py`) and tests the dev-secret tooling against offline stand-ins, fixture-tests the shared app-bundle metadata validator, then builds and **runs** the `RepToday` unit suite, validates the processed `RepToday.app/Info.plist`, and performs a **build-for-testing-only** compile of the `RepTodayUITests` scheme, since XCUITests launch the app out of process and are slow/flaky on a hosted runner). A parallel `ios-26` job (check "iOS app (iOS 26)": macos-26, Xcode 26.5, an iPhone on the newest iOS 26.x simulator runtime) runs the same unit suite and XCUITest compile on the current OS, so an iOS 26-only test break fails the PR; the OS-independent usage-data secret, metadata and Trainer-art checks run only in `ios`. The same validator runs against the archived app in `tools/archive-release.sh`; `tools/validate-app-bundle-metadata.py` owns that metadata contract. CI needs no secrets: the app's CloudKit/HealthKit/Sign in with Apple entitlements make a fully unsigned build crash the app-hosted test runner, so it uses cert-less ad-hoc signing (`CODE_SIGN_IDENTITY=-`, team/profile cleared) which loads entitlements on the simulator without any certificate. The local `no-mistakes` pipeline is unchanged.
+`.github/workflows/ci.yml` gates every PR into `main` (and pushes to it, except the two iOS jobs, which run on pull requests only to save billed Mac minutes on the private repository) in parallel jobs, including the [offline Coach diagnostics gate](docs/coach-final-auth-diagnostics.md#validation), `sink` (ubuntu: `npm ci` + `npm run typecheck` + `npm run test`) and `ios` (macos-15, Xcode 26.3, iPhone 16 on an iOS 18 simulator - `xcodegen generate`, fails if any build setting commits a usage-data secret (`tools/check-no-committed-telemetry-secret.py`) and tests the dev-secret tooling against offline stand-ins, fixture-tests the shared app-bundle metadata validator, then builds and **runs** the `RepToday` unit suite, validates the processed `RepToday.app/Info.plist`, and performs a **build-for-testing-only** compile of the `RepTodayUITests` scheme, since XCUITests launch the app out of process and are slow/flaky on a hosted runner). A parallel `ios-26` job (check "iOS app (iOS 26)": macos-26, Xcode 26.5, an iPhone on the newest iOS 26.x simulator runtime) runs the same unit suite and XCUITest compile on the current OS, so an iOS 26-only test break fails the PR; the OS-independent usage-data secret, metadata and Trainer-art checks run only in `ios`. The same validator runs against the archived app in `tools/archive-release.sh`; `tools/validate-app-bundle-metadata.py` owns that metadata contract. CI needs no secrets: the app's CloudKit/HealthKit/Sign in with Apple entitlements make a fully unsigned build crash the app-hosted test runner, so it uses cert-less ad-hoc signing (`CODE_SIGN_IDENTITY=-`, team/profile cleared) which loads entitlements on the simulator without any certificate. The local `no-mistakes` pipeline is unchanged.
 
 ---
 

@@ -11,6 +11,11 @@ struct AccountSignInPanel: View {
     @Bindable var viewModel: AccountSignInViewModel
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var focusedField: Field?
+    /// Apple's button draws its title in proportion to its height and ignores Dynamic Type, so its
+    /// height scales with the text size instead. It stops at one and a half times the standard: past
+    /// that the title is limited by the button's width, and the button would only outgrow the two-line
+    /// buttons beside it.
+    @ScaledMetric(relativeTo: .headline) private var appleButtonHeight: CGFloat = Theme.Spacing.buttonHeight
 
     private enum Field {
         case email, code
@@ -74,7 +79,7 @@ struct AccountSignInPanel: View {
             }
             .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
             .frame(maxWidth: .infinity)
-            .frame(height: Theme.Spacing.buttonHeight)
+            .frame(height: min(appleButtonHeight, Theme.Spacing.buttonHeight * 1.5))
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .disabled(viewModel.isWorking)
             .accessibilityHint("Signs in with your Apple Account")

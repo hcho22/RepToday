@@ -94,17 +94,26 @@ final class TestApp {
     ///   - passesWelcomePage: whether to tap "Let's go" on the Welcome Page an onboarded cold launch
     ///     opens on (US-HO01), so the launch lands on the main tabs like it did before the page existed.
     ///     `false` for the suite that asserts the page itself.
+    ///   - liveAccount: `true` only for the opt-in `AccountEndToEndUITests`, which sign in to the real
+    ///     Clerk development instance and sync to the development backend. Every other launch signs in
+    ///     on the device only.
+    ///   - syncOffline: takes the account backend offline for this launch (Debug builds only), the
+    ///     Simulator's stand-in for airplane mode.
     func launch(
         _ posture: TelemetryPosture,
         onboarded: Bool = true,
         answersHealthPrompt: Bool = true,
-        passesWelcomePage: Bool = true
+        passesWelcomePage: Bool = true,
+        liveAccount: Bool = false,
+        syncOffline: Bool = false
     ) {
         // Sign-in is the on-device stub (`-RepTodayAccountStub YES`): no XCUITest talks to Clerk, and
         // with no session token nothing syncs. An onboarded launch is also linked to an account, so it
         // opens past the one-time sign-in a pre-account user would meet.
-        app.launchArguments = ["-AppState.isOnboarded", onboarded ? "YES" : "NO", "-RepTodayAccountStub", "YES"]
-            + (onboarded ? ["-AppState.accountUserId", "uitest-account"] : [])
+        app.launchArguments = ["-AppState.isOnboarded", onboarded ? "YES" : "NO"]
+            + (liveAccount ? [] : ["-RepTodayAccountStub", "YES"])
+            + (onboarded && !liveAccount ? ["-AppState.accountUserId", "uitest-account"] : [])
+            + (syncOffline ? ["-RepTodaySyncOffline", "YES"] : [])
             + posture.arguments
         app.launch()
         if onboarded && passesWelcomePage {

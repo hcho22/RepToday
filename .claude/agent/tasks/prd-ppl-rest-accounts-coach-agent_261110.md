@@ -1,6 +1,6 @@
 # PRD: Push/Pull/Legs Training Days, Rest Days, Accounts and the Coach Agent (2026-11-10)
 
-- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2 implemented (2026-11-10); M3-M4 not started.**
+- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2 implemented (2026-11-10); M3 implemented against the development Clerk instance and Convex deployment (2026-11-11), its device exit criteria and release steps pending (`artifacts/reports/accounts-m3/validation.md`); M4 not started.**
   Every decision below was settled with the captain in a design grill on 2026-11-09 and 2026-11-10.
   The captain approved this PRD and its documentation changes on 2026-11-10.
   No implementation is authorized until the captain approves a milestone.
@@ -82,7 +82,7 @@ Defaults chosen during planning, confirmed by the captain on 2026-11-10 (Open Qu
 - Catalog: 76 movements (43 strength, 26 mobility, 7 primal), 73 served. Trainer art: 70 full pairs, 2 single poses, `pull_ytw` none.
 - Goals: `PrimaryGoal` (`Models/Enums.swift:155`) is never asked and never read by the engine.
 - Navigation: tabs Today (`ReadyView`) / Progress / Profile; the Coach is a page pushed from Profile; a spinner shows during the launch check (`Views/RootView.swift:22-29`).
-- Identity: no server accounts; Core Data + CloudKit; optional Sign in with Apple; Convex holds anonymous telemetry only (`convex/schema.ts`: `events`, `rateLimits`).
+- Identity: no server accounts; Core Data + CloudKit; optional Sign in with Apple; Convex holds anonymous telemetry only (`convex/schema.ts`: `events`, `rateLimits`). (Superseded by M3: see ADR-0016.)
 - Coach: stateless per turn; OpenAI via a Cloudflare Worker (`proxy/src/worker.js`); App Attest + StoreKit receipt per request; the LLM takes no actions.
 - HealthKit: write-only (`Services/Health/HealthKitService.swift:49`).
 
@@ -192,29 +192,29 @@ Exit criteria: fresh install, existing-user migration, offline use and account d
 
 #### US-AU01: Convex data model and Clerk auth
 **Acceptance Criteria:**
-- [ ] Convex tables for users, profiles, workout logs, outside activities, session policies, focus areas, custom workouts and coach memory, keyed to the Clerk user; existing `events`/`rateLimits` untouched.
-- [ ] Clerk configured as the Convex auth provider; every function checks the caller owns the data.
+- [x] Convex tables for users, profiles, workout logs, outside activities, session policies, focus areas, custom workouts and coach memory, keyed to the Clerk user; existing `events`/`rateLimits` untouched. (Custom workouts and coach memory are owned, empty tables M4 fills.)
+- [x] Clerk configured as the Convex auth provider; every function checks the caller owns the data.
 
 #### US-AU02: Sign-in at the end of onboarding
 **Acceptance Criteria:**
-- [ ] "Save your plan" step after onboarding answers: Apple, Google, email via Clerk; required to continue.
-- [ ] Optional Sign in with Apple step removed from the welcome step.
+- [x] "Save your plan" step after onboarding answers: Apple, Google, email via Clerk; required to continue. (Signing in to an account that already holds a plan brings it back instead of creating one. Apple and Google verify on a device only.)
+- [x] Optional Sign in with Apple step removed from the welcome step.
 
 #### US-AU03: Local-first sync
 **Acceptance Criteria:**
-- [ ] Core Data remains the on-device store; changes queue and sync to Convex when online; idempotent by record id.
-- [ ] Sessions generate, play and log fully offline.
-- [ ] CloudKit container and sync removed.
+- [x] Core Data remains the on-device store; changes queue and sync to Convex when online; idempotent by record id.
+- [x] Sessions generate, play and log fully offline.
+- [ ] CloudKit container and sync removed. (Sync is removed: no new user ever mirrors iCloud, and a pre-account user's mirror stops once their move has queued everything. The iCloud container entitlement and `NSPersistentCloudKitContainer` stay for that one-time import and go in a later build, after every TestFlight user has moved; ADR-0016.)
 
 #### US-AU04: Existing-user migration
 **Acceptance Criteria:**
-- [ ] One-time required sign-in on next launch for users onboarded before M3.
-- [ ] On-device and iCloud history uploads automatically; re-running is safe; nothing is lost if interrupted.
+- [x] One-time required sign-in on next launch for users onboarded before M3.
+- [x] On-device and iCloud history uploads automatically; re-running is safe; nothing is lost if interrupted.
 
 #### US-AU05: Account deletion and privacy
 **Acceptance Criteria:**
-- [ ] Delete account removes Convex data and the Clerk user, and wipes local data.
-- [ ] Privacy policy and App Store privacy labels updated before release.
+- [x] Delete account removes Convex data and the Clerk user, and wipes local data.
+- [x] Privacy policy and App Store privacy labels updated before release. (The policy source `gtm/03-site/privacy.html` and the label declarations in `artifacts/reports/accounts-m3/validation.md` are updated; publishing the site and entering the labels in App Store Connect are release steps.)
 
 ### M4 - Coach Agent
 
