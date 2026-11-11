@@ -233,7 +233,7 @@
     <div class="doc-head">
       <p class="overline">Privacy</p>
       <h1 class="display">Privacy Policy</h1>
-      <p class="updated small"><strong>Last updated:</strong> October 21, 2026</p>
+      <p class="updated small"><strong>Last updated:</strong> November 10, 2026</p>
 
       <!-- Visible, prominent NOT-LEGAL-ADVICE notice. Keep in sync with the HTML
            comment at the top of the file. -->
@@ -286,7 +286,7 @@
 
     <section class="policy" id="icloud">
       <h2 class="h2">3. Private iCloud sync when available</h2>
-      <p>When iCloud is available for Rep Today, the app automatically syncs your profile, completed workout history, and in-force session policy through Apple's CloudKit to your private iCloud database so they can appear on your Apple devices. Your active or in-progress session remains device-local and is not synced. Rep Today cannot read your private CloudKit database.</p>
+      <p>When iCloud is available for Rep Today, the app automatically syncs your profile, completed workout history, and in-force session policy through Apple's CloudKit to your private iCloud database so they can appear on your Apple devices. Your active or in-progress session and the outside activities you log (including any added from Apple Health) remain device-local and are not synced. Rep Today cannot read your private CloudKit database.</p>
       <p>If iCloud is unavailable or disabled for Rep Today in your device's iCloud settings, the app falls back to on-device storage and the core workout experience continues to work offline. You can manage Rep Today's iCloud access and stored app data through your device's iCloud settings. Apple's iCloud terms and privacy policy govern that service.</p>
     </section>
 
@@ -298,8 +298,9 @@
 
     <section class="policy" id="health">
       <h2 class="h2">5. Apple Health (optional)</h2>
-      <p>If you grant permission, Rep Today writes completed-workout and energy samples to <strong>Apple Health</strong> on your device. Before saving, the app checks Health for a workout carrying Rep Today's session identifier so it does not add the same completed session twice. Rep Today does not request general Health read access or read your other Health data. These samples stay within Apple's HealthKit on your device and are governed by your Health privacy settings.</p>
-      <p>iOS asks for this permission separately, and the app functions normally if you decline.</p>
+      <p>If you grant permission, Rep Today writes completed-workout and energy samples to <strong>Apple Health</strong> on your device. Before saving, the app checks Health for a workout carrying Rep Today's session identifier so it does not add the same completed session twice. These samples stay within Apple's HealthKit on your device and are governed by your Health privacy settings.</p>
+      <p>Apple Health suggestions are off by default. Only if you turn them on does Rep Today ask to read your <strong>workouts</strong> (such as runs and swims: their type, start time, duration and distance) so it can offer recent ones on Today as outside activities. Nothing is logged until you tap "Add it", and Rep Today never suggests its own saved sessions back. Rep Today does not read your other Health data.</p>
+      <p>iOS asks for each permission separately, and the app functions normally if you decline.</p>
     </section>
 
     <section class="policy" id="ai-coach">
@@ -349,7 +350,7 @@
       <h2 class="h2">9. Deleting your data</h2>
       <p>You are in control of your data:</p>
       <ul class="plain">
-        <li><strong>Delete your account and data in the app.</strong> Rep Today provides an in-app account-deletion flow that removes your profile and workout history, clears the Sign in with Apple identifier stored in the device Keychain, independently rotates the anonymous usage-measurement installation identifier and the separate Coach safety pseudonym, and resets the versioned Coach data-sharing acknowledgement.</li>
+        <li><strong>Delete your account and data in the app.</strong> Rep Today provides an in-app account-deletion flow that removes your profile, workout history and logged outside activities, clears the Sign in with Apple identifier stored in the device Keychain, independently rotates the anonymous usage-measurement installation identifier and the separate Coach safety pseudonym, and resets the versioned Coach data-sharing acknowledgement.</li>
         <li><strong>Coach verification deletion.</strong> Account deletion also clears any saved Coach verification key identifier on your device. When the Coach verification transport is available, the app makes a bounded, signed attempt to remove its server verification record. The core app does not wait for that network attempt. If your device is offline or the attempt fails, immediate server deletion is not guaranteed; the remaining record expires after 30 days without accepted verification activity. Short-lived replay-prevention metadata may remain briefly after a successful request. Rotating the Coach safety pseudonym does not erase content already retained by OpenAI under its own retention policy.</li>
         <li><strong>Delete the app.</strong> Removing the app from your device removes its local storage, including the random per-install identifier described in section 7 (subject to the backup note there).</li>
         <li><strong>iCloud data</strong> lives in your own private iCloud account; you can also manage or remove app data through your device's iCloud settings.</li>
