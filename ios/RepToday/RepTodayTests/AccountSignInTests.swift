@@ -324,11 +324,43 @@ final class AccountSignInTests: XCTestCase {
         XCTAssertNil(user)
     }
 
-    func testAPhoneLinkedToAnAccountBeingDeletedIsNotInvitedToSignIn() {
+    func testAPhoneLinkedToAnAccountBeingDeletedIsOfferedErasingNotSigningIn() {
         let now = Date(timeIntervalSince1970: 1_790_000_000)
         let presentation = AccountStatusPresentation(account: Self.originalAccount, status: .accountBeingDeleted, pendingCount: 0, lastSyncedAt: nil, migrationStage: nil, now: now)
         XCTAssertFalse(presentation.offersSignIn)
+        XCTAssertTrue(presentation.offersErase)
         XCTAssertEqual(presentation.headline, "This account is being deleted.")
+        XCTAssertEqual(presentation.detail, "That finishes on its own. This phone keeps its plan and sessions until you erase them. Erasing them lets you set up with another account, starting fresh on this phone.")
+        for status in [AccountSyncCoordinator.Status.upToDate, .syncing, .waitingForConnection, .retrying, .needsSignIn, .localOnly, .signedOut] {
+            let other = AccountStatusPresentation(account: Self.originalAccount, status: status, pendingCount: 0, lastSyncedAt: nil, migrationStage: nil, now: now)
+            XCTAssertFalse(other.offersErase, "\(status)")
+        }
+    }
+
+    /// Once the account answers that it is being deleted, the phone stays in that state - across a
+    /// relaunch, and after the deletion finishes and the account can no longer answer - so it never
+    /// invites a sign-in that could only be refused.
+    func testAnAccountBeingDeletedStaysSoAndNeverInvitesASignIn() async throws {
+        let fixture = try await linkedFixture()
+        await fixture.server.failPush(call: 1, with: .accountDeleting)
+        await fixture.coordinator.syncNow()
+        XCTAssertEqual(fixture.coordinator.status, .accountBeingDeleted)
+        XCTAssertTrue(fixture.appState.isLinkedAccountBeingDeleted)
+
+        let relaunched = AccountSyncCoordinator(
+            engine: fixture.stack.engine(fixture.server, cursor: fixture.cursor),
+            store: fixture.stack.store,
+            appState: fixture.appState,
+            migrator: LegacyAccountMigrator(appState: fixture.appState, store: fixture.stack.store, importer: LegacyICloudImportMonitor(settled: .nothingToImport), defaults: fixture.defaults),
+            beginBackgroundWork: { _ in {} },
+            onRemoteChangesApplied: {}
+        )
+        XCTAssertEqual(relaunched.status, .accountBeingDeleted)
+        await fixture.server.failPush(call: 2, with: .unauthenticated)
+        await relaunched.syncNow()
+        XCTAssertEqual(relaunched.status, .accountBeingDeleted)
+        let pushes = await fixture.server.pushCalls
+        XCTAssertEqual(pushes, 1, "nothing more is sent to an account being deleted")
     }
 
     // MARK: - Fixtures

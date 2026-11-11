@@ -406,6 +406,19 @@ final class AppState {
     func unlinkAccount() {
         account = nil
         legacyMigrationStage = nil
+        userDefaults.removeObject(forKey: Keys.linkedAccountBeingDeleted)
+    }
+
+    /// Whether the linked account has answered that it is being deleted (from another device). Kept
+    /// until this phone is unlinked, because once the deletion finishes the account can no longer
+    /// answer at all, and inviting a sign-in to it could only be refused.
+    var isLinkedAccountBeingDeleted: Bool {
+        userDefaults.bool(forKey: Keys.linkedAccountBeingDeleted)
+    }
+
+    /// Records that the linked account answered that it is being deleted.
+    func markLinkedAccountBeingDeleted() {
+        userDefaults.set(true, forKey: Keys.linkedAccountBeingDeleted)
     }
 
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
@@ -753,6 +766,7 @@ final class AppState {
         static let accountUserId = "AppState.accountUserId"
         static let accountEmail = "AppState.accountEmail"
         static let accountMethod = "AppState.accountMethod"
+        static let linkedAccountBeingDeleted = "AppState.linkedAccountBeingDeleted"
     }
 }
 

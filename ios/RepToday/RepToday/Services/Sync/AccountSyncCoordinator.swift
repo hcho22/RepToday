@@ -35,7 +35,7 @@ final class AccountSyncCoordinator {
         /// The account did not accept this device's session; signing in again resumes syncing.
         case needsSignIn
         /// The account is being deleted (from another device); nothing more syncs to it, and signing
-        /// in to it again could only be refused.
+        /// in to it again could only be refused. It stays so until this phone is erased or unlinked.
         case accountBeingDeleted
         /// The last attempt failed for another reason; it will try again.
         case retrying
@@ -86,7 +86,9 @@ final class AccountSyncCoordinator {
         self.beginBackgroundWork = beginBackgroundWork
         self.onRemoteChangesApplied = onRemoteChangesApplied
         // Nothing is claimed as saved before the first cycle has run; `start` runs one at once.
-        status = appState.account == nil ? .signedOut : (engine == nil ? .localOnly : .syncing)
+        status = appState.account == nil ? .signedOut
+            : appState.isLinkedAccountBeingDeleted ? .accountBeingDeleted
+            : (engine == nil ? .localOnly : .syncing)
     }
 
     // MARK: - Triggers
@@ -169,6 +171,10 @@ final class AccountSyncCoordinator {
             status = .signedOut
             return
         }
+        guard !appState.isLinkedAccountBeingDeleted else {
+            status = .accountBeingDeleted
+            return
+        }
         guard let engine else {
             status = .localOnly
             pendingCount = (try? await store.pendingCount()) ?? pendingCount
@@ -202,6 +208,10 @@ final class AccountSyncCoordinator {
         } catch {
             pendingCount = (try? await store.pendingCount()) ?? pendingCount
             status = Self.status(for: error)
+            if status == .accountBeingDeleted {
+                appState.markLinkedAccountBeingDeleted()
+                return
+            }
             scheduleRetry()
         }
     }

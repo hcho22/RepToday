@@ -74,6 +74,8 @@ struct RepTodayApp: App {
         )
         self.services = services
         Task { await legacyICloudErasure.retryIfOwed() }
+        // A deletion whose request went out before the app was closed finishes here (US-AU05).
+        Task { [appState] in try? await services.accountDeletionService.resumeRequestedDeletion(appState: appState) }
         // Clerk restores the cached session at launch, before anything asks for a token.
         (services.accountAuthService as? ClerkAccountAuthService)?.start()
         _syncCoordinator = State(initialValue: AccountSyncCoordinator(

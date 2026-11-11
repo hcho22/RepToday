@@ -19,6 +19,9 @@ struct AccountStatusPresentation: Equatable {
     let symbol: String
     /// Whether the screen offers signing in again.
     let offersSignIn: Bool
+    /// Whether the screen offers erasing this phone's data, the only way on from an account being
+    /// deleted.
+    let offersErase: Bool
 
     init(
         account: AccountIdentity?,
@@ -31,6 +34,7 @@ struct AccountStatusPresentation: Equatable {
         accountLine = account.map { Self.methodLine($0.method) } ?? "Not signed in"
         accountDetail = account?.email.flatMap { $0.isEmpty ? nil : $0 }
         offersSignIn = status == .needsSignIn
+        offersErase = status == .accountBeingDeleted
 
         let moving = migrationStage == .importingFromICloud || migrationStage == .uploading
         let waiting = Self.waitingPhrase(pendingCount)
@@ -57,7 +61,7 @@ struct AccountStatusPresentation: Equatable {
             symbol = "person.crop.circle.badge.exclamationmark"
         case .accountBeingDeleted:
             headline = "This account is being deleted."
-            detail = "That finishes on its own. Your plan and sessions stay on this phone; once it's done, you can sign in here with a different account."
+            detail = "That finishes on its own. This phone keeps its plan and sessions until you erase them. Erasing them lets you set up with another account, starting fresh on this phone."
             symbol = "person.crop.circle.badge.xmark"
         case .localOnly:
             headline = "This build keeps your data on this phone only."

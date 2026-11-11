@@ -12,6 +12,9 @@ struct AccountView: View {
     @Environment(AppState.self) private var appState
     @Environment(AccountSyncCoordinator.self) private var syncCoordinator: AccountSyncCoordinator?
     @State private var reSignIn: AccountSignInViewModel?
+    @State private var isEraseConfirmationPresented = false
+    @State private var isErasing = false
+    @State private var eraseFailed = false
 
     var body: some View {
         let presentation = AccountStatusPresentation(
@@ -41,6 +44,10 @@ struct AccountView: View {
                     AccountSignInPanel(viewModel: reSignIn)
                 }
 
+                if presentation.offersErase {
+                    eraseButton
+                }
+
                 Text("Your plan and sessions live on this phone first and save to your account whenever you're connected. Premium purchases and restores use your App Store account.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
@@ -52,6 +59,12 @@ struct AccountView: View {
         .foregroundStyle(Theme.Colors.textPrimary)
         .background(Theme.Colors.background)
         .navigationTitle("Account")
+        .alert(AccountSignInPanel.eraseConfirmationTitle, isPresented: $isEraseConfirmationPresented) {
+            Button("Erase", role: .destructive) { Task { await eraseThisDevice() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(AccountSignInPanel.eraseConfirmationMessage)
+        }
         .onAppear {
             if reSignIn == nil {
                 let deletionService = services.accountDeletionService
@@ -69,6 +82,48 @@ struct AccountView: View {
             }
         }
         .task { await syncCoordinator?.syncNow() }
+    }
+
+    /// Erasing this phone's data, offered once the account it saves to is being deleted.
+    private var eraseButton: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Button(role: .destructive) {
+                isEraseConfirmationPresented = true
+            } label: {
+                HStack(spacing: Theme.Spacing.sm) {
+                    if isErasing {
+                        ProgressView()
+                    }
+                    Text("Erase this phone's Rep Today data")
+                        .font(Theme.Typography.body)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.Colors.danger)
+            .disabled(isErasing)
+            .accessibilityHint("Asks you to confirm first")
+            if eraseFailed {
+                Text("We couldn't erase this phone's data. Please try again.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func eraseThisDevice() async {
+        isErasing = true
+        eraseFailed = false
+        defer { isErasing = false }
+        do {
+            try await services.accountDeletionService.eraseThisDevice(appState: appState)
+        } catch {
+            eraseFailed = true
+        }
     }
 
     /// An icon beside a title and an optional second line, the second line aligned under the title.

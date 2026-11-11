@@ -315,6 +315,8 @@ private final class SpyAccountDeletionService: AccountDeletionServiceProtocol, @
 
     func eraseThisDevice(appState: AppState) async throws {}
 
+    func resumeRequestedDeletion(appState: AppState) async throws {}
+
     func release() {
         continuation?.resume()
         continuation = nil

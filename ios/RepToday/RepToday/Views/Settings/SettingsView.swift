@@ -404,9 +404,16 @@ struct SettingsView: View {
         Deleting your account needs a connection. Nothing was deleted - try again when you're online.
         """
 
-    /// The failure body when there is no session for the linked account, so the request was never sent.
+    /// The failure body when there is no session the server accepts for the linked account, so it
+    /// deleted nothing.
     static let deleteNeedsSignInMessage = """
         Sign in again from Profile > Account, then delete your account. Nothing was deleted.
+        """
+
+    /// The failure body when the server refused before marking anything because deletion is not
+    /// available on it.
+    static let deleteUnavailableMessage = """
+        Account deletion isn't available right now. Nothing was deleted - please try again later.
         """
 
     /// The confirmation body for an account that signed in with Google or an email code.

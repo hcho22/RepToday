@@ -32,7 +32,7 @@ final class AccountDeletionAccountTests: XCTestCase {
         let appState: AppState
     }
 
-    private func makeFixture(legacyICloud: LegacyICloudErasure? = nil) async throws -> Fixture {
+    private func makeFixture(legacyICloud: LegacyICloudErasure? = nil, remote: (any SyncRemote)? = nil) async throws -> Fixture {
         let stack = SyncTestStack()
         let user = SyncFixtures.user()
         try await stack.users.save(user)
@@ -55,7 +55,7 @@ final class AccountDeletionAccountTests: XCTestCase {
             authService: MockAuthService(),
             outsideActivityService: stack.activities,
             account: AccountDeletionService.AccountTeardown(
-                remote: server,
+                remote: remote ?? server,
                 auth: auth,
                 syncStore: stack.store,
                 cursorStore: cursor,
@@ -157,10 +157,10 @@ final class AccountDeletionAccountTests: XCTestCase {
         try await assertWipedWithDeletionUnderWay(fixture)
     }
 
-    /// An error the server answers after the request was sent (it may have marked the account first)
+    /// An ambiguous answer after the request was sent (the server may have marked the account first)
     /// counts as committed too.
-    func testAnErrorAfterTheRequestWasSentCountsAsCommitted() async throws {
-        for error in [SyncRemoteError.rejected(code: nil, message: "Server Error"), .unauthenticated, .invalidResponse] {
+    func testAnAmbiguousAnswerAfterTheRequestWasSentCountsAsCommitted() async throws {
+        for error in [SyncRemoteError.rejected(code: nil, message: "Server Error"), .invalidResponse, .noResponse] {
             let fixture = try await makeFixture()
             await fixture.server.failDeletion(with: error)
 
@@ -197,6 +197,91 @@ final class AccountDeletionAccountTests: XCTestCase {
         let user = try await fixture.stack.users.currentUser()
         XCTAssertNil(user)
         await MainActor.run { XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay) }
+    }
+
+    /// Answers that provably come before the server marks anything delete nothing and say so.
+    func testARefusalBeforeTheMarkDeletesNothing() async throws {
+        let refusals: [(SyncRemoteError, AccountDeletionError)] = [
+            (.unauthenticated, .needsSignIn),
+            (.rejected(code: "deletion_unavailable", message: "Account deletion is not configured on this deployment."), .unavailable),
+        ]
+        for (refusal, expected) in refusals {
+            let fixture = try await makeFixture()
+            await fixture.server.failDeletion(with: refusal)
+            do {
+                try await fixture.service.deleteAccount(appState: fixture.appState)
+                XCTFail("\(refusal) must not count as a committed deletion")
+            } catch {
+                XCTAssertEqual(error as? AccountDeletionError, expected)
+            }
+            try await assertNothingDeleted(fixture)
+        }
+    }
+
+    /// Offline, the session token cannot be refreshed, so the request is never built: nothing is
+    /// deleted and the phone says deletion needs a connection.
+    func testAnOfflineSessionTokenFetchDeletesNothing() async throws {
+        let offlineRemote = ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: URL(string: "https://a-b-1.convex.cloud")!) {
+            throw URLError(.notConnectedToInternet)
+        })
+        let fixture = try await makeFixture(remote: offlineRemote)
+        do {
+            try await fixture.service.deleteAccount(appState: fixture.appState)
+            XCTFail("a request that was never built must not count as sent")
+        } catch {
+            XCTAssertEqual(error as? AccountDeletionError, .needsConnection)
+        }
+        try await assertNothingDeleted(fixture)
+    }
+
+    // MARK: - A relaunch with the request recorded
+
+    /// The app was closed while the request was out: the next launch sends it again and finishes the
+    /// teardown, telling the user once that the deletion is under way.
+    func testARelaunchWithTheRequestRecordedFinishesTheDeletion() async throws {
+        let fixture = try await makeFixture()
+        defaults.set(Self.identity.userId, forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey)
+
+        try await fixture.service.resumeRequestedDeletion(appState: fixture.appState)
+
+        let deleteCalls = await fixture.server.deleteCalls
+        XCTAssertEqual(deleteCalls, 1)
+        try await assertWipedWithDeletionUnderWay(fixture)
+
+        await MainActor.run { fixture.appState.showAccountDeletionUnderWay = false }
+        try await fixture.service.resumeRequestedDeletion(appState: fixture.appState)
+        await MainActor.run { XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay, "the message shows once") }
+    }
+
+    func testARelaunchWithNoRequestForTheLinkedAccountChangesNothing() async throws {
+        for recorded in [nil, "user_someone_else"] {
+            let fixture = try await makeFixture()
+            defaults.set(recorded, forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey)
+
+            try await fixture.service.resumeRequestedDeletion(appState: fixture.appState)
+
+            let deleteCalls = await fixture.server.deleteCalls
+            XCTAssertEqual(deleteCalls, 0)
+            let user = try await fixture.stack.users.currentUser()
+            XCTAssertNotNil(user)
+            await MainActor.run {
+                XCTAssertEqual(fixture.appState.account, Self.identity)
+                XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay)
+            }
+        }
+    }
+
+    private func assertNothingDeleted(_ fixture: Fixture, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNotNil(user, file: file, line: line)
+        let logs = try await fixture.stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(logs.count, 2, file: file, line: line)
+        await MainActor.run {
+            XCTAssertEqual(fixture.appState.account, Self.identity, file: file, line: line)
+            XCTAssertTrue(fixture.appState.isOnboarded, file: file, line: line)
+            XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay, file: file, line: line)
+        }
+        XCTAssertNil(defaults.string(forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey), file: file, line: line)
     }
 
     private func assertWipedWithDeletionUnderWay(_ fixture: Fixture, file: StaticString = #filePath, line: UInt = #line) async throws {

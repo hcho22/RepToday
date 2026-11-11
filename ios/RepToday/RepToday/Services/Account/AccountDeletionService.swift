@@ -13,12 +13,15 @@ protocol AccountDeletionServiceProtocol {
     /// 0. With a linked account and an account backend (US-AU05): stop sync, then delete the
     ///    account's server data and its Clerk user (`accounts:deleteAccount`). Before the request is
     ///    sent, the device records that deletion was requested for this account; from then on the
-    ///    deletion counts as committed, because the server may have acted whatever comes back. Only a
-    ///    first request that provably never left the phone - no connection, or no session token -
-    ///    stops here with nothing deleted. Every other outcome (success, an error, a timeout, a lost
-    ///    response, a later sign-in failure) runs the device teardown, and unless the server confirmed
+    ///    deletion counts as committed once the server may have marked the account. A first request
+    ///    that provably never left the phone (no connection, or no session token could be had) or that
+    ///    the server provably refused before marking anything (an unaccepted session, or a deployment
+    ///    with deletion unavailable) stops here with nothing deleted. Every other outcome (success, no
+    ///    response, a timeout, an unexplained rejection, an invalid response, or any failure on a
+    ///    retry of a request already sent) runs the device teardown, and unless the server confirmed
     ///    the deletion complete, `AppState.showAccountDeletionUnderWay` says it is under way and
-    ///    finishes on its own. A persisted marker makes a retry after this step skip it.
+    ///    finishes on its own. A persisted marker makes a retry after this step skip it, and
+    ///    `resumeRequestedDeletion` finishes a deletion the app was closed during.
     /// 1. Delete every durable record on the device - the `CDUser`/`CDWorkoutLog`/`CDSessionPolicy`
     ///    rows in the Cloud store and the `CDActiveSession`/`CDOutsideActivity` rows in the Local
     ///    store - each saved as it goes, then empty the sync outbox and forget the sync cursor. Then
@@ -41,6 +44,12 @@ protocol AccountDeletionServiceProtocol {
     /// - Throws: `AccountDeletionError` when the server step cannot run; nothing was deleted then.
     func deleteAccount(appState: AppState) async throws
 
+    /// Finishes, at launch, a deletion whose request was recorded for the linked account but whose
+    /// teardown never completed (the app was closed mid-request): it runs `deleteAccount` again,
+    /// which can only end in the device teardown, and shows the being-deleted message once. Does
+    /// nothing when no such request is recorded.
+    func resumeRequestedDeletion(appState: AppState) async throws
+
     /// Erases this phone's Rep Today data and routes back to onboarding - steps 1 to 3 above, with no
     /// server step and no iCloud deletion - so the phone can be set up with another account. The
     /// account itself is not deleted. Offered when the phone's data belongs to a different account
@@ -52,9 +61,11 @@ protocol AccountDeletionServiceProtocol {
 enum AccountDeletionError: Error, Equatable {
     /// The server step needs a connection.
     case needsConnection
-    /// There is no session for the linked account to send the request with; signing in again lets
-    /// deletion run.
+    /// There is no session the server accepts for the linked account; signing in again lets deletion
+    /// run.
     case needsSignIn
+    /// The server refused before marking anything: deletion is not available on this deployment.
+    case unavailable
 }
 
 /// The production account-deletion orchestrator (US-AD03).
@@ -125,6 +136,15 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         }
     }
 
+    func resumeRequestedDeletion(appState: AppState) async throws {
+        guard let account else { return }
+        let linkedAccount = await MainActor.run { appState.account }
+        guard let linkedAccount,
+              account.defaults.string(forKey: AccountTeardown.remoteDeletionRequestedKey) == linkedAccount.userId else { return }
+        try await deleteAccount(appState: appState)
+        await MainActor.run { appState.showAccountDeletionUnderWay = true }
+    }
+
     func eraseThisDevice(appState: AppState) async throws {
         try await withSyncStopped(appState) { _ in
             await account?.engine?.waitForIdle()
@@ -161,9 +181,12 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             } catch SyncRemoteError.unreachable where !sentBefore {
                 account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
                 throw AccountDeletionError.needsConnection
-            } catch SyncRemoteError.notSignedIn where !sentBefore {
+            } catch SyncRemoteError.notSignedIn where !sentBefore, SyncRemoteError.unauthenticated where !sentBefore {
                 account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
                 throw AccountDeletionError.needsSignIn
+            } catch SyncRemoteError.rejected(code: "deletion_unavailable"?, message: _) where !sentBefore {
+                account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                throw AccountDeletionError.unavailable
             } catch {
                 outcome = .underWay
             }

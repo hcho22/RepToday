@@ -31,7 +31,16 @@ struct ConvexHTTPClient: Sendable {
         args: Args,
         as valueType: Value.Type = Value.self
     ) async throws -> Value {
-        guard let bearer = try await token(), !bearer.isEmpty else {
+        let bearer: String?
+        do {
+            bearer = try await token()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Fetching or refreshing the session token failed, so no request was built or sent.
+            throw SyncRemoteError.unreachable
+        }
+        guard let bearer, !bearer.isEmpty else {
             throw SyncRemoteError.notSignedIn
         }
         var request = URLRequest(url: deploymentURL.appendingPathComponent("api").appendingPathComponent(kind.rawValue))
