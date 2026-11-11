@@ -55,6 +55,10 @@ struct AccountStatusPresentation: Equatable {
             headline = "Sign in again to keep saving to your account."
             detail = "Everything stays on this phone until you do."
             symbol = "person.crop.circle.badge.exclamationmark"
+        case .accountBeingDeleted:
+            headline = "This account is being deleted."
+            detail = "That finishes on its own. Your plan and sessions stay on this phone; once it's done, you can sign in here with a different account."
+            symbol = "person.crop.circle.badge.xmark"
         case .localOnly:
             headline = "This build keeps your data on this phone only."
             detail = nil

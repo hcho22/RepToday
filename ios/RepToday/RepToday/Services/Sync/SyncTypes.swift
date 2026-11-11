@@ -63,8 +63,11 @@ enum SyncRemoteError: Error, Equatable {
     case unauthenticated
     /// The account is being deleted; nothing more is written to it.
     case accountDeleting
-    /// No connection, or the request timed out. Worth retrying later.
+    /// No connection: the request never left the phone. Worth retrying later.
     case unreachable
+    /// The request was sent, but no answer came back (it timed out, the connection dropped, or the
+    /// backend's gateway failed), so the backend may have acted on it. Worth retrying later.
+    case noResponse
     /// The backend refused the request or failed; `code` is the backend's error code when it sent one.
     case rejected(code: String?, message: String)
     /// The response was not what the account API returns.
@@ -106,13 +109,13 @@ protocol SyncRemote: Sendable {
     func deleteAccount() async throws -> RemoteAccountDeletion
 }
 
-/// How far a committed server-side account deletion got before answering.
+/// How far a committed account deletion is known to have got.
 enum RemoteAccountDeletion: Equatable, Sendable {
     /// The data and the sign-in identity are deleted.
     case complete
-    /// The data is deleted; removing the sign-in identity is still under way and the server finishes
-    /// it on its own.
-    case signInRemovalPending
+    /// The deletion is under way and the server finishes it on its own: removing the sign-in identity
+    /// is still pending, or the request was sent and no usable answer came back.
+    case underWay
 }
 
 /// Encodes and decodes the domain records that travel as sync payloads.

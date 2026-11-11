@@ -121,6 +121,8 @@ final class AccountDeletionAccountTests: XCTestCase {
         XCTAssertFalse(outbox.isEmpty, "the waiting change is still queued")
         let serverRows = await fixture.server.rows
         XCTAssertFalse(serverRows.isEmpty, "nothing on the server was deleted")
+        let deleteCalls = await fixture.server.deleteCalls
+        XCTAssertEqual(deleteCalls, 1)
         await MainActor.run {
             XCTAssertEqual(fixture.appState.account, Self.identity)
             XCTAssertTrue(fixture.appState.isOnboarded)
@@ -128,17 +130,88 @@ final class AccountDeletionAccountTests: XCTestCase {
         }
     }
 
-    func testARejectedSessionAsksForSignInAndChangesNothing() async throws {
+    func testNoSessionForTheLinkedAccountAsksForSignInAndChangesNothing() async throws {
         let fixture = try await makeFixture()
-        await fixture.server.failDeletion(with: .unauthenticated)
+        await fixture.server.failDeletion(with: .notSignedIn)
         do {
             try await fixture.service.deleteAccount(appState: fixture.appState)
-            XCTFail("an unaccepted session cannot delete")
+            XCTFail("with no session the request never leaves the phone")
         } catch {
             XCTAssertEqual(error as? AccountDeletionError, .needsSignIn)
         }
         let user = try await fixture.stack.users.currentUser()
         XCTAssertNotNil(user)
+        XCTAssertNil(defaults.string(forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey))
+    }
+
+    // MARK: - Committed once sent
+
+    /// The server committed the deletion and the answer was lost on the way back: the phone wipes
+    /// itself as on success and says the deletion is under way.
+    func testAResponseLostAfterTheServerCommittedStillWipesThePhone() async throws {
+        let fixture = try await makeFixture()
+        await fixture.server.loseDeletionResponse()
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        try await assertWipedWithDeletionUnderWay(fixture)
+    }
+
+    /// An error the server answers after the request was sent (it may have marked the account first)
+    /// counts as committed too.
+    func testAnErrorAfterTheRequestWasSentCountsAsCommitted() async throws {
+        for error in [SyncRemoteError.rejected(code: nil, message: "Server Error"), .unauthenticated, .invalidResponse] {
+            let fixture = try await makeFixture()
+            await fixture.server.failDeletion(with: error)
+
+            try await fixture.service.deleteAccount(appState: fixture.appState)
+
+            try await assertWipedWithDeletionUnderWay(fixture)
+        }
+    }
+
+    /// The request went out on an earlier attempt and the job has since deleted the Clerk user, so no
+    /// session can be had: the retry finishes the deletion on the phone rather than asking for a
+    /// sign-in that can never succeed.
+    func testARetryAfterTheClerkUserIsGoneFinishesOnThePhone() async throws {
+        let fixture = try await makeFixture()
+        defaults.set(Self.identity.userId, forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey)
+        await fixture.server.failDeletion(with: .notSignedIn)
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        try await assertWipedWithDeletionUnderWay(fixture)
+    }
+
+    /// A first request that never left the phone is forgotten, so the next attempt online is an
+    /// ordinary deletion.
+    func testARequestThatNeverLeftThePhoneIsNotTreatedAsSent() async throws {
+        let fixture = try await makeFixture()
+        await fixture.server.setOffline(true)
+        _ = try? await fixture.service.deleteAccount(appState: fixture.appState)
+        XCTAssertNil(defaults.string(forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey))
+
+        await fixture.server.setOffline(false)
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNil(user)
+        await MainActor.run { XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay) }
+    }
+
+    private func assertWipedWithDeletionUnderWay(_ fixture: Fixture, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNil(user, file: file, line: line)
+        let logs = try await fixture.stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(logs.isEmpty, file: file, line: line)
+        let outbox = try await fixture.stack.outbox()
+        XCTAssertEqual(outbox, [], file: file, line: line)
+        await MainActor.run {
+            XCTAssertTrue(fixture.appState.showAccountDeletionUnderWay, file: file, line: line)
+            XCTAssertNil(fixture.appState.account, file: file, line: line)
+            XCTAssertFalse(fixture.appState.isOnboarded, file: file, line: line)
+        }
+        XCTAssertNil(defaults.string(forKey: AccountDeletionService.AccountTeardown.remoteDeletionRequestedKey), file: file, line: line)
     }
 
     func testARepeatAfterTheServerStepSkipsItAndFinishesOnTheDevice() async throws {
@@ -203,7 +276,7 @@ final class AccountDeletionAccountTests: XCTestCase {
     /// on success and says the sign-in removal finishes on its own, instead of claiming nothing changed.
     func testAPendingSignInRemovalStillWipesThePhoneAndSaysSo() async throws {
         let fixture = try await makeFixture()
-        await fixture.server.answerDeletion(with: .signInRemovalPending)
+        await fixture.server.answerDeletion(with: .underWay)
 
         try await fixture.service.deleteAccount(appState: fixture.appState)
 
@@ -218,10 +291,10 @@ final class AccountDeletionAccountTests: XCTestCase {
             XCTAssertNil(fixture.appState.account)
             XCTAssertFalse(fixture.appState.isOnboarded)
         }
-        XCTAssertFalse(defaults.bool(forKey: AccountDeletionService.AccountTeardown.signInRemovalPendingKey))
+        XCTAssertFalse(defaults.bool(forKey: AccountDeletionService.AccountTeardown.deletionUnderWayKey))
         XCTAssertEqual(
-            RootView.deletionNoticeMessage(appleGuidance: false, signInRemovalPending: true),
-            "Your Rep Today data is deleted. Removing your sign-in is still under way and finishes on its own - there's nothing more you need to do."
+            RootView.deletionNoticeMessage(appleGuidance: false, deletionUnderWay: true),
+            "Your Rep Today data is deleted from this phone. Your account is being deleted, and that finishes on its own - there's nothing more you need to do."
         )
     }
 

@@ -18,9 +18,12 @@ import { accountError, findAccount, requireOwner } from "./ownership";
  * 2. The action deletes the Clerk user through Clerk's Backend API with the deployment's
  *    `CLERK_SECRET_KEY`. A 404 means it is already gone; when the request fails, the action asks
  *    Clerk whether the user still exists, because a lost response or a second device's deletion can
- *    mean it is already gone. Every attempt is recorded on the account row (`recordClerkAttempt`).
+ *    mean it is already gone. Each Clerk call gives up after `CLERK_REQUEST_TIMEOUT_MS`, so the action
+ *    answers well inside the app's 30-second request limit even when Clerk hangs. Every attempt is
+ *    recorded on the account row (`recordClerkAttempt`).
  * 3. `purgeData` removes the owner's rows straight away, in batches, whatever Clerk answered.
- * 4. `continueDeletion` retries the Clerk deletion on a growing, capped back-off
+ * 4. `continueDeletion` purges again (so a deletion whose action failed after marking still loses
+ *    its data) and retries the Clerk deletion on a growing, capped back-off
  *    (`CLERK_RETRY_DELAYS_MS`) until Clerk confirms the user is gone. `DELETION_GRACE_MS` after that
  *    confirmation, once every session token issued before it has expired (Clerk session tokens live
  *    about a minute), `finishDeletion` removes anything left and then the account row itself. Until
@@ -32,6 +35,9 @@ export const DELETION_GRACE_MS = 10 * 60 * 1000;
 
 /** The waits between retries of the Clerk deletion; the last one repeats until Clerk confirms. */
 export const CLERK_RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000, 30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000];
+
+/** How long one Clerk Backend API call may take before it counts as unanswered. */
+export const CLERK_REQUEST_TIMEOUT_MS = 8 * 1000;
 
 /** Rows removed per table per transaction; larger accounts continue in a scheduled follow-up. */
 export const PURGE_BATCH = 200;
@@ -98,10 +104,7 @@ function clerkSecret(): string | undefined {
  */
 async function deleteClerkUser(clerkUserId: string, secret: string): Promise<ClerkUserState> {
   try {
-    const response = await fetch(clerkUserURL(clerkUserId), {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${secret}` },
-    });
+    const response = await fetchClerk(clerkUserId, "DELETE", secret);
     if (response.ok || response.status === 404) {
       return "gone";
     }
@@ -114,10 +117,7 @@ async function deleteClerkUser(clerkUserId: string, secret: string): Promise<Cle
 /** Asks Clerk whether the user exists: 404 means gone, 200 means it exists, anything else is unknown. */
 async function lookUpClerkUser(clerkUserId: string, secret: string): Promise<ClerkUserState> {
   try {
-    const response = await fetch(clerkUserURL(clerkUserId), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${secret}` },
-    });
+    const response = await fetchClerk(clerkUserId, "GET", secret);
     if (response.status === 404) {
       return "gone";
     }
@@ -130,8 +130,19 @@ async function lookUpClerkUser(clerkUserId: string, secret: string): Promise<Cle
   return "unknown";
 }
 
-function clerkUserURL(clerkUserId: string): string {
-  return `${CLERK_API_ORIGIN}/v1/users/${encodeURIComponent(clerkUserId)}`;
+/** One call to Clerk's user endpoint, aborted after `CLERK_REQUEST_TIMEOUT_MS`. */
+async function fetchClerk(clerkUserId: string, method: "DELETE" | "GET", secret: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLERK_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(`${CLERK_API_ORIGIN}/v1/users/${encodeURIComponent(clerkUserId)}`, {
+      method,
+      headers: { Authorization: `Bearer ${secret}` },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -195,8 +206,9 @@ export const deletionState = internalQuery({
 });
 
 /**
- * The scheduled half of a committed deletion: retries the Clerk deletion until Clerk confirms it,
- * then, once the grace period after that confirmation has passed, finishes the deletion.
+ * The scheduled half of a committed deletion: purges the owner's data, retries the Clerk deletion
+ * until Clerk confirms it, then, once the grace period after that confirmation has passed, finishes
+ * the deletion.
  */
 export const continueDeletion = internalAction({
   args: { ownerId: v.string() },
@@ -205,6 +217,7 @@ export const continueDeletion = internalAction({
     if (state === null) {
       return;
     }
+    await ctx.runMutation(internal.accounts.purgeData, { ownerId });
     let confirmedAt = state.clerkUserDeletedAt;
     if (confirmedAt === null) {
       const secret = clerkSecret();

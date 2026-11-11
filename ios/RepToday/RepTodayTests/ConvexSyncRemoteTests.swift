@@ -194,9 +194,17 @@ final class ConvexSyncRemoteTests: XCTestCase {
         StubConvexProtocol.respond(json: "upstream failure", status: 503)
         do {
             _ = try await remote().pull(since: 0, limit: 10)
-            XCTFail("expected unreachable")
+            XCTFail("expected no response")
         } catch {
-            XCTAssertEqual(error as? SyncRemoteError, .unreachable)
+            XCTAssertEqual(error as? SyncRemoteError, .noResponse, "a gateway failure may follow a request the backend acted on")
+        }
+        StubConvexProtocol.reset()
+        StubConvexProtocol.fail(with: URLError(.timedOut))
+        do {
+            _ = try await remote().pull(since: 0, limit: 10)
+            XCTFail("expected no response")
+        } catch {
+            XCTAssertEqual(error as? SyncRemoteError, .noResponse, "a timed-out request may have reached the backend")
         }
     }
 
@@ -213,7 +221,7 @@ final class ConvexSyncRemoteTests: XCTestCase {
     func testADeletionClerkHasNotConfirmedIsPending() async throws {
         StubConvexProtocol.respond(json: #"{"status":"success","value":{"deleted":true,"clerkUserDeleted":false}}"#)
         let outcome = try await remote().deleteAccount()
-        XCTAssertEqual(outcome, .signInRemovalPending)
+        XCTAssertEqual(outcome, .underWay)
     }
 
     // MARK: - Configuration

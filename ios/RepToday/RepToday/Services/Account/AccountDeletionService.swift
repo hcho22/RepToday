@@ -11,12 +11,14 @@ protocol AccountDeletionServiceProtocol {
     /// Tears the account down in this order, then routes back to onboarding:
     ///
     /// 0. With a linked account and an account backend (US-AU05): stop sync, then delete the
-    ///    account's server data and its Clerk user (`accounts:deleteAccount`). This needs a connection
-    ///    and runs first, so a failure to reach the server changes nothing on the device. Once the
-    ///    server answers, the deletion is committed there - when Clerk cannot be reached yet, the
-    ///    server keeps retrying the sign-in removal on its own, the device teardown still runs, and
-    ///    `AppState.showAccountDeletionUnderWay` says so. A persisted marker makes a retry skip this
-    ///    step - the deleted account's session can no longer reach the server.
+    ///    account's server data and its Clerk user (`accounts:deleteAccount`). Before the request is
+    ///    sent, the device records that deletion was requested for this account; from then on the
+    ///    deletion counts as committed, because the server may have acted whatever comes back. Only a
+    ///    first request that provably never left the phone - no connection, or no session token -
+    ///    stops here with nothing deleted. Every other outcome (success, an error, a timeout, a lost
+    ///    response, a later sign-in failure) runs the device teardown, and unless the server confirmed
+    ///    the deletion complete, `AppState.showAccountDeletionUnderWay` says it is under way and
+    ///    finishes on its own. A persisted marker makes a retry after this step skip it.
     /// 1. Delete every durable record on the device - the `CDUser`/`CDWorkoutLog`/`CDSessionPolicy`
     ///    rows in the Cloud store and the `CDActiveSession`/`CDOutsideActivity` rows in the Local
     ///    store - each saved as it goes, then empty the sync outbox and forget the sync cursor. Then
@@ -46,14 +48,13 @@ protocol AccountDeletionServiceProtocol {
     func eraseThisDevice(appState: AppState) async throws
 }
 
-/// Why account deletion stopped before deleting anything.
+/// Why account deletion stopped before deleting anything: its request never left the phone.
 enum AccountDeletionError: Error, Equatable {
     /// The server step needs a connection.
     case needsConnection
-    /// The account backend did not accept this device's session; signing in again lets deletion run.
+    /// There is no session for the linked account to send the request with; signing in again lets
+    /// deletion run.
     case needsSignIn
-    /// The server refused or failed. Nothing was deleted.
-    case serverFailed
 }
 
 /// The production account-deletion orchestrator (US-AD03).
@@ -88,8 +89,11 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
 
         /// The account whose server data is already deleted, so a retry skips the server step.
         static let remoteDeletionMarkerKey = "Account.remoteDeletionCompletedFor"
-        /// Set with the marker when the server is still removing the sign-in identity.
-        static let signInRemovalPendingKey = "Account.remoteDeletionSignInRemovalPending"
+        /// The account whose deletion request has been sent, recorded before sending: a later attempt
+        /// treats every failure as a deletion the server may already have committed.
+        static let remoteDeletionRequestedKey = "Account.remoteDeletionRequestedFor"
+        /// Set with the marker when the deletion is under way rather than confirmed complete.
+        static let deletionUnderWayKey = "Account.remoteDeletionUnderWay"
     }
 
     init(
@@ -149,20 +153,21 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         if let account, let linkedAccount, let remote = account.remote,
            account.defaults.string(forKey: AccountTeardown.remoteDeletionMarkerKey) != linkedAccount.userId {
             await account.engine?.waitForIdle()
+            let sentBefore = account.defaults.string(forKey: AccountTeardown.remoteDeletionRequestedKey) == linkedAccount.userId
+            account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionRequestedKey)
             let outcome: RemoteAccountDeletion
             do {
                 outcome = try await remote.deleteAccount()
-            } catch let error as SyncRemoteError {
-                switch error {
-                case .unreachable:
-                    throw AccountDeletionError.needsConnection
-                case .notSignedIn, .unauthenticated:
-                    throw AccountDeletionError.needsSignIn
-                case .accountDeleting, .rejected, .invalidResponse:
-                    throw AccountDeletionError.serverFailed
-                }
+            } catch SyncRemoteError.unreachable where !sentBefore {
+                account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                throw AccountDeletionError.needsConnection
+            } catch SyncRemoteError.notSignedIn where !sentBefore {
+                account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                throw AccountDeletionError.needsSignIn
+            } catch {
+                outcome = .underWay
             }
-            account.defaults.set(outcome == .signInRemovalPending, forKey: AccountTeardown.signInRemovalPendingKey)
+            account.defaults.set(outcome == .underWay, forKey: AccountTeardown.deletionUnderWayKey)
             account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionMarkerKey)
         }
     }
@@ -202,9 +207,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         // 3. Reset routing state on the main actor (it is what SwiftUI observes), which sends the app
         //    back to onboarding. Done last, so a throw in an earlier step leaves the user in place to
         //    retry against an idempotent teardown rather than stranded on a torn-down screen.
-        let signInRemovalPending = account?.defaults.bool(forKey: AccountTeardown.signInRemovalPendingKey) ?? false
+        let deletionUnderWay = account?.defaults.bool(forKey: AccountTeardown.deletionUnderWayKey) ?? false
         await MainActor.run {
-            if signInRemovalPending {
+            if deletionUnderWay {
                 appState.showAccountDeletionUnderWay = true
             }
             // `isOnboarded` is also the idempotence marker for the in-memory identities: a second
@@ -219,6 +224,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             appState.isOnboarded = false
         }
         account?.defaults.removeObject(forKey: AccountTeardown.remoteDeletionMarkerKey)
-        account?.defaults.removeObject(forKey: AccountTeardown.signInRemovalPendingKey)
+        account?.defaults.removeObject(forKey: AccountTeardown.deletionUnderWayKey)
+        account?.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
     }
 }

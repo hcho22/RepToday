@@ -134,7 +134,7 @@ struct RootView: View {
         } message: {
             Text(Self.deletionNoticeMessage(
                 appleGuidance: appState.showAppleSignOutGuidance,
-                signInRemovalPending: appState.showAccountDeletionUnderWay
+                deletionUnderWay: appState.showAccountDeletionUnderWay
             ))
         }
     }
@@ -143,13 +143,13 @@ struct RootView: View {
         appleGuidance ? "One more step" : "Deletion under way"
     }
 
-    /// What the post-deletion alert says: always that the data is deleted; that removing the sign-in
-    /// finishes on its own when the server is still doing it; and the Apple ID step when it applies.
-    static func deletionNoticeMessage(appleGuidance: Bool, signInRemovalPending: Bool) -> String {
-        var message = "Your Rep Today data is deleted."
-        if signInRemovalPending {
-            message += " Removing your sign-in is still under way and finishes on its own - there's nothing more you need to do."
-        }
+    /// What the post-deletion alert says: that the data is deleted, or - when the server has not
+    /// confirmed the deletion complete - that it is gone from this phone and the account's deletion
+    /// finishes on its own; and the Apple ID step when it applies.
+    static func deletionNoticeMessage(appleGuidance: Bool, deletionUnderWay: Bool) -> String {
+        var message = deletionUnderWay
+            ? "Your Rep Today data is deleted from this phone. Your account is being deleted, and that finishes on its own - there's nothing more you need to do."
+            : "Your Rep Today data is deleted."
         if appleGuidance {
             message += " To also stop using your Apple ID with Rep Today, "
                 + "open Settings, tap your name, then Sign-In & Security \u{2192} Sign in with Apple, "

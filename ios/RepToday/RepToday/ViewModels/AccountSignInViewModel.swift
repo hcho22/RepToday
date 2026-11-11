@@ -215,6 +215,8 @@ final class AccountSignInViewModel {
         defer { activity = nil }
         do {
             try await finish(identity)
+        } catch SyncRemoteError.accountDeleting {
+            message = Self.accountBeingDeletedMessage
         } catch AccountLinkError.belongsToAnotherAccount {
             // This session must not stay signed in: sync would upload this phone's data with its token.
             await auth.signOut()
@@ -225,6 +227,10 @@ final class AccountSignInViewModel {
                 : "You're signed in, but we couldn't finish setting up. Check your connection and try again."
         }
     }
+
+    /// The account just signed in to is still being deleted, so it can only be refused until that
+    /// finishes.
+    static let accountBeingDeletedMessage = "This account is still being deleted. Try again later, or use a different sign-in."
 
     /// Identity-framed, never alarming: what happened and what to do, nothing about what was lost
     /// (nothing is).

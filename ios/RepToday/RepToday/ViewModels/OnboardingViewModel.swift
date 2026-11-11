@@ -226,12 +226,15 @@ final class OnboardingViewModel {
     ///
     /// The account is checked before anything is written, so a returning user's plan can never be
     /// overwritten by a fresh one. If the account cannot be reached, nothing is saved and the user can
-    /// try again.
+    /// try again. An account that is still being deleted is refused as such
+    /// (`SyncRemoteError.accountDeleting`), so the user can wait or use a different sign-in.
     func completeSignIn(as identity: AccountIdentity) async throws -> Completion {
         if let accountRestorer {
             let restoredTypes: Set<SyncRecordType>
             do {
                 restoredTypes = try await accountRestorer.restoreFromAccount()
+            } catch SyncRemoteError.accountDeleting {
+                throw SyncRemoteError.accountDeleting
             } catch {
                 throw CompletionError.accountUnreachable
             }

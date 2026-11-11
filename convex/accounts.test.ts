@@ -1,8 +1,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
-import { CLERK_RETRY_DELAYS_MS, DELETION_GRACE_MS, PURGE_BATCH } from "./accounts";
+import { api, internal } from "./_generated/api";
+import { CLERK_REQUEST_TIMEOUT_MS, CLERK_RETRY_DELAYS_MS, DELETION_GRACE_MS, PURGE_BATCH } from "./accounts";
 import type { SyncChange } from "./sync";
 
 /**
@@ -236,6 +236,41 @@ describe("deleteAccount", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].deletionStartedAt).toBeDefined();
     expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+  });
+
+  test("a hanging Clerk is given up on, so the action answers inside the app's request limit", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
+    vi.stubGlobal("fetch", vi.fn((_input: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      }),
+    ));
+
+    const answer = t.withIdentity(ALICE).action(api.accounts.deleteAccount, {});
+    await vi.advanceTimersByTimeAsync(CLERK_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(CLERK_REQUEST_TIMEOUT_MS);
+
+    expect(await answer).toEqual({ deleted: true, clerkUserDeleted: false });
+    expect(CLERK_REQUEST_TIMEOUT_MS * 2).toBeLessThan(30_000);
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+    expect((await account(t, ALICE.tokenIdentifier))?.clerkDeletionLastOutcome).toBe("unknown");
+  });
+
+  test("a deletion whose action failed after marking still purges and finishes", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
+    // The state an action leaves when it throws straight after `beginDeletion`.
+    await t.mutation(internal.accounts.beginDeletion, { ownerId: ALICE.tokenIdentifier, clerkUserId: ALICE.subject });
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(6);
+
+    vi.advanceTimersByTime(CLERK_RETRY_DELAYS_MS[0]);
+    await t.finishInProgressScheduledFunctions();
+
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+    expect((await account(t, ALICE.tokenIdentifier))?.clerkUserDeletedAt).toBeDefined();
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
   });
 
   test("completes when Clerk deleted the user but the response was lost", async () => {

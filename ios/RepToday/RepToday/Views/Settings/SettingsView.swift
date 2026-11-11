@@ -398,21 +398,15 @@ struct SettingsView: View {
         Something went wrong and your account may not be fully deleted. Please try again.
         """
 
-    /// The failure body when deletion needs a connection: the server step runs first, so nothing was
-    /// deleted anywhere.
+    /// The failure body when deletion needs a connection: the request never left the phone, so nothing
+    /// was deleted anywhere.
     static let deleteNeedsConnectionMessage = """
         Deleting your account needs a connection. Nothing was deleted - try again when you're online.
         """
 
-    /// The failure body when the account no longer accepts this device's session.
+    /// The failure body when there is no session for the linked account, so the request was never sent.
     static let deleteNeedsSignInMessage = """
         Sign in again from Profile > Account, then delete your account. Nothing was deleted.
-        """
-
-    /// The failure body when the server refused or failed before committing the deletion. Nothing on
-    /// this device was deleted.
-    static let deleteServerFailedMessage = """
-        We couldn't delete your account just now. Everything on this phone is as it was - please try again.
         """
 
     /// The confirmation body for an account that signed in with Google or an email code.

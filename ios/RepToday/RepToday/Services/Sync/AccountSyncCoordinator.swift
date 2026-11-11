@@ -34,6 +34,9 @@ final class AccountSyncCoordinator {
         case waitingForConnection
         /// The account did not accept this device's session; signing in again resumes syncing.
         case needsSignIn
+        /// The account is being deleted (from another device); nothing more syncs to it, and signing
+        /// in to it again could only be refused.
+        case accountBeingDeleted
         /// The last attempt failed for another reason; it will try again.
         case retrying
     }
@@ -212,10 +215,12 @@ final class AccountSyncCoordinator {
 
     static func status(for error: Error) -> Status {
         switch error as? SyncRemoteError {
-        case .unreachable:
+        case .unreachable, .noResponse:
             return .waitingForConnection
-        case .notSignedIn, .unauthenticated, .accountDeleting:
+        case .notSignedIn, .unauthenticated:
             return .needsSignIn
+        case .accountDeleting:
+            return .accountBeingDeleted
         default:
             return .retrying
         }

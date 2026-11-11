@@ -49,8 +49,11 @@ struct ConvexHTTPClient: Sendable {
             switch error.code {
             case .cancelled:
                 throw CancellationError()
-            default:
+            case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                 .internationalRoamingOff, .callIsActive, .dataNotAllowed, .secureConnectionFailed:
                 throw SyncRemoteError.unreachable
+            default:
+                throw SyncRemoteError.noResponse
             }
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -72,7 +75,7 @@ struct ConvexHTTPClient: Sendable {
         case 401, 403:
             throw SyncRemoteError.unauthenticated
         case 408, 429, 500...599:
-            throw SyncRemoteError.unreachable
+            throw SyncRemoteError.noResponse
         default:
             throw SyncRemoteError.invalidResponse
         }

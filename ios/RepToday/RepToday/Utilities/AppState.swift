@@ -541,6 +541,14 @@ final class AppState {
         return userDefaults.bool(forKey: analyticsEnabledKey)
     }
 
+    /// A reader for the Clerk user id of the linked account, bound to the store `AppState` writes, for
+    /// the account backend's token: a session token is sent only for the account this device is linked
+    /// to (`AccountAuthServiceProtocol.sessionToken(forLinkedAccount:)`).
+    static func linkedAccountUserId(in userDefaults: UserDefaults = .standard) -> @Sendable () -> String? {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { store.wrapped.string(forKey: Keys.accountUserId) }
+    }
+
     /// The opt-out gate as `LiveAnalyticsService` holds it: a closure re-read on every emission, so
     /// turning telemetry off in Settings takes effect on the next event rather than the next launch.
     ///
@@ -551,14 +559,6 @@ final class AppState {
     /// construction instead of by both happening to name `.standard`. `RepTodayApp.init()` passes the
     /// store its own `AppState` was built on, exactly as it passes `installId` down rather than
     /// letting a second path re-derive it.
-    /// A reader for the Clerk user id of the linked account, bound to the store `AppState` writes, for
-    /// the account backend's token: a session token is sent only for the account this device is linked
-    /// to (`AccountAuthServiceProtocol.sessionToken(forLinkedAccount:)`).
-    static func linkedAccountUserId(in userDefaults: UserDefaults = .standard) -> @Sendable () -> String? {
-        let store = SendableUserDefaults(wrapped: userDefaults)
-        return { store.wrapped.string(forKey: Keys.accountUserId) }
-    }
-
     static func analyticsGate(in userDefaults: UserDefaults = .standard) -> @Sendable () -> Bool {
         let store = SendableUserDefaults(wrapped: userDefaults)
         return { isAnalyticsEnabled(in: store.wrapped) }

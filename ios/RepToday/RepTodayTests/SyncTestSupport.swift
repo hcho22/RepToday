@@ -29,6 +29,7 @@ actor FakeAccountServer: SyncRemote {
     private var failPulls: [Int: SyncRemoteError] = [:]
     private var deleteError: SyncRemoteError?
     private var deletionOutcome: RemoteAccountDeletion = .complete
+    private var losesDeletionResponse = false
     /// When set, every call fails with this, as if the device were offline.
     private var offlineError: SyncRemoteError?
 
@@ -46,9 +47,14 @@ actor FakeAccountServer: SyncRemote {
         deleteError = error
     }
 
-    /// What a successful deletion answers: `.signInRemovalPending` when Clerk could not be reached.
+    /// What a successful deletion answers: `.underWay` when Clerk could not be reached.
     func answerDeletion(with outcome: RemoteAccountDeletion) {
         deletionOutcome = outcome
+    }
+
+    /// Makes the next deletion commit on the server and then lose its answer on the way back.
+    func loseDeletionResponse() {
+        losesDeletionResponse = true
     }
 
     func setOffline(_ offline: Bool) {
@@ -115,6 +121,7 @@ actor FakeAccountServer: SyncRemote {
         if let offlineError { throw offlineError }
         if let deleteError { throw deleteError }
         rows = [:]
+        if losesDeletionResponse { throw SyncRemoteError.noResponse }
         return deletionOutcome
     }
 

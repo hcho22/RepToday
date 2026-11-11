@@ -158,7 +158,7 @@ final class AccountSignInTests: XCTestCase {
     func testTheAccountScreenNeverDescribesDataAsLost() {
         let now = Date(timeIntervalSince1970: 1_790_000_000)
         let account = AccountIdentity(userId: "u", email: "riley@example.com", method: .email)
-        let statuses: [AccountSyncCoordinator.Status] = [.upToDate, .syncing, .waitingForConnection, .retrying, .needsSignIn, .localOnly, .signedOut]
+        let statuses: [AccountSyncCoordinator.Status] = [.upToDate, .syncing, .waitingForConnection, .retrying, .needsSignIn, .accountBeingDeleted, .localOnly, .signedOut]
         for status in statuses {
             let presentation = AccountStatusPresentation(account: account, status: status, pendingCount: 3, lastSyncedAt: now, migrationStage: nil, now: now)
             let words = [presentation.headline, presentation.detail ?? ""].joined(separator: " ").lowercased()
@@ -180,7 +180,8 @@ final class AccountSignInTests: XCTestCase {
         XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.unreachable), .waitingForConnection)
         XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.unauthenticated), .needsSignIn)
         XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.notSignedIn), .needsSignIn)
-        XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.accountDeleting), .needsSignIn)
+        XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.accountDeleting), .accountBeingDeleted)
+        XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.noResponse), .waitingForConnection)
         XCTAssertEqual(AccountSyncCoordinator.status(for: SyncRemoteError.rejected(code: "invalid_change", message: "")), .retrying)
         XCTAssertEqual(AccountSyncCoordinator.status(for: CocoaError(.fileWriteUnknown)), .retrying)
     }
@@ -242,7 +243,7 @@ final class AccountSignInTests: XCTestCase {
         try await fixture.stack.logs.save(SyncFixtures.log(daysAgo: 0))
         await fixture.server.failPush(call: 1, with: .accountDeleting)
         await fixture.coordinator.syncNow()
-        XCTAssertEqual(fixture.coordinator.status, .needsSignIn)
+        XCTAssertEqual(fixture.coordinator.status, .accountBeingDeleted)
 
         let service = AccountDeletionService(
             userService: fixture.stack.users,
@@ -297,6 +298,37 @@ final class AccountSignInTests: XCTestCase {
         let withoutErase = AccountSignInPanel.anotherAccountText(Self.originalAccount, canErase: false)
         XCTAssertTrue(withoutErase.hasPrefix("You signed in to a different account."))
         XCTAssertFalse(withoutErase.contains("erase"))
+    }
+
+    /// Signing in at "Save your plan" to an account whose deletion is still pending says exactly that,
+    /// not that the account cannot be reached, and saves nothing.
+    func testSigningInToAnAccountStillBeingDeletedSaysSo() async throws {
+        let stack = SyncTestStack()
+        let server = FakeAccountServer()
+        await server.failPull(call: 1, with: .accountDeleting)
+        let onboarding = OnboardingViewModel(
+            userService: stack.users,
+            sessionPolicyService: DeterministicSessionPolicyService(store: stack.policies, exerciseService: try MockExerciseService(), userService: stack.users),
+            accountRestorer: stack.engine(server)
+        )
+        let vm = AccountSignInViewModel(auth: StubAccountAuthService(isConfigured: true), context: .onboarding) { identity in
+            _ = try await onboarding.completeSignIn(as: identity)
+        }
+
+        await vm.signInWithApple()
+
+        XCTAssertEqual(vm.message, AccountSignInViewModel.accountBeingDeletedMessage)
+        XCTAssertEqual(vm.message, "This account is still being deleted. Try again later, or use a different sign-in.")
+        XCTAssertEqual(vm.phase, .signedIn(Self.originalAccount), "Continue tries again later; a different sign-in is offered beside it")
+        let user = try await stack.users.currentUser()
+        XCTAssertNil(user)
+    }
+
+    func testAPhoneLinkedToAnAccountBeingDeletedIsNotInvitedToSignIn() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let presentation = AccountStatusPresentation(account: Self.originalAccount, status: .accountBeingDeleted, pendingCount: 0, lastSyncedAt: nil, migrationStage: nil, now: now)
+        XCTAssertFalse(presentation.offersSignIn)
+        XCTAssertEqual(presentation.headline, "This account is being deleted.")
     }
 
     // MARK: - Fixtures

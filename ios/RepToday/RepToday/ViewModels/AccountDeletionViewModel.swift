@@ -73,7 +73,6 @@ final class AccountDeletionViewModel {
             switch error as? AccountDeletionError {
             case .needsConnection: failureMessage = SettingsView.deleteNeedsConnectionMessage
             case .needsSignIn: failureMessage = SettingsView.deleteNeedsSignInMessage
-            case .serverFailed: failureMessage = SettingsView.deleteServerFailedMessage
             case nil: failureMessage = nil
             }
             // The teardown deletes durable records first and saves each step, and the routing reset is

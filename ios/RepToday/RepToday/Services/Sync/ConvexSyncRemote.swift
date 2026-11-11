@@ -145,7 +145,7 @@ struct ConvexSyncRemote: SyncRemote {
 
     func deleteAccount() async throws -> RemoteAccountDeletion {
         let result: DeleteResult = try await client.call(.action, "accounts:deleteAccount", args: ConvexNoArguments())
-        return result.clerkUserDeleted ? .complete : .signInRemovalPending
+        return result.clerkUserDeleted ? .complete : .underWay
     }
 
     private struct DeleteResult: Decodable {
