@@ -313,7 +313,7 @@ Exit criteria: all M4 stories pass against a Convex dev deployment and on a devi
 ## Open Questions
 
 1. Variation list per rung (Push and Pull first) and its Trainer art schedule. Recommendation: Wide and One-legged for Standard push-up; Decline for Pike; captain supplies the list.
-2. Confirm the planning defaults listed under the decisions table at M1 kickoff.
+2. ~~Confirm the planning defaults listed under the decisions table at M1 kickoff.~~ Resolved 2026-11-10: the captain confirmed the defaults as implemented, with the reconciliations recorded in ADR-0013.
 3. M4 LLM provider and model for an agent with tools. Recommendation: decide at M4 kickoff with a short evaluation.
 
 ## Documentation changes (applied 2026-11-10)

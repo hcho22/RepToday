@@ -171,6 +171,7 @@ The owning code is `Services/Engine/TrainingRotation.swift`.
 The planned day off after every completed Cycle.
 Any day without a session after Legs counts as the rest; a user may "train anyway", which forfeits it.
 Today shows a Rest Day card with an optional mobility-only **Recovery** flow, which neither advances the Rotation nor counts as a session (`WorkoutLog.isRecovery`).
+Anonymous telemetry still counts a Recovery flow like any session (`session_started`, `session_completed`, `week_active`), by the captain's decision of 2026-11-10.
 A Rest Day never lowers the Consistency Score.
 
 ## Core Sprinkle

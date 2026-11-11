@@ -56,4 +56,4 @@ M1 is implemented on top of them, and where the two disagree this ADR wins as th
   "Too hard" and "couldn't finish" still step back one step, and at the bottom of the range step down the chain, exactly as ADR-0011 records.
 - **Advancement.** The per-movement `advancementCriteria` numbers (ADR-0011's "raised to 15") give way to the one bar of this ADR, judged at the user's level.
 
-These reconciliations are the implementer's reading and are flagged for the captain to confirm (PRD Open Question 2).
+The captain confirmed these reconciliations on 2026-11-10 (PRD Open Question 2).
