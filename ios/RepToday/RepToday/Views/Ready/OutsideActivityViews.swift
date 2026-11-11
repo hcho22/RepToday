@@ -138,13 +138,17 @@ private struct OutsideActivityRow: View {
     let activity: OutsideActivity
     let onTap: () -> Void
 
+    /// A fixed icon column, capped with the icon, so the summary keeps its width at large text sizes.
+    @ScaledMetric(relativeTo: .headline) private var iconColumnWidth: CGFloat = 32
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: Theme.Spacing.md) {
                 Image(systemName: activity.type.systemImage)
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.accent)
-                    .frame(width: Theme.Spacing.minTouchTarget)
+                    .frame(width: iconColumnWidth)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(OutsideActivityCopy.summary(
@@ -195,7 +199,11 @@ struct HealthSuggestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            // The icon sits above the words at the accessibility sizes, so it never squeezes them.
+            let header = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.md))
+            header {
                 Image(systemName: candidate.type.systemImage)
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Colors.accent)
@@ -216,7 +224,7 @@ struct HealthSuggestionCard: View {
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -277,6 +285,7 @@ struct OutsideActivitySheet: View {
     var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var type: OutsideActivityType
     @State private var date: Date
     @State private var durationMinutes: Int
@@ -284,6 +293,9 @@ struct OutsideActivitySheet: View {
     @State private var isSaving = false
     @State private var confirmsDelete = false
     @State private var enabledHealth = false
+    /// The activity rows' icon column, wide enough for the widest glyph (the bike), growing with text up
+    /// to the size the icon itself is capped at.
+    @ScaledMetric(relativeTo: .headline) private var iconColumnWidth: CGFloat = 32
 
     private let now: Date
 
@@ -314,14 +326,16 @@ struct OutsideActivitySheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                // One row per kind of workout rather than a menu, so the choice is one tap and its name
+                // never truncates at the larger text sizes.
                 Section {
-                    Picker("Activity", selection: $type) {
-                        ForEach(OutsideActivityType.allCases) { option in
-                            Label(option.label, systemImage: option.systemImage).tag(option)
-                        }
+                    ForEach(OutsideActivityType.allCases) { option in
+                        typeRow(option)
                     }
-                    .font(Theme.Typography.body)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                } header: {
+                    Text("Activity")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
                 } footer: {
                     Text(OutsideActivityCopy.effect(of: type))
                         .font(Theme.Typography.caption)
@@ -334,11 +348,7 @@ struct OutsideActivitySheet: View {
                         .font(Theme.Typography.body)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                     Stepper(value: $durationMinutes, in: 5...OutsideActivity.maxDurationMinutes, step: 5) {
-                        HStack {
-                            Text("Duration")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Spacer(minLength: Theme.Spacing.sm)
+                        labeledValue("Duration") {
                             Text("\(durationMinutes) min")
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.Colors.textSecondary)
@@ -357,20 +367,18 @@ struct OutsideActivitySheet: View {
                         }
                     }
                     if type.hasDistance {
-                        HStack {
-                            Text("Distance")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Spacer(minLength: Theme.Spacing.sm)
-                            TextField("Optional", text: $distanceText)
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                                .font(Theme.Typography.body)
-                                .accessibilityLabel("Distance in \(DistanceFormatting.unit == .kilometers ? "kilometers" : "miles"), optional")
-                            Text(DistanceFormatting.unitSymbol)
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                                .accessibilityHidden(true)
+                        labeledValue("Distance") {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                TextField("Optional", text: $distanceText)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
+                                    .font(Theme.Typography.body)
+                                    .accessibilityLabel("Distance in \(DistanceFormatting.unit == .kilometers ? "kilometers" : "miles"), optional")
+                                Text(DistanceFormatting.unitSymbol)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                     }
@@ -432,6 +440,62 @@ struct OutsideActivitySheet: View {
             .confirmationDialog(OutsideActivityCopy.deleteConfirm, isPresented: $confirmsDelete, titleVisibility: .visible) {
                 Button(OutsideActivityCopy.delete, role: .destructive) { delete() }
                 Button(OutsideActivityCopy.cancel, role: .cancel) {}
+            }
+        }
+    }
+
+    /// A row for one kind of workout: its icon, its name and a check when chosen.
+    private func typeRow(_ option: OutsideActivityType) -> some View {
+        Button {
+            type = option
+        } label: {
+            HStack(spacing: Theme.Spacing.md) {
+                // A fixed column, capped like the Profile rows' icons, so every name starts at the same x
+                // and keeps the width it needs at the largest text sizes.
+                Image(systemName: option.systemImage)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(width: iconColumnWidth)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .accessibilityHidden(true)
+                Text(option.label)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Theme.Spacing.sm)
+                Image(systemName: "checkmark")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .opacity(type == option ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.label)
+        .accessibilityAddTraits(type == option ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// A field's name and its value side by side, or stacked at the accessibility text sizes so neither
+    /// is squeezed.
+    @ViewBuilder
+    private func labeledValue<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                value()
+            }
+        } else {
+            HStack {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: Theme.Spacing.sm)
+                value()
             }
         }
     }

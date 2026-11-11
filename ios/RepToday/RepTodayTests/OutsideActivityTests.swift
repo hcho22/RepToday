@@ -148,6 +148,27 @@ final class OutsideActivityTests: XCTestCase {
         }
     }
 
+    func testTheProgressTabScoresActivitiesExactlyAsTodayDoes() async throws {
+        let logs = [day(.push, daysAgo: 2)]
+        let activities = [activity(.run, daysAgo: 1), activity(.swim, daysAgo: 0, hour: 7)]
+        let progress = ProgressViewModel(
+            userService: MockUserService(user: TrainingDayFixtures.user()),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            outsideActivityService: InMemoryOutsideActivityService(activities: activities),
+            exerciseService: try MockExerciseService(),
+            subscriptionService: MockSubscriptionService(),
+            consistencyService: ConsistencyScoreService(now: { self.now }),
+            now: { self.now }
+        )
+        await progress.load()
+        let (today, _) = try makeViewModel(logs: logs, activities: activities)
+        await today.load()
+        let expected = ConsistencyScore.evaluate(logs: logs, activities: activities, weeklyGoal: 3, asOf: now).score
+        XCTAssertEqual(progress.consistency?.score ?? -1, expected, accuracy: 0.0001)
+        XCTAssertEqual(progress.consistency?.score, today.consistency?.score)
+        XCTAssertGreaterThan(expected, ConsistencyScore.evaluate(logs: logs, weeklyGoal: 3, asOf: now).score)
+    }
+
     // MARK: Today (US-HO04)
 
     private func makeViewModel(
@@ -164,6 +185,7 @@ final class OutsideActivityTests: XCTestCase {
             outsideActivityService: store,
             healthKitService: health,
             ownBundleIdentifier: "com.reptoday.app",
+            consistencyService: ConsistencyScoreService(now: { self.now }),
             now: { self.now }
         )
         return (viewModel, store)

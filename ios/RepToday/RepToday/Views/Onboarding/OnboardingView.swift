@@ -105,37 +105,57 @@ struct OnboardingView: View {
 
     // MARK: - Navigation controls
 
-    private var navigationControls: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            if !viewModel.isFirstStep {
-                Button(action: viewModel.goBack) {
-                    Text("Back")
-                        .font(Theme.Typography.button)
-                        .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.buttonHeight)
-                }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                .disabled(viewModel.isFinishing)
-            }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-            Button(action: primaryAction) {
-                ZStack {
-                    if viewModel.isFinishing {
-                        ProgressView().tint(Theme.Colors.onAccent)
-                    } else {
-                        Text(primaryTitle)
-                            .font(Theme.Typography.button)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.buttonHeight)
+    /// Back and the primary action side by side, or stacked (primary first) at the accessibility text
+    /// sizes, where two half-width buttons would truncate their titles.
+    private var navigationControls: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+        return layout {
+            if dynamicTypeSize.isAccessibilitySize {
+                primaryButton
+                backButton
+            } else {
+                backButton
+                primaryButton
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .disabled(!viewModel.canAdvance || viewModel.isFinishing)
         }
+    }
+
+    @ViewBuilder
+    private var backButton: some View {
+        if !viewModel.isFirstStep {
+            Button(action: viewModel.goBack) {
+                Text("Back")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: Theme.Spacing.buttonHeight)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .disabled(viewModel.isFinishing)
+        }
+    }
+
+    private var primaryButton: some View {
+        Button(action: primaryAction) {
+            ZStack {
+                if viewModel.isFinishing {
+                    ProgressView().tint(Theme.Colors.onAccent)
+                } else {
+                    Text(primaryTitle)
+                        .font(Theme.Typography.button)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.buttonHeight)
+        }
+        .accentFilledButtonStyle()
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
 
     private var primaryTitle: String {

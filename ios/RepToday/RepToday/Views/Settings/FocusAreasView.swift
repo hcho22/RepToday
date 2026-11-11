@@ -107,18 +107,20 @@ struct FocusAreasView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .listRowBackground(Theme.Colors.surface)
-
-            Section {
-                if didSave && !viewModel.hasChanges {
-                    Label(FocusAreasCopy.saved, systemImage: "checkmark.circle.fill")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        }
+        // Pinned like Today's Start bar, with what the last save did right above it, so the confirmation
+        // and its result are always in reach whatever the text size.
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 if let error = viewModel.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if didSave && !viewModel.hasChanges {
+                    Label(FocusAreasCopy.saved, systemImage: "checkmark.circle.fill")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Button {
@@ -137,9 +139,10 @@ struct FocusAreasView: View {
                 .accentFilledButtonStyle()
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .disabled(!viewModel.hasChanges || viewModel.isSaving)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
             }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
+            .background(Theme.Colors.background)
         }
         .task { await viewModel.load() }
         .listStyle(.insetGrouped)

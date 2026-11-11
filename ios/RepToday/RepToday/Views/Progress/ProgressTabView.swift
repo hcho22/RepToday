@@ -39,6 +39,7 @@ struct ProgressTabView: View {
             initialValue: ProgressViewModel(
                 userService: services.userService,
                 workoutLogService: services.workoutLogService,
+                outsideActivityService: services.outsideActivityService,
                 exerciseService: services.exerciseService,
                 subscriptionService: services.subscriptionService,
                 premiumSessionAuthority: services.premiumSessionAuthority,

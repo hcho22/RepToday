@@ -60,11 +60,16 @@ final class HomeFocusOutsideUITests: XCTestCase {
         scrollTo(logButton)
         attach("03-today-outside-activity-card")
         logButton.tap()
+        if !app.navigationBars["Log activity"].waitForExistence(timeout: 3) {
+            // A tap that landed while the scroll was still settling.
+            logButton.tap()
+        }
         XCTAssertTrue(app.navigationBars["Log activity"].waitForExistence(timeout: 5))
         attach("04-log-activity-sheet")
-        app.buttons["Activity"].tap()
-        XCTAssertTrue(app.buttons["Swim"].waitForExistence(timeout: 5))
-        app.buttons["Swim"].tap()
+        let swim = app.buttons["Swim"]
+        XCTAssertTrue(swim.waitForExistence(timeout: 5))
+        swim.tap()
+        XCTAssertTrue(swim.isSelected)
         attach("05-log-activity-swim")
         app.navigationBars["Log activity"].buttons["Save"].tap()
         XCTAssertNotNil(label(beginningWith: "Legs Day: ", timeout: 10), "the swim moved Pull behind Legs")
@@ -77,6 +82,10 @@ final class HomeFocusOutsideUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Edit activity"].waitForExistence(timeout: 5))
         attach("07-edit-activity-sheet")
         let deleteRow = app.buttons["Delete activity"].firstMatch
+        let form = app.descendants(matching: .collectionView).firstMatch
+        for _ in 0..<10 where !(deleteRow.exists && deleteRow.isHittable) {
+            form.swipeUp()
+        }
         let rowFrame = deleteRow.frame
         deleteRow.tap()
         // The confirmation's own "Delete activity", not the form row behind it.
@@ -96,20 +105,33 @@ final class HomeFocusOutsideUITests: XCTestCase {
         app.tabBars.buttons["Profile"].tap()
         app.buttons["Settings"].tap()
         let focusRow = app.buttons["Focus Areas"]
-        XCTAssertTrue(focusRow.waitForExistence(timeout: 5))
+        let settingsList = app.descendants(matching: .collectionView).firstMatch
+        XCTAssertTrue(settingsList.waitForExistence(timeout: 5))
+        for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
+            settingsList.swipeUp()
+        }
         XCTAssertEqual(focusRow.value as? String, "Chest, Abs")
         attach("08-settings")
         focusRow.tap()
         XCTAssertTrue(app.navigationBars["Focus Areas"].waitForExistence(timeout: 5))
         // "Back" is both a Focus Area and the word on a navigation button, so match the row by its detail.
         let backArea = app.buttons.matching(NSPredicate(format: "label == 'Back' AND value BEGINSWITH 'Rows'")).firstMatch
+        let editorList = app.descendants(matching: .collectionView).firstMatch
+        let saveBar = app.buttons["Save changes"]
+        // Clear of the pinned Save bar, not merely on screen: a row half under it takes the bar's tap.
+        for _ in 0..<10 where !(backArea.exists && backArea.frame.maxY < saveBar.frame.minY) {
+            editorList.swipeUp()
+        }
         backArea.tap()
-        XCTAssertTrue(backArea.isSelected)
+        let selected = expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: backArea)
+        wait(for: [selected], timeout: 5)
         attach("09-settings-focus-areas")
         app.buttons["Save changes"].tap()
         XCTAssertTrue(app.staticTexts["Saved. Your next session will use this."].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(focusRow.waitForExistence(timeout: 5))
+        for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
+            settingsList.swipeUp()
+        }
         XCTAssertEqual(focusRow.value as? String, "Chest, Back, Abs")
 
         // The next cold launch opens on the Welcome Page: today is Pull Day, Push is done.
