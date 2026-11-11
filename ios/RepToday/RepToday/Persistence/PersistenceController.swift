@@ -67,9 +67,13 @@ final class PersistenceController {
     init(inMemory: Bool = false, defaults: UserDefaults = .standard) {
         container = NSPersistentCloudKitContainer(name: "RepToday", managedObjectModel: Self.managedObjectModel)
 
-        let mirrorsICloud = !inMemory && (LegacyAccountMigrationStage.resolved(in: defaults)?.mirrorsICloud ?? false)
+        // A unit-test host app never mirrors: it shares the app's container and must not reach a
+        // developer's iCloud.
+        let isTestHost = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let mirrorsICloud = !inMemory && !isTestHost
+            && (LegacyAccountMigrationStage.resolved(in: defaults)?.mirrorsICloud ?? false)
         legacyICloudImport = mirrorsICloud
-            ? LegacyICloudImportMonitor(container: container)
+            ? LegacyICloudImportMonitor(container: container, containerIdentifier: Self.cloudKitContainerIdentifier)
             : LegacyICloudImportMonitor(settled: .nothingToImport)
         if inMemory {
             Self.configureInMemoryStore(container)

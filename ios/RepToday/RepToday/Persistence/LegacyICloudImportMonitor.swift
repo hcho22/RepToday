@@ -22,20 +22,32 @@ protocol LegacyICloudImporting: Sendable {
 /// launch, so the migration knows when iCloud data has reached the phone (M3, US-AU04).
 ///
 /// It starts listening when the container is built, before any store loads, so an import that
-/// finishes while the user is still on the sign-in screen is not missed.
+/// finishes while the user is still on the sign-in screen is not missed. While it waits it also asks
+/// CloudKit whether the device has an iCloud account at all: with none, there is nothing to import and
+/// no import event may ever come.
 final class LegacyICloudImportMonitor: LegacyICloudImporting, @unchecked Sendable {
-    // Safe: `state` is only read and written under `lock`.
+    // Safe: `state` is only read and written under `lock`; the other stored values are immutable.
     private let lock = NSLock()
     private var state: LegacyICloudImportOutcome = .unconfirmed
     private var observer: NSObjectProtocol?
+    private let accountStatus: (@Sendable () async -> CKAccountStatus)?
 
     /// A monitor that already knows the answer, for a store with no mirror.
     init(settled outcome: LegacyICloudImportOutcome) {
         state = outcome
+        accountStatus = nil
     }
 
-    /// Listens to `container`'s mirroring events.
-    init(container: NSPersistentCloudKitContainer) {
+    /// A monitor with no mirroring events, answering from the iCloud account status alone (tests).
+    init(accountStatus: @escaping @Sendable () async -> CKAccountStatus) {
+        self.accountStatus = accountStatus
+    }
+
+    /// Listens to `container`'s mirroring events and asks `containerIdentifier`'s account status.
+    init(container: NSPersistentCloudKitContainer, containerIdentifier: String) {
+        accountStatus = {
+            (try? await CKContainer(identifier: containerIdentifier).accountStatus()) ?? .couldNotDetermine
+        }
         observer = NotificationCenter.default.addObserver(
             forName: NSPersistentCloudKitContainer.eventChangedNotification,
             object: container,
@@ -59,6 +71,14 @@ final class LegacyICloudImportMonitor: LegacyICloudImporting, @unchecked Sendabl
     }
 
     func waitForImport(timeout: Duration) async -> LegacyICloudImportOutcome {
+        if current() == .unconfirmed, let accountStatus {
+            switch await accountStatus() {
+            case .noAccount, .restricted:
+                settle(.nothingToImport)
+            default:
+                break
+            }
+        }
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let outcome = current()
@@ -79,12 +99,22 @@ final class LegacyICloudImportMonitor: LegacyICloudImporting, @unchecked Sendabl
         case .setup, .import:
             // An iCloud account the device does not have can never deliver data; anything else
             // (offline, throttled) is worth waiting for on the next launch.
-            if let error = event.error as? CKError, error.code == .notAuthenticated {
+            if Self.meansNoICloudAccount(event.error) {
                 settle(.nothingToImport)
             }
         default:
             break
         }
+    }
+
+    /// CloudKit's "not signed in", or the mirror's own "Unable to initialize without an iCloud account"
+    /// (`NSCocoaErrorDomain` 134400).
+    static func meansNoICloudAccount(_ error: Error?) -> Bool {
+        if let error = error as? CKError, error.code == .notAuthenticated {
+            return true
+        }
+        guard let error = error as NSError? else { return false }
+        return error.domain == NSCocoaErrorDomain && error.code == 134400
     }
 
     private func settle(_ outcome: LegacyICloudImportOutcome) {

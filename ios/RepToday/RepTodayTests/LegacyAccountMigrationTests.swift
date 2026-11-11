@@ -1,3 +1,4 @@
+import CloudKit
 import CoreData
 import XCTest
 @testable import RepToday
@@ -180,6 +181,49 @@ final class LegacyAccountMigrationTests: XCTestCase {
         XCTAssertEqual(appState.legacyMigrationStage, .complete, "the iCloud mirror does not stay on forever")
     }
 
+    // MARK: - Waiting for iCloud
+
+    /// A device with no iCloud account has nothing to import, and its mirror may never report an import,
+    /// so the wait ends at once instead of running out its time.
+    func testADeviceWithNoICloudAccountHasNothingToImport() async {
+        let monitor = LegacyICloudImportMonitor(accountStatus: { .noAccount })
+        let start = ContinuousClock.now
+        let outcome = await monitor.waitForImport(timeout: .seconds(10))
+        XCTAssertEqual(outcome, .nothingToImport)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+        let restricted = await LegacyICloudImportMonitor(accountStatus: { .restricted }).waitForImport(timeout: .seconds(10))
+        XCTAssertEqual(restricted, .nothingToImport)
+    }
+
+    func testTheMirrorsNoAccountErrorsMeanNothingToImport() {
+        XCTAssertTrue(LegacyICloudImportMonitor.meansNoICloudAccount(CKError(.notAuthenticated)))
+        XCTAssertTrue(LegacyICloudImportMonitor.meansNoICloudAccount(NSError(domain: NSCocoaErrorDomain, code: 134400)))
+        XCTAssertFalse(LegacyICloudImportMonitor.meansNoICloudAccount(CKError(.networkUnavailable)), "offline is worth waiting for")
+        XCTAssertFalse(LegacyICloudImportMonitor.meansNoICloudAccount(nil))
+    }
+
+    func testAnAvailableICloudAccountWaitsForTheImport() async {
+        let outcome = await LegacyICloudImportMonitor(accountStatus: { .available }).waitForImport(timeout: .milliseconds(300))
+        XCTAssertEqual(outcome, .unconfirmed, "with an account, only the mirror's import answers")
+    }
+
+    func testALaunchWaitsForICloudOnlyOnce() async throws {
+        let stack = SyncTestStack()
+        _ = try await seedLegacyHistory(in: stack)
+        let appState = legacyAppState()
+        appState.linkAccount(Self.identity)
+        let importer = CountingImporter()
+        let coordinator = coordinatorFor(stack: stack, appState: appState, server: FakeAccountServer(), importer: importer)
+
+        await coordinator.syncNow()
+        try await stack.logs.save(SyncFixtures.log(daysAgo: 0))
+        await coordinator.syncNow()
+
+        let waits = await importer.calls
+        XCTAssertEqual(waits, 1, "later cycles in the same launch upload without waiting again")
+        XCTAssertEqual(appState.legacyMigrationStage, .importingFromICloud, "the next launch asks iCloud again")
+    }
+
     // MARK: - The store a pre-account build wrote
 
     /// TestFlight users exist: a store written by model version 2 - the last build before accounts -
@@ -359,6 +403,15 @@ final class LegacyAccountMigrationTests: XCTestCase {
         cdActivity.setValue(activity.date, forKey: "date")
         cdActivity.setValue(activity.durationMinutes, forKey: "durationMinutes")
         try context.save()
+    }
+}
+
+/// Counts how often the migration waited for iCloud; iCloud never answers.
+private actor CountingImporter: LegacyICloudImporting {
+    private(set) var calls = 0
+    func waitForImport(timeout: Duration) async -> LegacyICloudImportOutcome {
+        calls += 1
+        return .unconfirmed
     }
 }
 

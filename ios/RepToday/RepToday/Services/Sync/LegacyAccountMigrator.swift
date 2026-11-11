@@ -9,8 +9,9 @@ import Foundation
 ///
 /// The stages, each persisted on `AppState` and safe to repeat:
 ///
-/// 1. `importingFromICloud` (after the one-time sign-in): wait, bounded, for the iCloud mirror's
-///    import, so records that were only in iCloud are on the phone; then queue every record. The
+/// 1. `importingFromICloud` (after the one-time sign-in): wait, bounded and once per launch, for the
+///    iCloud mirror's import (a device with no iCloud account has nothing to wait for), so records that
+///    were only in iCloud are on the phone; then queue every record. The
 ///    entries are dated at the epoch, so a record the account already holds a newer copy of (from
 ///    another device that moved first) is never replaced by this phone's older one. If iCloud never
 ///    answered (offline), the queued records still upload, and the next launch waits again and queues

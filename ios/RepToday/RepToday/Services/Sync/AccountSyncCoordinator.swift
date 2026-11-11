@@ -55,6 +55,8 @@ final class AccountSyncCoordinator {
     @ObservationIgnored private var scheduled: Task<Void, Never>?
     @ObservationIgnored private var cycle: Task<Void, Never>?
     @ObservationIgnored private var failureCount = 0
+    /// The migration waits for iCloud at most once per launch; later cycles upload without waiting.
+    @ObservationIgnored private var migrationPreparedThisLaunch = false
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
 
@@ -184,7 +186,10 @@ final class AccountSyncCoordinator {
         let endBackgroundWork = beginBackgroundWork("Rep Today sync")
         defer { endBackgroundWork() }
         do {
-            try await migrator.prepareUpload()
+            if !migrationPreparedThisLaunch {
+                try await migrator.prepareUpload()
+                migrationPreparedThisLaunch = true
+            }
             let report = try await engine.sync()
             pendingCount = report.pending
             lastSyncedAt = now()

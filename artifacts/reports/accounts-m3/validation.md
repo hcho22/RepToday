@@ -35,7 +35,8 @@ It names no account, email address, token or key value.
 The walks ran on 2026-11-11 on an iPhone 16 simulator (iOS 18.6, Xcode 26.5) against the development Clerk instance and dev deployment `courteous-dogfish-560`.
 Simulator-only: they use Clerk's development test email addresses (fixed code 424242), which send no mail, and a Debug-only switch (`-RepTodaySyncOffline YES`) standing in for airplane mode, because the Simulator shares the Mac's network.
 Real Apple and Google sign-in, real airplane mode, real iCloud data and VoiceOver itself were not exercised; they are the device checks below.
-Two findings from the walks were fixed: the Account screen wrapped a long email mid-word and misaligned its second line, and a sign-in session left in the Keychain by an earlier install is (correctly) offered back on "Save your plan", which the walk now handles.
+Findings from the walks, fixed: on a device with no iCloud account the move never got an import answer and stayed in `importingFromICloud` (it now asks CloudKit's account status and reads the mirror's "no iCloud account" error, and waits at most once per launch; the final walk C ended at `complete`); the Account screen wrapped a long email mid-word and misaligned its second line; and a sign-in session left in the Keychain by an earlier install is, correctly, offered back on "Save your plan" and "Keep your history", which the walks now handle. After a deletion, "Save your plan" no longer offers the deleted account.
+The walks left two Clerk test accounts (test addresses only) and their rows on the development instance and dev deployment; every other walk account was deleted through the app.
 
 ## Owed on a device (exit criteria)
 

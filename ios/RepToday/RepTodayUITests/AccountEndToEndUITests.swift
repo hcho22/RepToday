@@ -129,6 +129,12 @@ final class AccountEndToEndUITests: XCTestCase {
         snapshot("c1-keep-your-history")
         let email = Self.testEmail("existing")
         record("signed in as \(email)", named: "c-account.txt")
+        // A session left on the device by an earlier run (the Keychain outlives an uninstall) is
+        // offered back first.
+        if app.buttons["Use a different account"].waitForExistence(timeout: 2) {
+            app.buttons["Use a different account"].tap()
+        }
+        XCTAssertTrue(app.buttons["Continue with email"].waitForExistence(timeout: 10))
         app.buttons["Continue with email"].tap()
         let address = app.textFields["Email address"]
         XCTAssertTrue(address.waitForExistence(timeout: 5))
