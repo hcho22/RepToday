@@ -336,24 +336,23 @@ struct CycleStep: Equatable, Hashable, Identifiable {
         }
     }
 
-    /// The short name on the strip: "Push", "Pull", "Legs", "Rest", "Off".
+    /// The short name on the strip: "Push", "Pull", "Legs", "Rest", "Day off".
     var title: String {
         switch kind {
         case .day(.push): return "Push"
         case .day(.pull): return "Pull"
         case .day(.legs): return "Legs"
         case .rest: return "Rest"
-        case .dayOff: return "Off"
+        case .dayOff: return "Day off"
         }
     }
 
     /// What VoiceOver reads for the step: "Push, done", "Day off, today", "Rest, coming up".
     var accessibilityLabel: String {
-        let name = kind == .dayOff ? "Day off" : title
         switch status {
-        case .done: return "\(name), done"
-        case .today: return "\(name), today"
-        case .upcoming: return "\(name), coming up"
+        case .done: return "\(title), done"
+        case .today: return "\(title), today"
+        case .upcoming: return "\(title), coming up"
         }
     }
 }

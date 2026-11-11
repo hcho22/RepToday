@@ -126,7 +126,7 @@ final class WelcomeAndFocusSettingsTests: XCTestCase {
         await today.load()
         XCTAssertEqual(today.dayTitle, "Day Off")
         XCTAssertEqual(today.dayDetail, "You worked Legs outside today, so it gets a day off.")
-        XCTAssertEqual(today.steps.map(\.title), ["Push", "Pull", "Off", "Rest", "Legs"])
+        XCTAssertEqual(today.steps.map(\.title), ["Push", "Pull", "Day off", "Rest", "Legs"])
 
         let tomorrow = try welcome(logs: cycle, activities: [run], daysFromNow: 1)
         await tomorrow.load()

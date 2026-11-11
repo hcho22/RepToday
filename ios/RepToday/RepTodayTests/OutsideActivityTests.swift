@@ -137,12 +137,12 @@ final class OutsideActivityTests: XCTestCase {
         XCTAssertEqual(sunday, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
         XCTAssertEqual(WelcomeCopy.restReason(sunday.restReason!, next: .legs), "You worked Legs outside today, so it gets a day off.")
         XCTAssertEqual(WelcomeCopy.restTitle(for: sunday.restReason!), "Day Off")
-        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Rest:done", "Off:today", "Legs:next"])
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Rest:done", "Day off:today", "Legs:next"])
 
         let monday = plan(logs, activities, daysFromNow: 1)
         XCTAssertEqual(monday, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: false)))
         XCTAssertEqual(WelcomeCopy.restReason(monday.restReason!, next: .legs), "Your outside workout worked Legs, so it gets a day off.")
-        XCTAssertEqual(strip(logs, activities, daysFromNow: 1), ["Push:done", "Pull:done", "Rest:done", "Off:today", "Legs:next"])
+        XCTAssertEqual(strip(logs, activities, daysFromNow: 1), ["Push:done", "Pull:done", "Rest:done", "Day off:today", "Legs:next"])
 
         XCTAssertEqual(plan(logs, activities, daysFromNow: 2), .train(.legs), "Tuesday")
         XCTAssertEqual(strip(logs, activities, daysFromNow: 2), ["Push:done", "Pull:done", "Rest:done", "Legs:today"])
@@ -156,7 +156,7 @@ final class OutsideActivityTests: XCTestCase {
 
         let today = plan(logs, activities)
         XCTAssertEqual(today, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
-        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Off:today", "Rest:next", "Legs:next"])
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Day off:today", "Rest:next", "Legs:next"])
 
         XCTAssertEqual(plan(logs, activities, daysFromNow: 1), .rest(next: .legs, reason: .early))
         XCTAssertEqual(strip(logs, activities, daysFromNow: 1), ["Push:done", "Pull:done", "Rest:today", "Legs:next"])
@@ -172,7 +172,7 @@ final class OutsideActivityTests: XCTestCase {
         let today = plan(logs, activities)
         XCTAssertEqual(today, .rest(next: .pull, reason: .workedOutside(groups: [.pull, .legs], today: false)))
         XCTAssertEqual(WelcomeCopy.restReason(today.restReason!, next: .pull), "Your outside workouts worked Pull and Legs, so they get a day off.")
-        XCTAssertEqual(strip(logs, activities), ["Push:done", "Off:today", "Pull:next", "Legs:next", "Rest:next"])
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Day off:today", "Pull:next", "Legs:next", "Rest:next"])
         XCTAssertEqual(plan(logs, activities, daysFromNow: 1), .train(.pull))
     }
 
