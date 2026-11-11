@@ -33,9 +33,6 @@ final class ConvexSyncRemoteTests: XCTestCase {
 
     // MARK: - The linked account's token only
 
-    /// The device is linked to A, but the Clerk session on it is B's (signed in moments before the link
-    /// is refused, or left behind by a sign-out that failed): no request reaches the backend, so
-    /// nothing of A's is uploaded to B and nothing of B's is pulled into A's store.
     /// Offline, refreshing the session token fails before any request is built: that is a request that
     /// never left the phone, not one that went unanswered.
     func testASessionTokenThatCannotBeFetchedMeansNothingWasSent() async throws {
@@ -49,6 +46,9 @@ final class ConvexSyncRemoteTests: XCTestCase {
         XCTAssertTrue(StubConvexProtocol.requests.isEmpty)
     }
 
+    /// The device is linked to A, but the Clerk session on it is B's (signed in moments before the link
+    /// is refused, or left behind by a sign-out that failed): no request reaches the backend, so
+    /// nothing of A's is uploaded to B and nothing of B's is pulled into A's store.
     func testAnotherAccountsSessionSendsNothing() async throws {
         let auth = StubAccountAuthService(isConfigured: true, identity: AccountIdentity(userId: "user_b", email: nil, method: .google),
                                           token: Self.sessionToken(subject: "user_b"))
