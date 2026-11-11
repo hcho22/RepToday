@@ -271,6 +271,25 @@ final class AccountDeletionAccountTests: XCTestCase {
         }
     }
 
+    /// The account already answered that it is being deleted (from another device), so its Clerk user
+    /// may be gone and no session can be had: Delete account sends nothing and goes straight to the
+    /// device teardown, never asking for a sign-in or a connection.
+    func testDeletingAnAccountAlreadyBeingDeletedWipesThePhoneWithoutARequest() async throws {
+        let failingToken = ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: URL(string: "https://a-b-1.convex.cloud")!) {
+            throw URLError(.notConnectedToInternet)
+        })
+        let noToken = ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: URL(string: "https://a-b-1.convex.cloud")!) { nil })
+        for remote in [failingToken, noToken] {
+            let fixture = try await makeFixture(remote: remote)
+            await MainActor.run { fixture.appState.markLinkedAccountBeingDeleted() }
+
+            try await fixture.service.deleteAccount(appState: fixture.appState)
+
+            try await assertWipedWithDeletionUnderWay(fixture)
+            await MainActor.run { XCTAssertFalse(fixture.appState.isLinkedAccountBeingDeleted) }
+        }
+    }
+
     private func assertNothingDeleted(_ fixture: Fixture, file: StaticString = #filePath, line: UInt = #line) async throws {
         let user = try await fixture.stack.users.currentUser()
         XCTAssertNotNil(user, file: file, line: line)

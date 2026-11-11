@@ -131,7 +131,8 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
 
     func deleteAccount(appState: AppState) async throws {
         try await withSyncStopped(appState) { linkedAccount in
-            try await deleteRemoteAccount(linkedAccount)
+            let alreadyBeingDeleted = await MainActor.run { appState.isLinkedAccountBeingDeleted }
+            try await deleteRemoteAccount(linkedAccount, alreadyBeingDeleted: alreadyBeingDeleted)
             try await eraseDevice(appState: appState, deletesICloud: true)
         }
     }
@@ -169,9 +170,16 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
 
     /// 0. The server step. Sync has stopped (`isAccountDeletionInProgress`); wait out a cycle that was
     ///    already uploading, so nothing reaches the account after it is deleted.
-    private func deleteRemoteAccount(_ linkedAccount: AccountIdentity?) async throws {
+    ///    When the account has already answered that it is being deleted, the server has committed the
+    ///    deletion, so no request is sent and it counts as under way.
+    private func deleteRemoteAccount(_ linkedAccount: AccountIdentity?, alreadyBeingDeleted: Bool) async throws {
         if let account, let linkedAccount, let remote = account.remote,
            account.defaults.string(forKey: AccountTeardown.remoteDeletionMarkerKey) != linkedAccount.userId {
+            if alreadyBeingDeleted {
+                account.defaults.set(true, forKey: AccountTeardown.deletionUnderWayKey)
+                account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionMarkerKey)
+                return
+            }
             await account.engine?.waitForIdle()
             let sentBefore = account.defaults.string(forKey: AccountTeardown.remoteDeletionRequestedKey) == linkedAccount.userId
             account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionRequestedKey)
