@@ -1,6 +1,6 @@
 # ADR-0012: Push/Pull/Legs Training Day rotation with an automatic Rest Day
 
-- Status: Accepted (decided 2026-11-10); not yet implemented (M1, `US-TD04`, `US-TD05`).
+- Status: Accepted (decided 2026-11-10); implemented in M1 (2026-11-10, `US-TD04`, `US-TD05`; `Services/Engine/TrainingRotation.swift` and the Rest Day on Today).
 - Date: 2026-11-10
 - Deciders: captain, via the Push/Pull/Legs design grill (2026-11-09 to 2026-11-10)
 - Spec: `.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`

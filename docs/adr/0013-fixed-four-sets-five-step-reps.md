@@ -1,6 +1,6 @@
 # ADR-0013: Fixed 4 sets, reps in steps of 5, reps as the fit lever, and fixed movement counts
 
-- Status: Accepted (decided 2026-11-10); not yet implemented (M1, `US-TD00`...`US-TD04`).
+- Status: Accepted (decided 2026-11-10); implemented in M1 (2026-11-10, `US-TD00`...`US-TD04`; `Services/Engine/RepGrammar.swift`, `Services/Engine/AdaptiveOverload.swift`, `Services/Engine/SessionAssembly.swift`), with the reconciliations below.
 - Date: 2026-11-10
 - Deciders: captain, via the Push/Pull/Legs design grill (2026-11-09 to 2026-11-10)
 - Spec: `.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`
