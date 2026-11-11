@@ -68,7 +68,7 @@ The work ships as four milestones, in order: M1 Training Days -> M2 Home, Focus 
 | 30 | **Reminders**: the Coach schedules on-device notifications from chat; they are listed and editable in Settings; copy is identity-framed, never guilt or streak framed. | US-CA08 |
 | 31 | Ship order: M1 -> M2 -> M3 -> M4. | Milestones |
 
-Defaults chosen during planning, to confirm at M1 kickoff (Open Question 2): Legs at 30/45 min fills one squat-side and one hinge-side ladder first, least recently worked; holds range 20-60s (advanced to 90s) and advance at 4 sets at the top; Earned Reps climb one 5-step per non-too-hard session where prescribed reps were at or above earned; Recovery does not count as a session for the score or the rotation; Return sessions scale prescribed reps (rounded to 5), not Earned Reps; existing users start at Push after the update.
+Defaults chosen during planning, confirmed by the captain on 2026-11-10 (Open Question 2, reconciliations in ADR-0013): Legs at 30/45 min fills one squat-side and one hinge-side ladder first, least recently worked; holds range 20-60s (advanced to 90s) and advance at 4 sets at the top; Earned Reps climb one 5-step per non-too-hard session where prescribed reps were at or above earned; Recovery does not count as a session for the score or the rotation; Return sessions scale prescribed reps (rounded to 5), not Earned Reps; existing users start at Push after the update.
 
 ## Verified facts on current main (2026-11-10)
 
