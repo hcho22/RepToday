@@ -99,7 +99,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         let settingsList = app.descendants(matching: .collectionView).firstMatch
         XCTAssertTrue(settingsList.waitForExistence(timeout: 5))
         for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
-            settingsList.swipeUp()
+            nudgeUp(settingsList)
         }
         XCTAssertEqual(focusRow.value as? String, "Chest, Abs")
         attach("08-settings")
@@ -121,7 +121,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Saved. Your next session will use this."].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
-            settingsList.swipeUp()
+            nudgeUp(settingsList)
         }
         XCTAssertEqual(focusRow.value as? String, "Chest, Back, Abs")
 
@@ -147,6 +147,14 @@ final class HomeFocusOutsideUITests: XCTestCase {
             .matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
             .firstMatch
         return element.waitForExistence(timeout: timeout) ? element.label : nil
+    }
+
+    /// A short drag with no fling. On a 375x667 screen one `swipeUp()` can carry a row from below the
+    /// fold to above it in a single move, and the lazy list then drops it from the tree, so a row near
+    /// the fold is never seen as hittable.
+    private func nudgeUp(_ list: XCUIElement) {
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+            .press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.40)))
     }
 
     private func scrollTo(_ element: XCUIElement) {

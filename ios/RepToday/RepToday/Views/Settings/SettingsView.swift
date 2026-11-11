@@ -344,7 +344,9 @@ struct SettingsView: View {
     static let healthToggleTitle = "Suggest Apple Health workouts"
 
     static let healthToggleFooter = """
-        Focus areas get a bit more attention on their days. With Apple Health suggestions on, Rep Today         reads the workouts you record there, like runs and swims, and offers them on Today. Nothing is         logged until you tap Add it.
+        Focus areas get a bit more attention on their days. With Apple Health suggestions on, Rep Today \
+        reads the workouts you record there, like runs and swims, and offers them on Today. Nothing is \
+        logged until you tap Add it.
         """
 
     /// Builds the Trainer row's model on first use and caches it, like `deletionModel()`.

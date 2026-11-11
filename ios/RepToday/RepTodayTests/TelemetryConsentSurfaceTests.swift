@@ -197,6 +197,27 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
                       "the Settings coach entry declares its separation from telemetry; spoke: \(spoken)")
     }
 
+    // MARK: - Apple Health suggestions footer (US-HO05)
+
+    /// The Health opt-in footer is drawn and spoken as one clean paragraph. Its source string once
+    /// carried runs of indentation spaces mid-sentence (a multi-line literal joined without `\`), which
+    /// showed as gaps on screen and in what VoiceOver reads.
+    func testTheHealthSuggestionsFooterReadsAsOneCleanParagraph() throws {
+        let root = hosted(
+            NavigationStack { SettingsView() }
+                .environment(\.services, ServiceContainer.mock())
+                .environment(AppState(userDefaults: defaults)),
+            size: CGSize(width: 393, height: 2400)
+        )
+        let spoken = AccessibilityTree.spokenStrings(in: root)
+        let footer = try XCTUnwrap(
+            spoken.first { $0.contains("With Apple Health suggestions on") },
+            "the Health suggestions footer is not on screen: \(spoken)"
+        )
+        XCTAssertNil(footer.range(of: "\\s{2,}", options: .regularExpression),
+                     "the Health suggestions footer has a run of whitespace: \"\(footer)\"")
+    }
+
     // MARK: - The one privacy-policy URL
 
     /// Three surfaces link to the privacy policy for two unrelated reasons - the paywall because App
