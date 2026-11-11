@@ -252,7 +252,7 @@ struct ReadyView: View {
                     Text(greeting)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Colors.textSecondary)
-                    Text("Rest Day")
+                    Text(WelcomeCopy.restTitle(for: viewModel.plan.restReason ?? .cycleComplete))
                         .font(Theme.Typography.largeTitle)
                         .foregroundStyle(Theme.Colors.textPrimary)
                         .accessibilityAddTraits(.isHeader)
@@ -274,7 +274,7 @@ struct ReadyView: View {
 
                 RestDayCard(
                     next: viewModel.plan.trainingDay,
-                    isEarly: viewModel.plan.isEarlyRest,
+                    reason: viewModel.plan.restReason ?? .cycleComplete,
                     onRecovery: {
                         Task {
                             guard let recovery = await viewModel.recoveryWorkout() else { return }
@@ -558,21 +558,21 @@ enum ClassicsUpdateNoteCopy {
 /// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
 /// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
 /// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target.
-/// Today on a Rest Day (US-TD05, ADR-0012): the Cycle is done, so the card says so, offers the optional
-/// mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts the next group and
-/// forfeits the rest. Rest is framed as part of training, never as a gap.
+/// Today on a Rest Day (US-TD05, ADR-0012) or a day off an Outside Activity gave: the card says why,
+/// offers the optional mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts
+/// the next group and forfeits the rest. Rest is framed as part of training, never as a gap.
 struct RestDayCard: View {
     let next: TrainingDay
-    /// A Rest Day brought forward because an Outside Activity worked the group left in the Cycle
-    /// (decision 21).
-    var isEarly = false
+    /// Why today holds no Training Day: the Cycle is done, its Rest Day came early, or an Outside
+    /// Activity worked the groups left (decision 21).
+    var reason: RestReason = .cycleComplete
     let onRecovery: () -> Void
     let onTrainAnyway: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(isEarly ? WelcomeCopy.earlyRest(covering: next) : "You trained Push, Pull and Legs.")
+                Text(WelcomeCopy.restReason(reason, next: next))
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)

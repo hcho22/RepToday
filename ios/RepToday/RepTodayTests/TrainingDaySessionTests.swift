@@ -262,7 +262,7 @@ final class TrainingDaySessionTests: XCTestCase {
         ]
         XCTAssertEqual(
             SessionAssembly.trainingPlan(user: user, library: library, recentLogs: cycle, asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar),
-            .rest(next: .pull, isEarly: false)
+            .rest(next: .pull, reason: .cycleComplete)
         )
         let workout = SessionAssembly.assemble(
             requestedMinutes: 30,

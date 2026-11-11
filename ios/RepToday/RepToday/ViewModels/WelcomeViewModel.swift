@@ -83,11 +83,11 @@ final class WelcomeViewModel {
         return name.isEmpty ? "\(salutation)." : "\(salutation), \(name)."
     }
 
-    /// "Push Day", "Rest Day", or a neutral line before the plan is known.
+    /// "Push Day", "Rest Day", "Day Off", or a neutral line before the plan is known.
     var dayTitle: String {
         switch plan {
         case let .train(day)?: return day.displayName
-        case .rest?: return "Rest Day"
+        case let .rest(_, reason)?: return WelcomeCopy.restTitle(for: reason)
         case nil: return WelcomeCopy.fallbackTitle
         }
     }
@@ -96,7 +96,8 @@ final class WelcomeViewModel {
     var dayDetail: String {
         switch plan {
         case let .train(day)?: return day.focusLine
-        case let .rest(next, isEarly)?: return isEarly ? WelcomeCopy.earlyRest(covering: next) : WelcomeCopy.rest
+        case .rest(_, .cycleComplete)?: return WelcomeCopy.rest
+        case let .rest(next, reason)?: return WelcomeCopy.restReason(reason, next: next)
         case nil: return WelcomeCopy.fallbackDetail
         }
     }
@@ -107,12 +108,38 @@ final class WelcomeViewModel {
 enum WelcomeCopy {
     static let fallbackTitle = "Today"
     static let fallbackDetail = "Your session is ready when you are."
-    static let rest = "You trained Push, Pull and Legs. Rest is part of the program."
+    static let cycleComplete = "You trained Push, Pull and Legs."
+    static let rest = "\(cycleComplete) Rest is part of the program."
     static let letsGo = "Let's go"
     static let stripTitle = "This cycle"
 
+    /// "Rest Day" for the Cycle's Rest Day, "Day Off" for a day off an Outside Activity gave.
+    static func restTitle(for reason: RestReason) -> String {
+        if case .workedOutside = reason { return "Day Off" }
+        return "Rest Day"
+    }
+
+    /// Why today holds no Training Day, in one sentence. `next` is the group "Train anyway" starts.
+    static func restReason(_ reason: RestReason, next: TrainingDay) -> String {
+        switch reason {
+        case .cycleComplete: return cycleComplete
+        case .early: return earlyRest(covering: next)
+        case let .workedOutside(groups, today): return workedOutside(groups, today: today)
+        }
+    }
+
     static func earlyRest(covering day: TrainingDay) -> String {
         "Your outside workout covered \(day.groupName), so rest comes early."
+    }
+
+    /// "You worked Legs outside today, so it gets a day off." or, for an earlier workout, "Your outside
+    /// workout worked Legs, so it gets a day off."
+    static func workedOutside(_ groups: [TrainingDay], today: Bool) -> String {
+        let names = groups.map(\.groupName)
+        let joined = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1] : names.joined()
+        let dayOff = groups.count > 1 ? "they get a day off" : "it gets a day off"
+        if today { return "You worked \(joined) outside today, so \(dayOff)." }
+        return "Your outside \(groups.count > 1 ? "workouts" : "workout") worked \(joined), so \(dayOff)."
     }
 
     static func salutation(forHour hour: Int) -> String {

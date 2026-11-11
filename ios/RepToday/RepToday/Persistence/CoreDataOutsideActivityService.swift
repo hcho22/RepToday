@@ -2,7 +2,7 @@ import CoreData
 import Foundation
 
 /// The CoreData-backed `OutsideActivityServiceProtocol` (US-HO04): logged Outside Activities survive
-/// relaunch and sync through CloudKit (the `Cloud` configuration) like the workout logs beside them.
+/// relaunch and stay on this device (the `Local` configuration), never synced to iCloud.
 ///
 /// Queried by `date` range and saved by `id` as an upsert, so editing an activity overwrites it in
 /// place. Every access happens inside `context.perform`, exactly as `CoreDataWorkoutLogService` does.

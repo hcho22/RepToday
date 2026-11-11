@@ -206,6 +206,7 @@ private struct CycleStepView: View {
         case .day(.pull): return "figure.rower"
         case .day(.legs): return "figure.step.training"
         case .rest: return "moon.zzz"
+        case .dayOff: return "sun.max"
         }
     }
 }

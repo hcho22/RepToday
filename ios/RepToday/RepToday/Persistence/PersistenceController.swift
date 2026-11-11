@@ -8,9 +8,10 @@ import CoreData
 /// - a **Cloud** store (the `Cloud` model configuration - `CDUser`, `CDWorkoutLog`,
 ///   `CDSessionPolicy`) that mirrors to the user's private CloudKit database, so their
 ///   identity, history, and in-force policy sync and back up across devices; and
-/// - a **Local** store (the `Local` configuration - `CDActiveSession`) that never leaves the
-///   device, because an in-progress session is transient, device-bound state (it holds
-///   absolute wall-clock instants tied to this device's run) that has no meaning on another.
+/// - a **Local** store (the `Local` configuration - `CDActiveSession`, `CDOutsideActivity`) that
+///   never leaves the device: an in-progress session is transient, device-bound state (it holds
+///   absolute wall-clock instants tied to this device's run) that has no meaning on another, and an
+///   Outside Activity may carry Apple Health data, which may not be stored in iCloud.
 ///
 /// Sync is strictly additive: if CloudKit cannot be set up - no iCloud account, offline, or an
 /// unsigned build with no iCloud entitlement (e.g. the Simulator) - the Cloud store is retried
@@ -99,12 +100,12 @@ final class PersistenceController {
                     fatalError("Failed to load the RepToday store even local-only: \(error)")
                 }
             } else {
-                // The Local store holds only the transient, device-bound active-session snapshot -
-                // disposable state. A load failure here (a corrupt or half-written sqlite from an
+                // The Local store holds the device-bound active-session snapshot and the logged
+                // Outside Activities. A load failure here (a corrupt or half-written sqlite from an
                 // interrupted write or a full disk) must never brick the otherwise-offline-capable
                 // core loop, so recover the standard CoreData way: destroy the store file and
-                // re-add a fresh, empty one. Losing an in-progress session is acceptable; crashing
-                // the whole app over it is not.
+                // re-add a fresh, empty one. Losing an in-progress session and the logged activities
+                // is acceptable; crashing the whole app over it is not.
                 if description.configuration == "Local", let url = description.url {
                     do {
                         try coordinator.destroyPersistentStore(at: url, ofType: description.type, options: description.options)
@@ -139,8 +140,8 @@ final class PersistenceController {
         description.cloudKitContainerOptions = nil
     }
 
-    /// The production split: the durable `Cloud` configuration mirrors to CloudKit; the transient
-    /// `Local` configuration (`CDActiveSession`) stays on-device. Both stores migrate lightweight across
+    /// The production split: the durable `Cloud` configuration mirrors to CloudKit; the `Local`
+    /// configuration (`CDActiveSession`, `CDOutsideActivity`) stays on-device. Both stores migrate lightweight across
     /// model versions (the description defaults: migrate automatically, infer the mapping), which is why
     /// every model change must stay additive.
     private static func configureCloudAndLocalStores(

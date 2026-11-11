@@ -91,10 +91,11 @@ final class PhaseProgressEvidenceTests: XCTestCase {
         return user
     }
 
-    private func makeViewModel(logs: [WorkoutLog]) -> ProgressViewModel {
+    private func makeViewModel(logs: [WorkoutLog], activities: [OutsideActivity] = []) -> ProgressViewModel {
         ProgressViewModel(
             userService: MockUserService(user: disciplineUser()),
             workoutLogService: MockWorkoutLogService(logs: logs),
+            outsideActivityService: InMemoryOutsideActivityService(activities: activities),
             exerciseService: try! MockExerciseService(),
             subscriptionService: MockSubscriptionService(subscription: .free),
             consistencyService: ConsistencyScoreService(now: { self.asOf }, calendar: calendar),
@@ -164,6 +165,29 @@ final class PhaseProgressEvidenceTests: XCTestCase {
         let image = HostedSurface.capture(root, size: CGSize(width: layoutSize.width, height: captureHeight))
         let path = try EvidenceOutput.write(image, named: "01-phase-progress-climb.png", for: story)
         print("US-SP04 EVIDENCE: 01-phase-progress-climb.png -> \(path)")
+        _ = host
+    }
+
+    /// The phase is earned on sessions alone while the Consistency Score also counts Outside Activities,
+    /// so the climb card names its number "Session consistency" and it reads apart from the headline's.
+    func testTheClimbCardNamesItsSessionOnlyConsistencyApartFromTheConsistencyScore() async throws {
+        let logs = [showUp(weeksAgo: 0, dayOffset: 0)]
+        let activities = [1, 2].map { OutsideActivity(type: .run, date: date(weeksAgo: 0, dayOffset: $0)) }
+        let viewModel = makeViewModel(logs: logs, activities: activities)
+        await viewModel.load()
+
+        let withActivities = Int(try XCTUnwrap(viewModel.consistency).score.rounded())
+        let sessionsOnly = Int(try XCTUnwrap(viewModel.phaseProgress).currentScore.rounded())
+        XCTAssertGreaterThan(withActivities, sessionsOnly)
+
+        let (host, hostedWindow) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: CGSize(width: 393, height: 3400))
+        window = hostedWindow
+        XCTAssertTrue(labelsContain("Consistency \(withActivities)."), "tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Session consistency \(sessionsOnly),"), "tree reads \(labels())")
+        XCTAssertFalse(
+            labels().contains { $0.contains("Consistency \(sessionsOnly),") },
+            "the climb card's number never reads as the Consistency Score; tree reads \(labels())"
+        )
         _ = host
     }
 }

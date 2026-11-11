@@ -2,12 +2,11 @@ import Foundation
 
 // MARK: - TrainingPlan
 
-/// What today holds (ADR-0012): a Training Day for one group, or a Rest Day.
+/// What today holds (ADR-0012): a Training Day for one group, or a day without one.
 enum TrainingPlan: Equatable {
     case train(TrainingDay)
-    /// A Rest Day. `next` is the group "Train anyway" starts. `isEarly` marks a Rest Day brought
-    /// forward because an Outside Activity worked the only group left in the Cycle.
-    case rest(next: TrainingDay, isEarly: Bool)
+    /// No Training Day today. `next` is the group "Train anyway" starts; `reason` says why.
+    case rest(next: TrainingDay, reason: RestReason)
 
     /// The group a session started today trains: the planned one, or on a Rest Day the one "Train
     /// anyway" starts.
@@ -23,11 +22,25 @@ enum TrainingPlan: Equatable {
         return false
     }
 
-    /// A Rest Day brought forward by an Outside Activity (decision 21).
-    var isEarlyRest: Bool {
-        if case .rest(_, isEarly: true) = self { return true }
-        return false
+    /// Why today holds no Training Day, `nil` on a Training Day.
+    var restReason: RestReason? {
+        if case let .rest(_, reason) = self { return reason }
+        return nil
     }
+}
+
+/// Why a day holds no Training Day: the Cycle's Rest Day (owed, or brought forward by an Outside
+/// Activity), or a day off for groups an Outside Activity worked (decision 21).
+enum RestReason: Equatable {
+    /// The Cycle is complete and its Rest Day is owed.
+    case cycleComplete
+    /// The Cycle's Rest Day, brought forward because an Outside Activity the day before worked the only
+    /// group left. It falls on a day with no activity of its own, so it is the day the Rotation honors.
+    case early
+    /// Not the Cycle's Rest Day: every group left was worked by an Outside Activity and gets its day
+    /// off. `groups` are those groups in Rotation order; `today` is true when today's own activities
+    /// worked all of them.
+    case workedOutside(groups: [TrainingDay], today: Bool)
 }
 
 // MARK: - TrainingRotation
@@ -44,8 +57,10 @@ enum TrainingPlan: Equatable {
 ///   forfeits it. A day with an Outside Activity is a day of showing up, not a rest.
 /// - **Outside Activities (decision 21).** The group an activity worked gets at least one day off: when
 ///   it is next, it swaps behind the following group, and when it is the only group left in the Cycle the
-///   Rest Day comes early - and a Cycle whose rest came early owes none at its end. An activity counts as
-///   showing up and never completes a group.
+///   Rest Day comes early - and a Cycle whose rest came early owes none at its end. The early Rest Day
+///   falls the day after the activity, if that day has no activity of its own; any other day the groups
+///   left are resting is a day off (`RestReason.workedOutside`), not the Cycle's Rest Day. An activity
+///   counts as showing up and never completes a group.
 /// - **Core Sprinkle.** Each Cycle's Core Sprinkle is the core ladder worked longest before the Cycle
 ///   began, so the ladders rotate from Cycle to Cycle (`coreLadderOrder`).
 ///
@@ -114,7 +129,7 @@ enum TrainingRotation {
                 // An Outside Activity counts as showing up, so its day is not a rest.
             } else if state.restOwed {
                 state = State()
-            } else if case .rest(_, isEarly: true) = plan(
+            } else if case .rest(_, reason: .early) = plan(
                 for: state,
                 on: day,
                 activities: activities,
@@ -190,9 +205,9 @@ enum TrainingRotation {
     // MARK: Cycle strip
 
     /// The Cycle as the Welcome Page's strip shows it (decision 19): the groups already done this Cycle,
-    /// then today (a Training Day or the Rest Day), then what is still to come, in the order the Rotation
-    /// will serve it. A group the user cannot train at all is left off, and a Rest Day already taken early
-    /// this Cycle shows as done.
+    /// then today (a Training Day, the Rest Day, or a day off an Outside Activity gave), then what is still
+    /// to come, in the order the Rotation will serve it. A group the user cannot train at all is left off,
+    /// and a Rest Day already taken early this Cycle shows as done.
     static func cycleSteps(
         logs: [WorkoutLog],
         activities: [OutsideActivity] = [],
@@ -206,16 +221,25 @@ enum TrainingRotation {
         let shown = groups.isEmpty ? TrainingDay.rotation : groups
         let done = shown.filter { state.completed.contains($0) }.map { CycleStep(.day($0), .done) }
         var steps = done
+        let upcoming = shown.filter { !state.completed.contains($0) }
         switch today {
-        case .rest(_, isEarly: false):
+        case .rest(_, reason: .cycleComplete):
             steps.append(CycleStep(.rest, .today))
-        case .rest(_, isEarly: true):
+        case .rest(_, reason: .early):
             steps.append(CycleStep(.rest, .today))
-            steps += shown.filter { !state.completed.contains($0) }.map { CycleStep(.day($0), .upcoming) }
+            steps += upcoming.map { CycleStep(.day($0), .upcoming) }
+        case let .rest(_, reason: .workedOutside(offGroups, workedToday)):
+            if state.restTakenEarly { steps.append(CycleStep(.rest, .done)) }
+            steps.append(CycleStep(.dayOff, .today))
+            // A last group worked today rests tomorrow too, so the Cycle's Rest Day comes before it.
+            let restFirst = !state.restTakenEarly && workedToday && offGroups.count == 1
+            if restFirst { steps.append(CycleStep(.rest, .upcoming)) }
+            steps += upcoming.map { CycleStep(.day($0), .upcoming) }
+            if !state.restTakenEarly && !restFirst { steps.append(CycleStep(.rest, .upcoming)) }
         case let .train(day):
             if state.restTakenEarly { steps.append(CycleStep(.rest, .done)) }
             steps.append(CycleStep(.day(day), .today))
-            steps += shown.filter { !state.completed.contains($0) && $0 != day }.map { CycleStep(.day($0), .upcoming) }
+            steps += upcoming.filter { $0 != day }.map { CycleStep(.day($0), .upcoming) }
             if !state.restTakenEarly { steps.append(CycleStep(.rest, .upcoming)) }
         }
         return steps
@@ -251,19 +275,30 @@ enum TrainingRotation {
         calendar: Calendar
     ) -> TrainingPlan {
         let first = TrainingDay.rotation.first { trainable.contains($0) } ?? .push
-        if state.restOwed { return .rest(next: first, isEarly: false) }
+        if state.restOwed { return .rest(next: first, reason: .cycleComplete) }
         let remaining = TrainingDay.rotation.filter { !state.completed.contains($0) && trainable.contains($0) }
         guard let next = remaining.first else { return .train(first) }
         let yesterday = calendar.date(byAdding: .day, value: -1, to: day) ?? day
-        let rested = Set(activities.compactMap { activity -> TrainingDay? in
+        var activeToday = false
+        var workedToday = Set<TrainingDay>()
+        var rested = Set<TrainingDay>()
+        for activity in activities {
             let activityDay = calendar.startOfDay(for: activity.date)
-            return (includingSameDay && activityDay == day) || activityDay == yesterday ? activity.group : nil
-        })
+            let isToday = includingSameDay && activityDay == day
+            guard isToday || activityDay == yesterday else { continue }
+            if isToday { activeToday = true }
+            guard let group = activity.group else { continue }
+            rested.insert(group)
+            if isToday { workedToday.insert(group) }
+        }
         guard rested.contains(next) else { return .train(next) }
         if let swapped = remaining.dropFirst().first(where: { !rested.contains($0) }) {
             return .train(swapped)
         }
-        return .rest(next: next, isEarly: !state.restTakenEarly && remaining.count == 1)
+        if !state.restTakenEarly && remaining.count == 1 && !activeToday {
+            return .rest(next: next, reason: .early)
+        }
+        return .rest(next: next, reason: .workedOutside(groups: remaining, today: workedToday.isSuperset(of: remaining)))
     }
 }
 
@@ -275,6 +310,8 @@ struct CycleStep: Equatable, Hashable, Identifiable {
     enum Kind: Equatable, Hashable {
         case day(TrainingDay)
         case rest
+        /// A day off for groups an Outside Activity worked (`RestReason.workedOutside`).
+        case dayOff
     }
 
     enum Status: Equatable, Hashable {
@@ -295,16 +332,18 @@ struct CycleStep: Equatable, Hashable, Identifiable {
         switch kind {
         case let .day(day): return day.rawValue
         case .rest: return "rest"
+        case .dayOff: return "dayOff"
         }
     }
 
-    /// The short name on the strip: "Push", "Pull", "Legs", "Rest".
+    /// The short name on the strip: "Push", "Pull", "Legs", "Rest", "Day off".
     var title: String {
         switch kind {
         case .day(.push): return "Push"
         case .day(.pull): return "Pull"
         case .day(.legs): return "Legs"
         case .rest: return "Rest"
+        case .dayOff: return "Day off"
         }
     }
 

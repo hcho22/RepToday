@@ -203,9 +203,10 @@ Padded reps count as done but never move the Rep Ramp or a rung.
 
 A workout done outside Rep Today (a run, a swim), logged by hand from Today or added from an Apple Health suggestion ("Add it / Ignore", never applied without a tap).
 Run, bike and hike work Legs; swim, row and climb work Pull; anything else works no group.
-The group it worked gets at least a day off: it swaps behind the next group, or, when it is the last group left in the Cycle, the Rest Day comes early.
-It counts as showing up for the Consistency Score and never completes a group.
-The owning code is `Models/OutsideActivity.swift` (stored as `CDOutsideActivity`, model version 2), `Services/Engine/TrainingRotation.swift` and `Services/Health/HealthWorkoutSuggestions.swift`, which never suggests Rep Today's own workouts back.
+The group it worked gets at least a day off: it swaps behind the next group, or, when it is the last group left in the Cycle, the Rest Day comes early: the next day, if that day has no activity of its own.
+Any other day it keeps without a Training Day is a Day Off, not the Cycle's Rest Day (`RestReason`).
+It counts as showing up for the Consistency Score, though not toward earning the Strength Phase, and never completes a group.
+The owning code is `Models/OutsideActivity.swift` (stored on-device as `CDOutsideActivity`, model version 2, never synced to iCloud), `Services/Engine/TrainingRotation.swift` and `Services/Health/HealthWorkoutSuggestions.swift`, which never suggests Rep Today's own workouts back.
 
 ## Custom Workout (planned)
 

@@ -46,8 +46,8 @@ final class TrainingRotationTests: XCTestCase {
     func testCompletingACycleOwesARestDayTodayAndTomorrow() {
         let cycle = [day(.push, daysAgo: 3), day(.pull, daysAgo: 2)]
         let legsToday = TrainingDayFixtures.trainingLog(.legs, completedAt: calendar.date(byAdding: .hour, value: -1, to: asOf)!)
-        XCTAssertEqual(plan(cycle + [legsToday]), .rest(next: .push, isEarly: false))
-        XCTAssertEqual(plan([day(.push, daysAgo: 3), day(.pull, daysAgo: 2), day(.legs, daysAgo: 1)]), .rest(next: .push, isEarly: false))
+        XCTAssertEqual(plan(cycle + [legsToday]), .rest(next: .push, reason: .cycleComplete))
+        XCTAssertEqual(plan([day(.push, daysAgo: 3), day(.pull, daysAgo: 2), day(.legs, daysAgo: 1)]), .rest(next: .push, reason: .cycleComplete))
     }
 
     func testAnySessionFreeDayAfterLegsHonorsTheRest() {
@@ -66,7 +66,7 @@ final class TrainingRotationTests: XCTestCase {
         XCTAssertTrue(recovery.isRecovery)
         XCTAssertNil(recovery.trainingDay)
         let logs = [day(.push, daysAgo: 3), day(.pull, daysAgo: 2), day(.legs, daysAgo: 1), recovery]
-        XCTAssertEqual(plan(logs), .rest(next: .push, isEarly: false))
+        XCTAssertEqual(plan(logs), .rest(next: .push, reason: .cycleComplete))
         // The day of the Recovery flow was session-free, so the next day the Cycle starts over.
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: asOf)!
         XCTAssertEqual(TrainingRotation.plan(logs: logs, asOf: tomorrow, calendar: calendar), .train(.push))
@@ -85,7 +85,7 @@ final class TrainingRotationTests: XCTestCase {
     func testAnOutsideActivityOnTheLastGroupBringsTheRestDayForwardAndTheCycleOwesNoOther() {
         let run = OutsideActivity(type: .run, date: TrainingDayFixtures.date(daysAgo: 1))
         let cycle = [day(.push, daysAgo: 3), day(.pull, daysAgo: 2)]
-        XCTAssertEqual(plan(cycle, activities: [run]), .rest(next: .legs, isEarly: true))
+        XCTAssertEqual(plan(cycle, activities: [run]), .rest(next: .legs, reason: .early))
 
         // The early rest is taken today (no session), Legs tomorrow closes the Cycle, and the day after
         // starts the next one with no second rest.

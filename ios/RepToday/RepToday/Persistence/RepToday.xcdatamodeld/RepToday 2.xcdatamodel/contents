@@ -44,9 +44,9 @@
         <memberEntity name="CDUser"/>
         <memberEntity name="CDWorkoutLog"/>
         <memberEntity name="CDSessionPolicy"/>
-        <memberEntity name="CDOutsideActivity"/>
     </configuration>
     <configuration name="Local">
         <memberEntity name="CDActiveSession"/>
+        <memberEntity name="CDOutsideActivity"/>
     </configuration>
 </model>

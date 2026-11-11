@@ -64,11 +64,13 @@ final class WelcomeAndFocusSettingsTests: XCTestCase {
         logs: [WorkoutLog],
         activities: [OutsideActivity] = [],
         name: String = "Sam",
-        hour: Int = 12
+        hour: Int = 12,
+        daysFromNow: Int = 0
     ) throws -> WelcomeViewModel {
         var user = TrainingDayFixtures.user()
         user.displayName = name
-        let clock = TrainingDayFixtures.calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now)!
+        let day = TrainingDayFixtures.calendar.date(byAdding: .day, value: daysFromNow, to: now)!
+        let clock = TrainingDayFixtures.calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day)!
         return WelcomeViewModel(
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
@@ -106,8 +108,30 @@ final class WelcomeAndFocusSettingsTests: XCTestCase {
 
         let early = try welcome(logs: cycle, activities: [OutsideActivity(type: .run, date: TrainingDayFixtures.date(daysAgo: 1))])
         await early.load()
-        XCTAssertEqual(early.plan, .rest(next: .legs, isEarly: true))
+        XCTAssertEqual(early.plan, .rest(next: .legs, reason: .early))
         XCTAssertEqual(early.dayDetail, "Your outside workout covered Legs, so rest comes early.")
+    }
+
+    /// A run logged the same day on the last group: the page says the legs were worked outside today, and
+    /// the early Rest Day is announced the next day, the day it falls.
+    func testTheWelcomePageSaysARunTodayWorkedTheLegsAndAnnouncesTheEarlyRestTomorrow() async throws {
+        let cycle = [
+            TrainingDayFixtures.trainingLog(.push, completedAt: TrainingDayFixtures.date(daysAgo: 2)),
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 1)),
+        ]
+        let run = OutsideActivity(type: .run, date: TrainingDayFixtures.date(daysAgo: 0, hour: 11))
+
+        let today = try welcome(logs: cycle, activities: [run])
+        await today.load()
+        XCTAssertEqual(today.dayTitle, "Day Off")
+        XCTAssertEqual(today.dayDetail, "You worked Legs outside today, so it gets a day off.")
+        XCTAssertEqual(today.steps.map(\.title), ["Push", "Pull", "Day off", "Rest", "Legs"])
+
+        let tomorrow = try welcome(logs: cycle, activities: [run], daysFromNow: 1)
+        await tomorrow.load()
+        XCTAssertEqual(tomorrow.dayTitle, "Rest Day")
+        XCTAssertEqual(tomorrow.dayDetail, "Your outside workout covered Legs, so rest comes early.")
+        XCTAssertEqual(tomorrow.steps.map(\.status), [.done, .done, .today, .upcoming])
     }
 
     func testTheGreetingFollowsTheClockAndWorksWithoutAName() async throws {

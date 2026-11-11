@@ -62,13 +62,14 @@ final class OutsideActivityTests: XCTestCase {
             asOf: now,
             calendar: calendar
         )
-        XCTAssertEqual(plan, .rest(next: .legs, isEarly: true))
+        XCTAssertEqual(plan, .rest(next: .legs, reason: .early))
     }
 
     // MARK: The Cycle strip (decision 19)
 
-    private func strip(_ logs: [WorkoutLog], _ activities: [OutsideActivity] = []) -> [String] {
-        TrainingRotation.cycleSteps(logs: logs, activities: activities, asOf: now, calendar: calendar).map { step in
+    private func strip(_ logs: [WorkoutLog], _ activities: [OutsideActivity] = [], daysFromNow: Int = 0) -> [String] {
+        let asOf = calendar.date(byAdding: .day, value: daysFromNow, to: now)!
+        return TrainingRotation.cycleSteps(logs: logs, activities: activities, asOf: asOf, calendar: calendar).map { step in
             let status: String
             switch step.status {
             case .done: status = "done"
@@ -109,6 +110,70 @@ final class OutsideActivityTests: XCTestCase {
         )
         XCTAssertEqual(steps.map(\.title), ["Push", "Pull", "Rest", "Legs"])
         XCTAssertEqual(steps.map(\.status), [.done, .done, .done, .today])
+    }
+
+    // MARK: A day off is not the Cycle's Rest Day
+
+    private func plan(_ logs: [WorkoutLog], _ activities: [OutsideActivity], daysFromNow: Int = 0) -> TrainingPlan {
+        TrainingRotation.plan(
+            logs: logs,
+            activities: activities,
+            asOf: calendar.date(byAdding: .day, value: daysFromNow, to: now)!,
+            calendar: calendar
+        )
+    }
+
+    /// Push and Pull done, a run the same Friday, the early Rest Day taken Saturday, and another run
+    /// Sunday morning: Sunday and Monday are days off for the legs, never a Rest Day for a Cycle that was
+    /// not trained, and the strip keeps Legs still to come and Saturday's rest done.
+    func testARunAfterTheEarlyRestWasTakenGivesADayOffNotAFinishedCycle() {
+        let logs = [day(.push, daysAgo: 3), day(.pull, daysAgo: 2)]
+        let activities = [activity(.run, daysAgo: 2, hour: 7), activity(.run, daysAgo: 0, hour: 8)]
+
+        XCTAssertEqual(plan(logs, activities, daysFromNow: -1), .rest(next: .legs, reason: .early), "Saturday")
+        XCTAssertEqual(strip(logs, activities, daysFromNow: -1), ["Push:done", "Pull:done", "Rest:today", "Legs:next"])
+
+        let sunday = plan(logs, activities)
+        XCTAssertEqual(sunday, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
+        XCTAssertEqual(WelcomeCopy.restReason(sunday.restReason!, next: .legs), "You worked Legs outside today, so it gets a day off.")
+        XCTAssertEqual(WelcomeCopy.restTitle(for: sunday.restReason!), "Day Off")
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Rest:done", "Day off:today", "Legs:next"])
+
+        let monday = plan(logs, activities, daysFromNow: 1)
+        XCTAssertEqual(monday, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: false)))
+        XCTAssertEqual(WelcomeCopy.restReason(monday.restReason!, next: .legs), "Your outside workout worked Legs, so it gets a day off.")
+        XCTAssertEqual(strip(logs, activities, daysFromNow: 1), ["Push:done", "Pull:done", "Rest:done", "Day off:today", "Legs:next"])
+
+        XCTAssertEqual(plan(logs, activities, daysFromNow: 2), .train(.legs), "Tuesday")
+        XCTAssertEqual(strip(logs, activities, daysFromNow: 2), ["Push:done", "Pull:done", "Rest:done", "Legs:today"])
+    }
+
+    /// A run logged the same day it hit the last group: today says the legs were worked outside today,
+    /// and the early Rest Day is announced once, tomorrow, the day it falls.
+    func testARunLoggedTheSameDayOnTheLastGroupAnnouncesTheEarlyRestOnceTomorrow() {
+        let logs = [day(.push, daysAgo: 2), day(.pull, daysAgo: 1)]
+        let activities = [activity(.run, daysAgo: 0, hour: 8)]
+
+        let today = plan(logs, activities)
+        XCTAssertEqual(today, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Pull:done", "Day off:today", "Rest:next", "Legs:next"])
+
+        XCTAssertEqual(plan(logs, activities, daysFromNow: 1), .rest(next: .legs, reason: .early))
+        XCTAssertEqual(strip(logs, activities, daysFromNow: 1), ["Push:done", "Pull:done", "Rest:today", "Legs:next"])
+
+        XCTAssertEqual(plan(logs, activities, daysFromNow: 2), .train(.legs))
+        XCTAssertEqual(strip(logs, activities, daysFromNow: 2), ["Push:done", "Pull:done", "Rest:done", "Legs:today"])
+    }
+
+    func testTwoActivitiesOnBothGroupsLeftGiveADayOffWithTheRestStillToCome() {
+        let logs = [day(.push, daysAgo: 2)]
+        let activities = [activity(.swim, daysAgo: 1), activity(.run, daysAgo: 1, hour: 17)]
+
+        let today = plan(logs, activities)
+        XCTAssertEqual(today, .rest(next: .pull, reason: .workedOutside(groups: [.pull, .legs], today: false)))
+        XCTAssertEqual(WelcomeCopy.restReason(today.restReason!, next: .pull), "Your outside workouts worked Pull and Legs, so they get a day off.")
+        XCTAssertEqual(strip(logs, activities), ["Push:done", "Day off:today", "Pull:next", "Legs:next", "Rest:next"])
+        XCTAssertEqual(plan(logs, activities, daysFromNow: 1), .train(.pull))
     }
 
     func testCycleStepsReadAloudAsOneSentence() {
@@ -198,7 +263,7 @@ final class OutsideActivityTests: XCTestCase {
         ]
     }
 
-    func testLoggingARunReplansTodayAtOnceAndTheRestDayComesEarly() async throws {
+    func testLoggingARunReplansTodayAtOnceAndTheRestDayComesEarlyTomorrow() async throws {
         let (viewModel, store) = try makeViewModel(logs: pushAndPullDone)
         await viewModel.load()
         XCTAssertEqual(viewModel.workout?.trainingDay, .legs)
@@ -206,12 +271,13 @@ final class OutsideActivityTests: XCTestCase {
         let run = OutsideActivity(type: .run, date: calendar.date(byAdding: .hour, value: -1, to: now)!, durationMinutes: 30, distanceMeters: 4828)
         let saved = await viewModel.saveActivity(run)
         XCTAssertTrue(saved)
-        XCTAssertEqual(viewModel.plan, .rest(next: .legs, isEarly: true))
+        XCTAssertEqual(viewModel.plan, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
         XCTAssertTrue(viewModel.showsRestDay)
         XCTAssertNil(viewModel.workout)
         XCTAssertEqual(viewModel.recentActivities, [run])
         let stored = try await store.activities(from: nil, to: nil)
         XCTAssertEqual(stored, [run])
+        XCTAssertEqual(plan(pushAndPullDone, stored, daysFromNow: 1), .rest(next: .legs, reason: .early))
     }
 
     func testEditingAndDeletingAnActivityReplansToo() async throws {
@@ -360,7 +426,7 @@ final class OutsideActivityTests: XCTestCase {
 
         await viewModel.addHealthSuggestion(run)
         XCTAssertTrue(viewModel.healthSuggestions.isEmpty)
-        XCTAssertEqual(viewModel.plan, .rest(next: .legs, isEarly: true))
+        XCTAssertEqual(viewModel.plan, .rest(next: .legs, reason: .workedOutside(groups: [.legs], today: true)))
         let stored = try await store.activities(from: nil, to: nil)
         XCTAssertEqual(stored.map(\.healthWorkoutId), [run.id])
 

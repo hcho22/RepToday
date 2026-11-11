@@ -3,10 +3,10 @@ import Foundation
 
 /// CoreData mirror of `OutsideActivity` (US-HO04), new in model version 2.
 ///
-/// It lives in the `Cloud` configuration beside `CDWorkoutLog`, so a logged run follows the user across
-/// devices the way their sessions do until M3 moves sync to Convex. Like every Cloud entity it is
-/// CloudKit-compatible: every attribute is optional or defaulted and there is no unique constraint, so
-/// identity is the `id` attribute and the service upserts by it. `toOutsideActivity()` re-imposes the
+/// It lives in the on-device `Local` configuration and never syncs to iCloud: an activity added from Apple
+/// Health carries Health data, which may not be stored in iCloud, so no activity syncs until M3 moves
+/// sync to Convex. It stays CloudKit-compatible all the same (every attribute optional or defaulted, no
+/// unique constraint), so identity is the `id` attribute and the service upserts by it. `toOutsideActivity()` re-imposes the
 /// domain's required fields. `date` is a native `Date` so activities are fetched by date range.
 @objc(CDOutsideActivity)
 final class CDOutsideActivity: NSManagedObject {

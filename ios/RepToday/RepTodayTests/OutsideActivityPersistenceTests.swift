@@ -2,8 +2,8 @@ import CoreData
 import XCTest
 @testable import RepToday
 
-/// US-HO04 / US-HO02 persistence: the CloudKit-compatible `CDOutsideActivity` entity of model version 2,
-/// its store, account deletion, and the lightweight migration of a store an earlier build wrote.
+/// US-HO04 / US-HO02 persistence: the on-device `CDOutsideActivity` entity of model version 2, its store,
+/// account deletion, and the lightweight migration of a store an earlier build wrote.
 final class OutsideActivityPersistenceTests: XCTestCase {
 
     // MARK: The store
@@ -40,15 +40,14 @@ final class OutsideActivityPersistenceTests: XCTestCase {
         try await service.deleteAll()
     }
 
-    func testTheEntityIsCloudKitCompatible() throws {
+    /// An activity added from Apple Health carries Health data, which may not be stored in iCloud, so the
+    /// entity sits in the on-device Local configuration and never in the CloudKit-mirrored Cloud one.
+    func testTheEntityStaysOnDeviceInTheLocalConfiguration() throws {
         let model = try XCTUnwrap(PersistenceController.modelVersion(named: "RepToday 2"))
-        let entity = try XCTUnwrap(model.entitiesByName["CDOutsideActivity"])
-        XCTAssertTrue(entity.uniquenessConstraints.isEmpty, "CloudKit forbids unique constraints")
-        for attribute in entity.attributesByName.values {
-            XCTAssertTrue(attribute.isOptional || attribute.defaultValue != nil, "\(attribute.name) must be optional or defaulted")
-        }
+        let local = try XCTUnwrap(model.entities(forConfigurationName: "Local"))
+        XCTAssertTrue(local.contains { $0.name == "CDOutsideActivity" })
         let cloud = try XCTUnwrap(model.entities(forConfigurationName: "Cloud"))
-        XCTAssertTrue(cloud.contains { $0.name == "CDOutsideActivity" }, "it syncs with the logs until M3")
+        XCTAssertFalse(cloud.contains { $0.name == "CDOutsideActivity" }, "no activity syncs to iCloud until M3")
     }
 
     func testAccountDeletionDeletesEveryActivity() async throws {
@@ -129,6 +128,10 @@ final class OutsideActivityPersistenceTests: XCTestCase {
         try await activities.save(run)
         let stored = try await activities.activities(from: nil, to: nil)
         XCTAssertEqual(stored, [run])
+        let storeConfigurations = try await context.perform {
+            try context.fetch(CDOutsideActivity.fetchRequest()).map { $0.objectID.persistentStore?.configurationName }
+        }
+        XCTAssertEqual(storeConfigurations, ["Local"], "the activity is written to the on-device store, not the iCloud one")
 
         // A Focus Area written now survives a reopen of the migrated store.
         var withFocus = try XCTUnwrap(user)
