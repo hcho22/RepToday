@@ -20,6 +20,8 @@ struct ServiceContainer {
     let phaseService: any PhaseServiceProtocol
     let userService: any UserServiceProtocol
     let workoutLogService: any WorkoutLogServiceProtocol
+    /// Logged Outside Activities (US-HO04).
+    let outsideActivityService: any OutsideActivityServiceProtocol
     let activeSessionStore: any ActiveSessionStore
     /// Records a finished session (US-L01): writes the log and does the post-session bookkeeping.
     let sessionCompletionService: any SessionCompletionServiceProtocol
@@ -70,7 +72,8 @@ struct ServiceContainer {
         analyticsService: any AnalyticsServiceProtocol,
         accountDeletionService: any AccountDeletionServiceProtocol,
         coachClient: CoachProxyClient? = nil,
-        coachPolicyService: (any CoachPolicyServiceProtocol)? = nil
+        coachPolicyService: (any CoachPolicyServiceProtocol)? = nil,
+        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService()
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -79,6 +82,7 @@ struct ServiceContainer {
         self.phaseService = phaseService
         self.userService = userService
         self.workoutLogService = workoutLogService
+        self.outsideActivityService = outsideActivityService
         self.activeSessionStore = activeSessionStore
         self.sessionCompletionService = sessionCompletionService
         self.healthKitService = healthKitService
@@ -118,6 +122,8 @@ struct ServiceContainer {
         // second copy a delete would leave the app still reading from.
         let activeSessionStore = InMemoryActiveSessionStore()
         let authService = MockAuthService()
+        // One Outside Activity store, read by Today and torn down by account deletion.
+        let outsideActivityService = InMemoryOutsideActivityService()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
@@ -165,11 +171,13 @@ struct ServiceContainer {
                 workoutLogService: workoutLogService,
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
-                authService: authService
+                authService: authService,
+                outsideActivityService: outsideActivityService
             ),
             // The coach's bounded policy-write path (US-AC07), over the same shared in-memory policy store
             // as the deterministic Programmer above, so both writers share one in-force policy.
-            coachPolicyService: CoachSessionPolicyService(store: policyStore)
+            coachPolicyService: CoachSessionPolicyService(store: policyStore),
+            outsideActivityService: outsideActivityService
         )
     }
 
@@ -254,6 +262,8 @@ struct ServiceContainer {
         let exerciseService = try! MockExerciseService()
         let userService = CoreDataUserService(context: context)
         let workoutLogService = CoreDataWorkoutLogService(context: context)
+        // Logged Outside Activities (US-HO04), in the CloudKit-mirrored `Cloud` store beside the logs.
+        let outsideActivityService = CoreDataOutsideActivityService(context: context)
         // One policy store shared by the Programmer (re-programs) and the completion recorder
         // (the cold-start handoff's reconciled policy, US-G04).
         let policyStore = CoreDataSessionPolicyStore(context: context)
@@ -381,14 +391,16 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
-                coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() }
+                coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() },
+                outsideActivityService: outsideActivityService
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,
             // The coach's bounded policy-write path (US-AC07), over the same shared `CoreDataSessionPolicyStore`
             // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
             // in-force policy and the engine reads whichever landed last on the next open.
-            coachPolicyService: CoachSessionPolicyService(store: policyStore)
+            coachPolicyService: CoachSessionPolicyService(store: policyStore),
+            outsideActivityService: outsideActivityService
         )
     }
 

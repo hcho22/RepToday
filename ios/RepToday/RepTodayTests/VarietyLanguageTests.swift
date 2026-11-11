@@ -41,7 +41,6 @@ final class VarietyLanguageTests: XCTestCase {
                 heightCm: 175,
                 weightKg: 75,
                 fitnessLevel: .beginner,
-                primaryGoal: .stayActive,
                 sitsLong: true,
                 injuries: [],
                 typicalAvailableMinutes: 8

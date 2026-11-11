@@ -35,6 +35,7 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
             user: user,
             recentLogs: recentLogs,
             history: recentLogs,
+            activities: [],
             sessionPolicy: sessionPolicy,
             variation: variation,
             trainingDay: nil
@@ -46,6 +47,7 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
         user: User,
         recentLogs: [WorkoutLog],
         history: [WorkoutLog],
+        activities: [OutsideActivity],
         sessionPolicy: SessionPolicy,
         variation: SessionVariation,
         trainingDay: TrainingDay?
@@ -66,13 +68,45 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
             variation: variation,
             trainingDay: trainingDay,
             history: history,
+            activities: activities,
             asOf: now()
         )
     }
 
-    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+    func trainingPlan(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> TrainingPlan {
         let library = try await exerciseService.exercises()
-        return SessionAssembly.trainingPlan(user: user, library: library, recentLogs: recentLogs, history: history, asOf: asOf)
+        return SessionAssembly.trainingPlan(
+            user: user,
+            library: library,
+            recentLogs: recentLogs,
+            history: history,
+            activities: activities,
+            asOf: asOf
+        )
+    }
+
+    func cycleSteps(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> [CycleStep] {
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.cycleSteps(
+            user: user,
+            library: library,
+            recentLogs: recentLogs,
+            history: history,
+            activities: activities,
+            asOf: asOf
+        )
     }
 
     func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {

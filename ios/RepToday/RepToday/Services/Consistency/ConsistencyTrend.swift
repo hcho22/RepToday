@@ -38,18 +38,19 @@ enum ConsistencyTrend {
     /// line at zero).
     static func trend(
         logs: [WorkoutLog],
+        activities: [OutsideActivity] = [],
         weeklyGoal: Int = ConsistencyScore.defaultWeeklyGoal,
         maxWeeks: Int = ConsistencyScore.recentWeeksWindow,
         asOf: Date,
         calendar: Calendar = .current
     ) -> [ConsistencyTrendPoint] {
-        guard !logs.isEmpty, maxWeeks >= 1 else { return [] }
+        guard !logs.isEmpty || !activities.isEmpty, maxWeeks >= 1 else { return [] }
         let goal = max(1, weeklyGoal)
 
         // How many whole weeks back the oldest (non-future) session lands. Future-dated logs are
         // ignored so a clock skew can't invent an earlier start, mirroring the evaluator.
-        let oldestWeeksAgo = logs
-            .map { ConsistencyScore.weeksAgo($0.completedAt, from: asOf, calendar) }
+        let oldestWeeksAgo = (logs.map(\.completedAt) + activities.map(\.date))
+            .map { ConsistencyScore.weeksAgo($0, from: asOf, calendar) }
             .filter { $0 >= 0 }
             .max() ?? 0
         let span = min(oldestWeeksAgo, maxWeeks - 1)
@@ -59,6 +60,7 @@ enum ConsistencyTrend {
             let vantage = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: asOf) ?? asOf
             let consistency = ConsistencyScore.evaluate(
                 logs: logs,
+                activities: activities,
                 weeklyGoal: goal,
                 asOf: vantage,
                 calendar: calendar

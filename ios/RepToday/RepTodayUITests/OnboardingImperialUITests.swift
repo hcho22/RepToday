@@ -310,10 +310,10 @@ final class OnboardingImperialUITests: XCTestCase {
         attach(screenshot: XCUIScreen.main.screenshot(), named: "live-ready-after-imperial-onboarding.png")
     }
 
-    /// Steps left after `.basics` in the six-step flow, named so the walk above reads as a bound
+    /// Steps left after `.basics` in the seven-step flow, named so the walk above reads as a bound
     /// rather than a magic number.
     private enum OnboardingStepBudget {
-        static let remainingAfterBasics = 4
+        static let remainingAfterBasics = 5
     }
 
     // MARK: - Helpers

@@ -33,7 +33,7 @@ final class USCC08PaceEvidenceTests: XCTestCase {
             createdAt: date(daysAgo: 120),
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: level, primaryGoal: .stayActive,
+                fitnessLevel: level,
                 sitsLong: false, injuries: [], typicalAvailableMinutes: minutes
             ),
             phase: .discipline,

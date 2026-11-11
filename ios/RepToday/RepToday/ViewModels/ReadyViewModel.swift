@@ -71,6 +71,24 @@ final class ReadyViewModel {
     /// Whether Today shows the Rest Day card (US-TD05) rather than a session.
     var showsRestDay: Bool { plan.isRest && !trainsAnyway }
 
+    /// Every logged Outside Activity (US-HO04), oldest first: the Rotation and the Consistency Score read
+    /// them all. Refreshed on every load and after every log, edit or delete.
+    private(set) var activities: [OutsideActivity] = []
+
+    /// The Outside Activities Today lists for editing: the last `HealthWorkoutSuggestions.lookbackDays`
+    /// days, newest first - the ones still shaping the plan and this week's score.
+    var recentActivities: [OutsideActivity] {
+        let start = HealthWorkoutSuggestions.windowStart(asOf: now(), calendar: calendar)
+        return activities.filter { $0.date >= start }.sorted { $0.date > $1.date }
+    }
+
+    /// Apple Health workouts offered as "Add it / Ignore" (US-HO05), newest first. Empty unless the user
+    /// turned suggestions on; nothing here is applied until the user taps "Add it".
+    private(set) var healthSuggestions: [HealthWorkoutCandidate] = []
+
+    /// Set when logging, editing or deleting an Outside Activity fails, so the sheet can say so.
+    private(set) var activityErrorMessage: String?
+
     /// The Training Day the session on screen trains, for the header.
     var trainingDay: TrainingDay? { workout?.trainingDay }
 
@@ -103,6 +121,14 @@ final class ReadyViewModel {
     private let sessionPolicyService: any SessionPolicyServiceProtocol
     private let workoutEngine: any WorkoutEngineProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
+    /// Where logged Outside Activities live (US-HO04).
+    private let outsideActivityService: any OutsideActivityServiceProtocol
+    /// Read for Apple Health workout suggestions (US-HO05) once the user has turned them on. Optional so
+    /// surfaces that do not exercise suggestions construct the view model unchanged.
+    private let healthKitService: (any HealthKitServiceProtocol)?
+    /// The bundle identifier Health suggestions treat as Rep Today's own source.
+    private let ownBundleIdentifier: String?
+    private let calendar: Calendar
     private let consistencyService: any ConsistencyServiceProtocol
     /// Composes the deterministic Variety Language template with the optional, deferred LLM slice
     /// (US-G03/US-N05). Template-only in the MVP (no provider wired), so it never blocks.
@@ -174,6 +200,10 @@ final class ReadyViewModel {
         sessionPolicyService: any SessionPolicyServiceProtocol,
         workoutEngine: any WorkoutEngineProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
+        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService(),
+        healthKitService: (any HealthKitServiceProtocol)? = nil,
+        ownBundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        calendar: Calendar = .current,
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         varietyLanguageResolver: VarietyLanguageResolver = VarietyLanguageResolver(),
         activeSessionStore: any ActiveSessionStore = InMemoryActiveSessionStore(),
@@ -184,6 +214,10 @@ final class ReadyViewModel {
         self.sessionPolicyService = sessionPolicyService
         self.workoutEngine = workoutEngine
         self.workoutLogService = workoutLogService
+        self.outsideActivityService = outsideActivityService
+        self.healthKitService = healthKitService
+        self.ownBundleIdentifier = ownBundleIdentifier
+        self.calendar = calendar
         self.consistencyService = consistencyService
         self.varietyLanguageResolver = varietyLanguageResolver
         self.activeSessionStore = activeSessionStore
@@ -224,8 +258,17 @@ final class ReadyViewModel {
             // The full history feeds the Rotation and the Consistency Score; its recent window feeds the
             // engine's staleness and Adaptive Overload steps. A freshly onboarded user simply has none.
             setLogs(try await workoutLogService.workoutLogs(from: nil, to: nil))
+            // Outside Activities shape the plan (decision 21) and count as showing up. Best-effort: an
+            // unreadable store plans from the sessions alone rather than failing today's session.
+            activities = (try? await outsideActivityService.activities(from: nil, to: nil)) ?? activities
             policy = try await sessionPolicyService.currentPolicy(for: user)
-            plan = try await workoutEngine.trainingPlan(user: user, recentLogs: recentLogs, history: history, asOf: now())
+            plan = try await workoutEngine.trainingPlan(
+                user: user,
+                recentLogs: recentLogs,
+                history: history,
+                activities: activities,
+                asOf: now()
+            )
 
             // The profile just read is the freshest there is, so the load path needs no second fetch.
             // A Rest Day builds no session until the user asks to train anyway.
@@ -287,6 +330,7 @@ final class ReadyViewModel {
     private func refreshInsights(for user: User, logs: [WorkoutLog]) async {
         consistency = try? await consistencyService.consistency(
             for: logs,
+            activities: activities,
             weeklyGoal: user.consistency.weeklyGoal
         )
     }
@@ -420,12 +464,118 @@ final class ReadyViewModel {
         // Training Day - or the Rest Day a completed Cycle owes - rather than the session just played.
         trainsAnyway = false
         variation = .none
-        plan = (try? await workoutEngine.trainingPlan(user: refreshed, recentLogs: recentLogs, history: history, asOf: now())) ?? plan
+        plan = (try? await workoutEngine.trainingPlan(
+            user: refreshed,
+            recentLogs: recentLogs,
+            history: history,
+            activities: activities,
+            asOf: now()
+        )) ?? plan
         if showsRestDay {
             workout = nil
         } else {
             try? await generate(user: refreshed)
         }
+    }
+
+    // MARK: - Outside Activities (US-HO04)
+
+    /// Log a new Outside Activity, or save an edit to one already logged (matched by `id`), then replan
+    /// today at once: the group it worked gets its day off (decision 21) and it counts as showing up.
+    /// Returns `false`, with `activityErrorMessage` set, when it could not be saved.
+    @discardableResult
+    func saveActivity(_ activity: OutsideActivity) async -> Bool {
+        activityErrorMessage = nil
+        do {
+            try await outsideActivityService.save(activity)
+        } catch {
+            activityErrorMessage = "We couldn't save that activity. Please try again."
+            return false
+        }
+        await refreshAfterActivityChange()
+        return true
+    }
+
+    /// Delete a logged Outside Activity and replan today, which may hand the group its day back.
+    @discardableResult
+    func deleteActivity(id: UUID) async -> Bool {
+        activityErrorMessage = nil
+        do {
+            try await outsideActivityService.delete(id: id)
+        } catch {
+            activityErrorMessage = "We couldn't delete that activity. Please try again."
+            return false
+        }
+        await refreshAfterActivityChange()
+        return true
+    }
+
+    /// "Add it" on an Apple Health suggestion (US-HO05): log it as an Outside Activity carrying the Health
+    /// workout's id, so it is never suggested again.
+    @discardableResult
+    func addHealthSuggestion(_ candidate: HealthWorkoutCandidate) async -> Bool {
+        let added = await saveActivity(candidate.outsideActivity)
+        if added { healthSuggestions.removeAll { $0.id == candidate.id } }
+        return added
+    }
+
+    /// "Ignore" on an Apple Health suggestion: take it off Today. The caller persists the dismissal
+    /// (`AppState.dismissHealthWorkout`) so it never comes back.
+    func ignoreHealthSuggestion(_ candidate: HealthWorkoutCandidate) {
+        healthSuggestions.removeAll { $0.id == candidate.id }
+    }
+
+    /// Read Apple Health for workouts to suggest (US-HO05). Nothing is read unless the user turned
+    /// suggestions on; Rep Today's own workouts, ones already added and ones answered "Ignore" are never
+    /// offered. Best-effort: a failed read offers nothing.
+    func refreshHealthSuggestions(enabled: Bool, dismissed: Set<UUID>) async {
+        guard enabled, let healthKitService else {
+            healthSuggestions = []
+            return
+        }
+        let start = HealthWorkoutSuggestions.windowStart(asOf: now(), calendar: calendar)
+        let candidates = (try? await healthKitService.recentWorkouts(since: start)) ?? []
+        healthSuggestions = HealthWorkoutSuggestions.pending(
+            candidates: candidates,
+            ownBundleIdentifier: ownBundleIdentifier,
+            ownSessionIds: Set(history.map(\.id)),
+            logged: activities,
+            dismissed: dismissed,
+            asOf: now(),
+            calendar: calendar
+        )
+    }
+
+    /// Re-read the activities and replan today: the plan, the session on screen (or the Rest Day that
+    /// now comes early) and the Consistency Score all reflect the change before the sheet closes.
+    private func refreshAfterActivityChange() async {
+        guard let existing = user else { return }
+        if let fresh = try? await outsideActivityService.activities(from: nil, to: nil) {
+            activities = fresh
+        }
+        let refreshed = (try? await userService.currentUser()) ?? existing
+        user = refreshed
+        healthSuggestions.removeAll { suggestion in activities.contains { $0.healthWorkoutId == suggestion.id } }
+        let previousPlan = plan
+        plan = (try? await workoutEngine.trainingPlan(
+            user: refreshed,
+            recentLogs: recentLogs,
+            history: history,
+            activities: activities,
+            asOf: now()
+        )) ?? plan
+        if plan != previousPlan {
+            // A new plan is a new day's work: the old "Train anyway" choice and Different workout presses
+            // belonged to the plan they were made on.
+            trainsAnyway = false
+            variation = .none
+        }
+        if showsRestDay {
+            workout = nil
+        } else {
+            try? await generate(user: refreshed)
+        }
+        await refreshInsights(for: refreshed, logs: history)
     }
 
     /// "Train anyway" on a Rest Day (US-TD05): forfeit the rest and build the next group's session.
@@ -551,6 +701,7 @@ final class ReadyViewModel {
             user: user,
             recentLogs: recentLogs,
             history: history,
+            activities: activities,
             sessionPolicy: policy,
             variation: requestedVariation,
             trainingDay: plan.trainingDay
@@ -572,13 +723,14 @@ final class ReadyViewModel {
     /// Store a fresh read of the full history and its recent window.
     private func setLogs(_ logs: [WorkoutLog]) {
         history = logs
-        let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
+        let lookback = calendar.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
         recentLogs = lookback.map { start in logs.filter { $0.completedAt >= start } } ?? logs
     }
 
     /// How far back the engine's recent window reaches. Covers the Consistency Score window (8 weeks)
-    /// with headroom.
-    private let recentLogLookbackDays = 70
+    /// with headroom. Shared with the Welcome Page so both read the same plan.
+    static let recentLogLookbackDays = 70
+    private var recentLogLookbackDays: Int { Self.recentLogLookbackDays }
 
     /// The duration shown before a user has loaded - a neutral mid-range default.
     private static let fallbackMinutes = 15

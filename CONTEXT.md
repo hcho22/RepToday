@@ -199,24 +199,32 @@ Moving up a rung requires four clean sets at the top of the level's range at ear
 Reps prescribed above Earned Reps only to fill a longer session.
 Padded reps count as done but never move the Rep Ramp or a rung.
 
-## Outside Activity (planned)
+## Outside Activity
 
-A workout done outside Rep Today (a run, a swim), logged by hand or confirmed from Apple Health.
-It counts as showing up, and the group it worked gets at least a day off before its next Training Day.
+A workout done outside Rep Today (a run, a swim), logged by hand from Today or added from an Apple Health suggestion ("Add it / Ignore", never applied without a tap).
+Run, bike and hike work Legs; swim, row and climb work Pull; anything else works no group.
+The group it worked gets at least a day off: it swaps behind the next group, or, when it is the last group left in the Cycle, the Rest Day comes early.
+It counts as showing up for the Consistency Score and never completes a group.
+The owning code is `Models/OutsideActivity.swift` (stored as `CDOutsideActivity`, model version 2), `Services/Engine/TrainingRotation.swift` and `Services/Health/HealthWorkoutSuggestions.swift`, which never suggests Rep Today's own workouts back.
 
 ## Custom Workout (planned)
 
 A workout written by the **Coach** that the user reviews, edits and accepts before playing.
 It counts like an Outside Activity and never advances progression ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)).
 
-## Focus Area (planned)
+## Focus Area
 
-A body part the user wants to improve: Chest, Shoulders, Arms, Back, Abs, Legs, or Glutes.
-It changes emphasis within Training Days, never the Rotation.
+A body part the user wants to improve: Chest, Shoulders, Arms, Back, Abs, Legs, or Glutes - multi-select and optional, asked in onboarding and editable in Settings.
+It replaced the never-read goal list (`primaryGoal`, whose key profiles still carry so older builds can read them).
+It changes emphasis within Training Days, never the Rotation: a movement it covers is ordered first among its kind of station, padded first (and cut last) by the fit, and given the Practice slot first; Abs adds a second Core Sprinkle.
+Chest covers the horizontal push ladder, Shoulders the vertical push ladder, Arms the diamond push-up, dips and rows, Back both pull ladders, Abs core, Legs the squat and lunge ladders, Glutes the bridge and hip-hinge ladders.
+The owning code is `Models/FocusArea.swift` and `Services/Engine/SessionAssembly.swift`.
 
-## Welcome Page (planned)
+## Welcome Page
 
-The tap-through page shown on every cold launch before Today: a greeting, today's Training Day or Rest Day, and the Cycle.
+The tap-through page shown on every cold launch after onboarding, before Today, and never on a resume from the background: a greeting with the user's name, today's Training Day or Rest Day, the Cycle strip, and "Let's go".
+It replaces the launch spinner; the app-open reconciliation and Today's load run behind it.
+The owning code is `Views/Welcome/WelcomePageView.swift` and `AppState.isWelcomePending`.
 
 ## Account (planned)
 

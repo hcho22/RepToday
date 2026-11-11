@@ -56,9 +56,29 @@ final class PersistenceController {
         if inMemory {
             Self.configureInMemoryStore(container)
         } else {
-            Self.configureCloudAndLocalStores(container)
+            Self.configureCloudAndLocalStores(container, in: NSPersistentContainer.defaultDirectoryURL(), mirrorsToCloudKit: true)
         }
+        Self.load(container)
+    }
 
+    /// The production Cloud + Local split on disk in `directory`, with no CloudKit mirroring - the
+    /// exact store files and options the app opens, so a test can prove a store written by an earlier
+    /// model version opens through lightweight migration and keeps its data.
+    init(localOnlyStoresIn directory: URL) {
+        container = NSPersistentCloudKitContainer(name: "RepToday", managedObjectModel: Self.managedObjectModel)
+        Self.configureCloudAndLocalStores(container, in: directory, mirrorsToCloudKit: false)
+        Self.load(container)
+    }
+
+    /// The compiled model version named `versionName` (e.g. `"RepToday"` for version 1), for migration
+    /// tests that write a store the way an earlier build did.
+    static func modelVersion(named versionName: String) -> NSManagedObjectModel? {
+        Bundle(for: PersistenceController.self)
+            .url(forResource: "RepToday", withExtension: "momd")
+            .flatMap { NSManagedObjectModel(contentsOf: $0.appendingPathComponent("\(versionName).mom")) }
+    }
+
+    private static func load(_ container: NSPersistentCloudKitContainer) {
         let coordinator = container.persistentStoreCoordinator
         container.loadPersistentStores { description, error in
             guard let error = error as NSError? else { return }
@@ -120,9 +140,14 @@ final class PersistenceController {
     }
 
     /// The production split: the durable `Cloud` configuration mirrors to CloudKit; the transient
-    /// `Local` configuration (`CDActiveSession`) stays on-device.
-    private static func configureCloudAndLocalStores(_ container: NSPersistentCloudKitContainer) {
-        let baseURL = NSPersistentContainer.defaultDirectoryURL()
+    /// `Local` configuration (`CDActiveSession`) stays on-device. Both stores migrate lightweight across
+    /// model versions (the description defaults: migrate automatically, infer the mapping), which is why
+    /// every model change must stay additive.
+    private static func configureCloudAndLocalStores(
+        _ container: NSPersistentCloudKitContainer,
+        in baseURL: URL,
+        mirrorsToCloudKit: Bool
+    ) {
 
         let cloud = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("RepToday.sqlite"))
         cloud.configuration = "Cloud"
@@ -130,9 +155,9 @@ final class PersistenceController {
         // and let the view context merge changes synced in from other devices.
         cloud.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         cloud.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-        cloud.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-            containerIdentifier: cloudKitContainerIdentifier
-        )
+        cloud.cloudKitContainerOptions = mirrorsToCloudKit
+            ? NSPersistentCloudKitContainerOptions(containerIdentifier: cloudKitContainerIdentifier)
+            : nil
 
         let local = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("RepToday-Local.sqlite"))
         local.configuration = "Local"

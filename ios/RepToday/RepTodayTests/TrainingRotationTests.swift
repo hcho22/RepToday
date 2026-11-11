@@ -75,15 +75,15 @@ final class TrainingRotationTests: XCTestCase {
     // MARK: Outside Activities (decision 21)
 
     func testAnOutsideActivitySwapsItsGroupBehindTheNextOne() {
-        let swim = OutsideActivity(date: TrainingDayFixtures.date(daysAgo: 1), group: .pull)
+        let swim = OutsideActivity(type: .swim, date: TrainingDayFixtures.date(daysAgo: 1))
         XCTAssertEqual(plan([day(.push, daysAgo: 2)], activities: [swim]), .train(.legs))
         // An activity two days ago has already had its day off.
-        let oldSwim = OutsideActivity(date: TrainingDayFixtures.date(daysAgo: 2), group: .pull)
+        let oldSwim = OutsideActivity(type: .swim, date: TrainingDayFixtures.date(daysAgo: 2))
         XCTAssertEqual(plan([day(.push, daysAgo: 3)], activities: [oldSwim]), .train(.pull))
     }
 
     func testAnOutsideActivityOnTheLastGroupBringsTheRestDayForwardAndTheCycleOwesNoOther() {
-        let run = OutsideActivity(date: TrainingDayFixtures.date(daysAgo: 1), group: .legs)
+        let run = OutsideActivity(type: .run, date: TrainingDayFixtures.date(daysAgo: 1))
         let cycle = [day(.push, daysAgo: 3), day(.pull, daysAgo: 2)]
         XCTAssertEqual(plan(cycle, activities: [run]), .rest(next: .legs, isEarly: true))
 
@@ -98,7 +98,7 @@ final class TrainingRotationTests: XCTestCase {
     }
 
     func testAnOutsideActivityThatWorksNoGroupChangesNothing() {
-        let yoga = OutsideActivity(date: TrainingDayFixtures.date(daysAgo: 1), group: nil)
+        let yoga = OutsideActivity(type: .other, date: TrainingDayFixtures.date(daysAgo: 1))
         XCTAssertEqual(plan([day(.push, daysAgo: 2)], activities: [yoga]), .train(.pull))
     }
 

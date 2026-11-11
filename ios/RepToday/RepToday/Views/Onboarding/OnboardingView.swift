@@ -96,6 +96,7 @@ struct OnboardingView: View {
         case .welcome:      WelcomeStep(viewModel: viewModel)
         case .basics:       BasicsStep(viewModel: viewModel)
         case .fitnessLevel: FitnessLevelStep(viewModel: viewModel)
+        case .focusAreas:   FocusAreasStep(viewModel: viewModel)
         case .why:          WhyStep(viewModel: viewModel)
         case .lifestyle:    LifestyleStep(viewModel: viewModel)
         case .duration:     DurationStep(viewModel: viewModel)
@@ -581,6 +582,23 @@ private struct FitnessLevelStep: View {
     }
 }
 
+// MARK: - Focus Areas (US-HO02)
+
+private struct FocusAreasStep: View {
+    @Bindable var viewModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            StepHeader(
+                title: FocusAreasCopy.onboardingTitle,
+                subtitle: FocusAreasCopy.onboardingSubtitle
+            )
+
+            FocusAreaList(selection: $viewModel.selectedFocusAreas)
+        }
+    }
+}
+
 // MARK: - Why
 
 private struct WhyStep: View {
@@ -623,7 +641,7 @@ private struct LifestyleStep: View {
                     Text("I sit 6+ hours most days")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
-                    Text("We'll lean your shorter sessions toward mobility.")
+                    Text("We'll lean your warm-ups and cooldowns toward hip and posture stretches.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

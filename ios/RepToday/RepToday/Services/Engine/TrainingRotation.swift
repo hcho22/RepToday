@@ -1,16 +1,5 @@
 import Foundation
 
-// MARK: - OutsideActivity
-
-/// A workout done outside Rep Today (`CONTEXT.md` "Outside Activity"), as the Rotation reads it: the day
-/// it happened and the group it worked, if any. Logged by hand or confirmed from Apple Health in M2;
-/// until then the Rotation is always handed an empty list.
-struct OutsideActivity: Equatable {
-    let date: Date
-    /// The Training Day group it worked (run/bike/hike -> Legs, swim/row/climb -> Pull), or `nil`.
-    let group: TrainingDay?
-}
-
 // MARK: - TrainingPlan
 
 /// What today holds (ADR-0012): a Training Day for one group, or a Rest Day.
@@ -33,12 +22,18 @@ enum TrainingPlan: Equatable {
         if case .rest = self { return true }
         return false
     }
+
+    /// A Rest Day brought forward by an Outside Activity (decision 21).
+    var isEarlyRest: Bool {
+        if case .rest(_, isEarly: true) = self { return true }
+        return false
+    }
 }
 
 // MARK: - TrainingRotation
 
 /// The Push -> Pull -> Legs Rotation (ADR-0012, US-TD04): pure and date-injected, read entirely from the
-/// logs (and, from M2, the Outside Activities). The logs must be the full history: the replay starts a
+/// logs and the logged Outside Activities (M2). The logs must be the full history: the replay starts a
 /// Cycle at the first Training Day it is given, so a window that begins mid-Cycle misaligns every Cycle
 /// after it.
 ///
@@ -157,17 +152,24 @@ enum TrainingRotation {
 
     /// The core ladders in Core Sprinkle order for the current Cycle: the ladder worked longest before
     /// the Cycle began first (never-worked ladders ahead of worked ones, then `canonical` order), so
-    /// each Cycle leads with a different ladder. `logs` and `trainable` are the ones `plan` reads, so the
-    /// Cycle is the one Today shows.
+    /// each Cycle leads with a different ladder. `logs`, `activities` and `trainable` are the ones `plan`
+    /// reads, so the Cycle is the one Today shows.
     static func coreLadderOrder(
         canonical: [String],
         library: [Exercise],
         logs: [WorkoutLog],
+        activities: [OutsideActivity] = [],
         trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
         asOf: Date,
         calendar: Calendar = .current
     ) -> [String] {
-        let cycleStart = state(logs: logs, trainable: trainable, asOf: asOf, calendar: calendar).cycleStartedAt ?? asOf
+        let cycleStart = state(
+            logs: logs,
+            activities: activities,
+            trainable: trainable,
+            asOf: asOf,
+            calendar: calendar
+        ).cycleStartedAt ?? asOf
         let ladderById = Dictionary(library.map { ($0.id, $0.progressionChainId) }, uniquingKeysWith: { first, _ in first })
         var lastWorked: [String: Date] = [:]
         for log in logs where log.completedAt < cycleStart {
@@ -183,6 +185,40 @@ enum TrainingRotation {
             if let l, let r, l != r { return l < r }
             return lhs.offset < rhs.offset
         }.map(\.element)
+    }
+
+    // MARK: Cycle strip
+
+    /// The Cycle as the Welcome Page's strip shows it (decision 19): the groups already done this Cycle,
+    /// then today (a Training Day or the Rest Day), then what is still to come, in the order the Rotation
+    /// will serve it. A group the user cannot train at all is left off, and a Rest Day already taken early
+    /// this Cycle shows as done.
+    static func cycleSteps(
+        logs: [WorkoutLog],
+        activities: [OutsideActivity] = [],
+        trainable: Set<TrainingDay> = Set(TrainingDay.allCases),
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> [CycleStep] {
+        let state = state(logs: logs, activities: activities, trainable: trainable, asOf: asOf, calendar: calendar)
+        let today = plan(logs: logs, activities: activities, trainable: trainable, asOf: asOf, calendar: calendar)
+        let groups = TrainingDay.rotation.filter { trainable.contains($0) }
+        let shown = groups.isEmpty ? TrainingDay.rotation : groups
+        let done = shown.filter { state.completed.contains($0) }.map { CycleStep(.day($0), .done) }
+        var steps = done
+        switch today {
+        case .rest(_, isEarly: false):
+            steps.append(CycleStep(.rest, .today))
+        case .rest(_, isEarly: true):
+            steps.append(CycleStep(.rest, .today))
+            steps += shown.filter { !state.completed.contains($0) }.map { CycleStep(.day($0), .upcoming) }
+        case let .train(day):
+            if state.restTakenEarly { steps.append(CycleStep(.rest, .done)) }
+            steps.append(CycleStep(.day(day), .today))
+            steps += shown.filter { !state.completed.contains($0) && $0 != day }.map { CycleStep(.day($0), .upcoming) }
+            if !state.restTakenEarly { steps.append(CycleStep(.rest, .upcoming)) }
+        }
+        return steps
     }
 
     // MARK: Internals
@@ -228,5 +264,56 @@ enum TrainingRotation {
             return .train(swapped)
         }
         return .rest(next: next, isEarly: !state.restTakenEarly && remaining.count == 1)
+    }
+}
+
+// MARK: - CycleStep
+
+/// One step of the Cycle strip (`TrainingRotation.cycleSteps`): a Training Day or the Rest Day, and
+/// whether it is done, today, or still to come.
+struct CycleStep: Equatable, Hashable, Identifiable {
+    enum Kind: Equatable, Hashable {
+        case day(TrainingDay)
+        case rest
+    }
+
+    enum Status: Equatable, Hashable {
+        case done
+        case today
+        case upcoming
+    }
+
+    let kind: Kind
+    let status: Status
+
+    init(_ kind: Kind, _ status: Status) {
+        self.kind = kind
+        self.status = status
+    }
+
+    var id: String {
+        switch kind {
+        case let .day(day): return day.rawValue
+        case .rest: return "rest"
+        }
+    }
+
+    /// The short name on the strip: "Push", "Pull", "Legs", "Rest".
+    var title: String {
+        switch kind {
+        case .day(.push): return "Push"
+        case .day(.pull): return "Pull"
+        case .day(.legs): return "Legs"
+        case .rest: return "Rest"
+        }
+    }
+
+    /// What VoiceOver reads for the step: "Push, done", "Legs, today", "Rest, coming up".
+    var accessibilityLabel: String {
+        switch status {
+        case .done: return "\(title), done"
+        case .today: return "\(title), today"
+        case .upcoming: return "\(title), coming up"
+        }
     }
 }

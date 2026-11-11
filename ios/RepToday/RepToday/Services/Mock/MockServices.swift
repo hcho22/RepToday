@@ -124,6 +124,35 @@ actor MockWorkoutLogService: WorkoutLogServiceProtocol {
 
 // MARK: - HealthKit
 
+/// An in-memory `OutsideActivityServiceProtocol` for tests and previews.
+actor InMemoryOutsideActivityService: OutsideActivityServiceProtocol {
+    private var stored: [UUID: OutsideActivity]
+
+    init(activities: [OutsideActivity] = []) {
+        stored = Dictionary(activities.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+    }
+
+    func activities(from startDate: Date?, to endDate: Date?) async throws -> [OutsideActivity] {
+        stored.values
+            .filter { activity in
+                (startDate.map { activity.date >= $0 } ?? true) && (endDate.map { activity.date < $0 } ?? true)
+            }
+            .sorted { $0.date != $1.date ? $0.date < $1.date : $0.id.uuidString < $1.id.uuidString }
+    }
+
+    func save(_ activity: OutsideActivity) async throws {
+        stored[activity.id] = activity
+    }
+
+    func delete(id: UUID) async throws {
+        stored[id] = nil
+    }
+
+    func deleteAll() async throws {
+        stored = [:]
+    }
+}
+
 final class MockHealthKitService: HealthKitServiceProtocol {
     func authorizationStatus() async throws -> HealthKitAuthorizationStatus {
         .notDetermined

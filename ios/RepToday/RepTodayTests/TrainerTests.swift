@@ -77,7 +77,8 @@ final class TrainerTests: XCTestCase {
             var heightCm: Double
             var weightKg: Double
             var fitnessLevel: FitnessLevel
-            var primaryGoal: PrimaryGoal
+            // A build before Focus Areas (M2) requires the retired goal key.
+            var primaryGoal: String
             var sitsLong: Bool
             var injuries: [String]
             var typicalAvailableMinutes: Int

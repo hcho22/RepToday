@@ -23,7 +23,6 @@ final class ColdStartHandoffTests: XCTestCase {
                 heightCm: 178,
                 weightKg: 80,
                 fitnessLevel: .beginner,
-                primaryGoal: .stayActive,
                 sitsLong: true,
                 injuries: [],
                 typicalAvailableMinutes: 15

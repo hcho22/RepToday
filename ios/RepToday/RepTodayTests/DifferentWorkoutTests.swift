@@ -42,7 +42,7 @@ final class DifferentWorkoutTests: XCTestCase {
             createdAt: asOf,
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: level, primaryGoal: .stayActive,
+                fitnessLevel: level,
                 sitsLong: false, injuries: injuries, typicalAvailableMinutes: 15
             ),
             phase: phase,

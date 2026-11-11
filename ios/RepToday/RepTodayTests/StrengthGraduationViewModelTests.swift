@@ -86,6 +86,9 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.earnedStrength, "with no profile there is nothing to congratulate; the reveal must stay closed")
     }
 
+    /// The path with no Welcome Page - straight after onboarding - still waits behind the preparation
+    /// state. A cold launch waits behind the Welcome Page instead
+    /// (`testTheWelcomePageCoversTheLaunchAndHoldsTheGraduationUntilLetsGo`).
     func testRootWaitsForReconciliationBeforeGeneratingPhaseDependentTabs() async {
         let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -93,6 +96,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
 
         let appState = AppState(userDefaults: defaults)
         appState.isOnboarded = true
+        appState.markWelcomeSeen()
         let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
         let phaseService = StubPhaseService(earned: .strength)
         let base = ServiceContainer.mock()
@@ -148,6 +152,79 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         XCTAssertEqual(persistedPhase, .strength)
     }
 
+    /// US-HO01: on a cold launch the Welcome Page replaces the launch spinner - the reconciliation runs
+    /// behind it with "Let's go" waiting - and a graduation reveal decided meanwhile waits for "Let's go"
+    /// rather than stacking on the page, its one-shot flag untouched until it is shown.
+    func testTheWelcomePageCoversTheLaunchAndHoldsTheGraduationUntilLetsGo() async {
+        let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(userDefaults: defaults)
+        appState.isOnboarded = true
+        XCTAssertTrue(appState.isWelcomePending)
+        let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
+        let base = ServiceContainer.mock()
+        let services = ServiceContainer(
+            exerciseService: base.exerciseService,
+            workoutEngine: base.workoutEngine,
+            sessionPolicyService: base.sessionPolicyService,
+            consistencyService: base.consistencyService,
+            phaseService: StubPhaseService(earned: .strength),
+            userService: userService,
+            workoutLogService: base.workoutLogService,
+            activeSessionStore: base.activeSessionStore,
+            sessionCompletionService: base.sessionCompletionService,
+            healthKitService: base.healthKitService,
+            subscriptionService: base.subscriptionService,
+            premiumSessionAuthority: base.premiumSessionAuthority,
+            authService: base.authService,
+            analyticsService: base.analyticsService,
+            accountDeletionService: base.accountDeletionService
+        )
+
+        let (host, window) = HostedSurface.host(
+            RootView()
+                .environment(\.services, services)
+                .environment(appState),
+            size: CGSize(width: 393, height: 852),
+            settleFor: HostedSurface.settleInterval
+        )
+        defer {
+            window.isHidden = true
+            _ = host
+        }
+
+        await userService.waitUntilPhaseAdvanceStarts()
+        let labelsBeforeRelease = AccessibilityTree.labels(in: host.view)
+        XCTAssertTrue(labelsBeforeRelease.contains(WelcomeCopy.letsGo), "\(labelsBeforeRelease)")
+        XCTAssertFalse(labelsBeforeRelease.contains("Preparing today’s session"), "the Welcome Page replaces the spinner")
+        XCTAssertFalse(labelsBeforeRelease.contains("Today"), "the tabs wait for the reconciliation")
+
+        await userService.releasePhaseAdvance()
+        for _ in 0..<20 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            HostedSurface.pump(for: 0.05)
+            if AccessibilityTree.labels(in: host.view).contains("Today") { break }
+        }
+        let spokenBehindWelcome = AccessibilityTree.spokenStrings(in: host.view)
+        XCTAssertTrue(appState.isWelcomePending)
+        XCTAssertFalse(appState.hasCelebratedStrengthGraduation, "nothing is shown over the Welcome Page")
+        XCTAssertFalse(spokenBehindWelcome.contains { $0.localizedCaseInsensitiveContains("You've earned the Strength Phase") })
+
+        appState.markWelcomeSeen()
+        var spoken: [String] = []
+        for _ in 0..<20 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            HostedSurface.pump(for: 0.05)
+            spoken = AccessibilityTree.spokenStrings(in: host.view)
+            if spoken.contains(where: { $0.localizedCaseInsensitiveContains("You've earned the Strength Phase") }) { break }
+        }
+        XCTAssertTrue(spoken.contains { $0.localizedCaseInsensitiveContains("You've earned the Strength Phase") }, "\(spoken)")
+        XCTAssertTrue(appState.hasCelebratedStrengthGraduation)
+        XCTAssertFalse(AccessibilityTree.labels(in: host.view).contains(WelcomeCopy.letsGo))
+    }
+
     func testPastCelebrationDoesNotPromoteAUserWhoNoLongerQualifies() async {
         let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -187,6 +264,8 @@ final class StrengthGraduationViewModelTests: XCTestCase {
 
         let appState = AppState(userDefaults: defaults)
         appState.isOnboarded = true
+        // Past the cold-launch Welcome Page ("Let's go"), where the graduation reveal is shown.
+        appState.markWelcomeSeen()
 
         let persistence = MockPersistence.controller()
         let userService = CoreDataUserService(context: persistence.viewContext)

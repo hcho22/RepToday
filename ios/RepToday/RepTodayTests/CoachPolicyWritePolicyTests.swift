@@ -41,7 +41,7 @@ final class CoachPolicyWritePolicyTests: XCTestCase {
             createdAt: day(30),
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                fitnessLevel: .intermediate,
                 sitsLong: false, injuries: [], typicalAvailableMinutes: 20
             ),
             phase: .discipline,

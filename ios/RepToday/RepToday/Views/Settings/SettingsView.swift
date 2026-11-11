@@ -19,6 +19,9 @@ struct SettingsView: View {
     /// The Trainer row's model (US-TP11), built on first appearance from the environment's services.
     @State private var trainerSettings: TrainerSettingsViewModel?
 
+    /// The Focus Areas row's value (US-HO02), re-read on every appearance so a save shows on return.
+    @State private var focusAreas: [FocusArea] = []
+
     /// Production creates the deletion model lazily from the environment. Focused hosted-surface
     /// coverage can inject the same model directly so both confirmation variants are renderable
     /// without reaching a live Sign in with Apple service.
@@ -91,6 +94,57 @@ struct SettingsView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             } footer: {
                 Text(CoachDataDisclosureCopy.settingsFooter)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
+
+            // US-HO02: Focus Areas, the body parts a user wants a bit more attention on. A preference, not a
+            // safety filter, so it sits apart from the injury control below.
+            Section {
+                NavigationLink {
+                    FocusAreasView(services: services)
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "scope")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .accessibilityHidden(true)
+                        Text(FocusAreasCopy.title)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Spacer(minLength: Theme.Spacing.sm)
+                        Text(FocusAreasCopy.summary(focusAreas))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .multilineTextAlignment(.trailing)
+                            .lineLimit(2)
+                    }
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(FocusAreasCopy.title)
+                .accessibilityValue(FocusAreasCopy.summary(focusAreas))
+                .accessibilityHint("Choose the body parts you want a bit more attention on")
+                .accessibilityAddTraits(.isButton)
+
+                Toggle(isOn: healthSuggestionsBinding) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text(Self.healthToggleTitle)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                    }
+                }
+                .tint(Theme.Colors.accent)
+                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                .accessibilityLabel(Self.healthToggleTitle)
+                .accessibilityHint("Turns Apple Health workout suggestions on or off")
+            } header: {
+                Text("Training")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(Self.healthToggleFooter)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -178,7 +232,10 @@ struct SettingsView: View {
         }
         // Every appearance re-reads: the player's one-time choice may have stored a Trainer while
         // Settings sat open on the Profile tab.
-        .task { await trainerModel().load() }
+        .task {
+            await trainerModel().load()
+            focusAreas = (try? await services.userService.currentUser())?.profile.focusAreas ?? focusAreas
+        }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
@@ -268,6 +325,27 @@ struct SettingsView: View {
         .accessibilityHint("Choose who demonstrates each movement")
         .accessibilityAddTraits(.isButton)
     }
+
+    /// The Apple Health suggestions switch (US-HO05). Turning it on records the choice and asks for read
+    /// access to workouts at that moment; turning it off stops reading. HealthKit never says whether
+    /// read access was granted, so the switch reflects the choice.
+    private var healthSuggestionsBinding: Binding<Bool> {
+        Binding(
+            get: { appState.healthWorkoutSuggestionsEnabled },
+            set: { enabled in
+                appState.healthWorkoutSuggestionsEnabled = enabled
+                if enabled {
+                    Task { try? await services.healthKitService.requestWorkoutReadAuthorization() }
+                }
+            }
+        )
+    }
+
+    static let healthToggleTitle = "Suggest Apple Health workouts"
+
+    static let healthToggleFooter = """
+        Focus areas get a bit more attention on their days. With Apple Health suggestions on, Rep Today         reads the workouts you record there, like runs and swims, and offers them on Today. Nothing is         logged until you tap Add it.
+        """
 
     /// Builds the Trainer row's model on first use and caches it, like `deletionModel()`.
     private func trainerModel() -> TrainerSettingsViewModel {

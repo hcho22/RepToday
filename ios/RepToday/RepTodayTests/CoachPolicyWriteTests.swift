@@ -22,7 +22,7 @@ final class CoachPolicyWriteTests: XCTestCase {
             createdAt: asOf,
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                fitnessLevel: .intermediate,
                 sitsLong: false, injuries: [], typicalAvailableMinutes: 15
             ),
             phase: .discipline,

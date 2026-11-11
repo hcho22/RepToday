@@ -110,7 +110,7 @@ final class StapleMovementsTests: XCTestCase {
             createdAt: asOf,
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75, fitnessLevel: level,
-                primaryGoal: .stayActive, sitsLong: false, injuries: injuries, typicalAvailableMinutes: 15
+                sitsLong: false, injuries: injuries, typicalAvailableMinutes: 15
             ),
             phase: phase,
             subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),

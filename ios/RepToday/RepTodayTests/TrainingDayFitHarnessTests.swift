@@ -24,52 +24,59 @@ final class TrainingDayFitHarnessTests: XCTestCase {
         calendar.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: 12))!
     }
 
+    /// The Focus Area sets the harness prices beside no focus (US-HO03): each area alone, Abs with its
+    /// second Core Sprinkle among them, and every area at once.
+    private let focusSets: [[FocusArea]] = [[]] + FocusArea.allCases.map { [$0] } + [FocusArea.allCases]
+
     func testEveryLengthLevelAndDayFillsWithinToleranceOrReportsAnHonestShortfall() async throws {
         let library = try await MockExerciseService().exercises()
         var transcript: [String] = []
-        for history in History.allCases {
-            for level in FitnessLevel.allCases {
-                let user = TrainingDayFixtures.user(level: level, asOf: asOf)
-                let logs = history.logs(library: library, level: level, asOf: asOf, calendar: calendar)
-                for day in TrainingDay.rotation {
-                    for minutes in lengths {
-                        var plan = SessionAssembly.planSession(
-                            requestedMinutes: minutes,
-                            user: user,
-                            library: library,
-                            recentLogs: logs,
-                            trainingDay: day,
-                            asOf: asOf,
-                            calendar: calendar
-                        )
-                        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
-                        let planned = plan.totalSeconds
-                        let gap = planned - minutes * 60
-                        let status: String
-                        if abs(gap) <= SessionAssembly.toleranceSeconds {
-                            status = "ok"
-                        } else if gap < 0 {
-                            status = "honest shortfall"
-                            XCTAssertTrue(
-                                plan.isSaturated,
-                                "\(history) \(level) \(day) \(minutes) min lands \(gap)s short with levers left"
+        for focusAreas in focusSets {
+            let focusLabel = focusAreas.isEmpty ? "none" : focusAreas.count == FocusArea.allCases.count ? "all" : focusAreas.map(\.rawValue).joined(separator: "+")
+            for history in History.allCases {
+                for level in FitnessLevel.allCases {
+                    let user = TrainingDayFixtures.user(level: level, focusAreas: focusAreas, asOf: asOf)
+                    let logs = history.logs(library: library, level: level, asOf: asOf, calendar: calendar)
+                    for day in TrainingDay.rotation {
+                        for minutes in lengths {
+                            var plan = SessionAssembly.planSession(
+                                requestedMinutes: minutes,
+                                user: user,
+                                library: library,
+                                recentLogs: logs,
+                                trainingDay: day,
+                                asOf: asOf,
+                                calendar: calendar
                             )
-                        } else {
-                            status = "overrun"
-                            XCTAssertTrue(
-                                plan.stations.allSatisfy { $0.value - RepGrammar.step < $0.floor },
-                                "\(history) \(level) \(day) \(minutes) min overruns \(gap)s with reps above the floor"
+                            SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+                            let planned = plan.totalSeconds
+                            let gap = planned - minutes * 60
+                            let status: String
+                            if abs(gap) <= SessionAssembly.toleranceSeconds {
+                                status = "ok"
+                            } else if gap < 0 {
+                                status = "honest shortfall"
+                                XCTAssertTrue(
+                                    plan.isSaturated,
+                                    "\(focusLabel) \(history) \(level) \(day) \(minutes) min lands \(gap)s short with levers left"
+                                )
+                            } else {
+                                status = "overrun"
+                                XCTAssertTrue(
+                                    plan.stations.allSatisfy { $0.value - RepGrammar.step < $0.floor },
+                                    "\(focusLabel) \(history) \(level) \(day) \(minutes) min overruns \(gap)s with reps above the floor"
+                                )
+                            }
+                            let line = String(
+                                format: "FIT HARNESS focus:%@ %@ %@ %@ %2d min: planned %5.1f min (%+4ds) stations %d rest %ds pause %ds - %@",
+                                focusLabel, history.rawValue, level.rawValue, day.rawValue, minutes,
+                                Double(planned) / 60, gap, plan.stations.count, plan.roundRestSeconds,
+                                plan.transitionSeconds, status
                             )
+                            transcript.append(line)
+                            // The materialized session prices exactly as the plan did.
+                            XCTAssertEqual(SessionAssembly.plannedSeconds(of: plan.materialize()), planned)
                         }
-                        let line = String(
-                            format: "FIT HARNESS %@ %@ %@ %2d min: planned %5.1f min (%+4ds) stations %d rest %ds pause %ds - %@",
-                            history.rawValue, level.rawValue, day.rawValue, minutes,
-                            Double(planned) / 60, gap, plan.stations.count, plan.roundRestSeconds,
-                            plan.transitionSeconds, status
-                        )
-                        transcript.append(line)
-                        // The materialized session prices exactly as the plan did.
-                        XCTAssertEqual(SessionAssembly.plannedSeconds(of: plan.materialize()), planned)
                     }
                 }
             }
