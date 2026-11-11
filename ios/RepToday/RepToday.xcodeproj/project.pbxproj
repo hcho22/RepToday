@@ -312,6 +312,7 @@
 		F03203FEAB9CE8BBE37D0B8C /* ActiveSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB767DB4F3EF395977F503B /* ActiveSessionStore.swift */; };
 		F05ADA5808CBE149E1401F73 /* AccountRequiredView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A42E0ABC75D147DDA31AE53 /* AccountRequiredView.swift */; };
 		F0F25E9242DEB2B103703A3C /* CoachTuningEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFC4CA16F951FDB55E25AE0 /* CoachTuningEvidenceTests.swift */; };
+		F19E68A629A30CAAD811768B /* LegacyICloudErasure.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F84B7E76E3B289A39321FA /* LegacyICloudErasure.swift */; };
 		F1B4BA89C3100A645F0E8690 /* ReadyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AF3E0C61A253331058D5B1F /* ReadyView.swift */; };
 		F2F7252859F9775AEB437D93 /* SyncOfflineSimulation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D444F1137D5A6D149938C250 /* SyncOfflineSimulation.swift */; };
 		F341C7A65B4A9A71DEED2478 /* Countdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B0E5C3605B17046DFBF69A /* Countdown.swift */; };
@@ -681,6 +682,7 @@
 		F0D9E0BEF8C9F70009DCA8F6 /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
 		F154BF4A5E8F3926B71D73CD /* MidTierStrengthSkillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidTierStrengthSkillTests.swift; sourceTree = "<group>"; };
 		F1E9417A5EF9D17167886F5C /* TrainingRotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingRotation.swift; sourceTree = "<group>"; };
+		F2F84B7E76E3B289A39321FA /* LegacyICloudErasure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyICloudErasure.swift; sourceTree = "<group>"; };
 		F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataServicesTests.swift; sourceTree = "<group>"; };
 		F4A475E54BF81899FCA16BF7 /* AppleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthService.swift; sourceTree = "<group>"; };
 		F7D6A843D6B4D44830EA09B4 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
@@ -1239,6 +1241,7 @@
 				8312D70C3BCCF853ABD3B370 /* AccountAuthService.swift */,
 				967ADBB93402792267D353F2 /* AccountDeletionService.swift */,
 				C4EFB796F158A992AF17A70F /* ClerkAccountAuthService.swift */,
+				F2F84B7E76E3B289A39321FA /* LegacyICloudErasure.swift */,
 				3352EB768CD34640CFF88E15 /* StubAccountAuthService.swift */,
 			);
 			path = Account;
@@ -1780,6 +1783,7 @@
 				6B0FB9CF334305274E3F25A0 /* InjuryFlagsViewModel.swift in Sources */,
 				42A6EB83B796F03D64D7566B /* LegacyAccountMigration.swift in Sources */,
 				AFF5647AEEAD501BF93A797A /* LegacyAccountMigrator.swift in Sources */,
+				F19E68A629A30CAAD811768B /* LegacyICloudErasure.swift in Sources */,
 				2A7E91D12F2BBDB140CBA14B /* LegacyICloudImportMonitor.swift in Sources */,
 				C772B168E185D4FDA018A3B7 /* LegalLinks.swift in Sources */,
 				97E32E01592D5697768D94CC /* LiveAnalyticsService.swift in Sources */,

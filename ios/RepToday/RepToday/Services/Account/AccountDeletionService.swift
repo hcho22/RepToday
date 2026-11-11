@@ -17,7 +17,10 @@ protocol AccountDeletionServiceProtocol {
     ///    makes a retry skip it - the deleted account's session can no longer reach the server.
     /// 1. Delete every durable record on the device - the `CDUser`/`CDWorkoutLog`/`CDSessionPolicy`
     ///    rows in the Cloud store and the `CDActiveSession`/`CDOutsideActivity` rows in the Local
-    ///    store - each saved as it goes, then empty the sync outbox and forget the sync cursor.
+    ///    store - each saved as it goes, then empty the sync outbox and forget the sync cursor. Then
+    ///    delete the Rep Today data kept in the user's iCloud from before accounts
+    ///    (`LegacyICloudErasure`); when iCloud cannot take it, the deletion is recorded as owed and
+    ///    retried on a later launch, and the rest of the teardown carries on.
     /// 2. Clear the Keychain-held Sign in with Apple identifier from before accounts
     ///    (`AuthServiceProtocol.signOut()`) - non-optional, since the Keychain item survives a
     ///    reinstall - and end the account's session on this device.
@@ -33,6 +36,12 @@ protocol AccountDeletionServiceProtocol {
     ///
     /// - Throws: `AccountDeletionError` when the server step cannot run; nothing was deleted then.
     func deleteAccount(appState: AppState) async throws
+
+    /// Erases this phone's Rep Today data and routes back to onboarding - steps 1 to 3 above, with no
+    /// server step and no iCloud deletion - so the phone can be set up with another account. The
+    /// account itself is not deleted. Offered when the phone's data belongs to a different account
+    /// than the one just signed in to (`AccountLinkError`).
+    func eraseThisDevice(appState: AppState) async throws
 }
 
 /// Why account deletion stopped before deleting anything.
@@ -61,6 +70,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     /// iCloud. Optional so a caller that predates them still composes the teardown.
     private let outsideActivityService: (any OutsideActivityServiceProtocol)?
     private let account: AccountTeardown?
+    /// The Rep Today data in the user's iCloud from before accounts, or `nil` where there is none to
+    /// reach (tests, previews).
+    private let legacyICloud: LegacyICloudErasure?
 
     /// The account half of deletion (M3, US-AU05): the server step and the sync state on the device.
     struct AccountTeardown {
@@ -84,7 +96,8 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         authService: any AuthServiceProtocol,
         coachAuthenticationCleanup: (@Sendable () async -> Void)? = nil,
         outsideActivityService: (any OutsideActivityServiceProtocol)? = nil,
-        account: AccountTeardown? = nil
+        account: AccountTeardown? = nil,
+        legacyICloud: LegacyICloudErasure? = nil
     ) {
         self.userService = userService
         self.workoutLogService = workoutLogService
@@ -94,15 +107,31 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         self.coachAuthenticationCleanup = coachAuthenticationCleanup
         self.outsideActivityService = outsideActivityService
         self.account = account
+        self.legacyICloud = legacyICloud
     }
 
     func deleteAccount(appState: AppState) async throws {
+        try await withSyncStopped(appState) { linkedAccount in
+            try await deleteRemoteAccount(linkedAccount)
+            try await eraseDevice(appState: appState, deletesICloud: true)
+        }
+    }
+
+    func eraseThisDevice(appState: AppState) async throws {
+        try await withSyncStopped(appState) { _ in
+            await account?.engine?.waitForIdle()
+            try await eraseDevice(appState: appState, deletesICloud: false)
+        }
+    }
+
+    /// Runs `work` with sync stopped (`isAccountDeletionInProgress`), handing it the linked account.
+    private func withSyncStopped(_ appState: AppState, _ work: (AccountIdentity?) async throws -> Void) async throws {
         let linkedAccount = await MainActor.run { () -> AccountIdentity? in
             appState.isAccountDeletionInProgress = true
             return appState.account
         }
         do {
-            try await teardown(appState: appState, linkedAccount: linkedAccount)
+            try await work(linkedAccount)
         } catch {
             await MainActor.run { appState.isAccountDeletionInProgress = false }
             throw error
@@ -110,9 +139,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         await MainActor.run { appState.isAccountDeletionInProgress = false }
     }
 
-    private func teardown(appState: AppState, linkedAccount: AccountIdentity?) async throws {
-        // 0. The server step. Sync has stopped (`isAccountDeletionInProgress`); wait out a cycle that
-        //    was already uploading, so nothing reaches the account after it is deleted.
+    /// 0. The server step. Sync has stopped (`isAccountDeletionInProgress`); wait out a cycle that was
+    ///    already uploading, so nothing reaches the account after it is deleted.
+    private func deleteRemoteAccount(_ linkedAccount: AccountIdentity?) async throws {
         if let account, let linkedAccount, let remote = account.remote,
            account.defaults.string(forKey: AccountTeardown.remoteDeletionMarkerKey) != linkedAccount.userId {
             await account.engine?.waitForIdle()
@@ -130,7 +159,10 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             }
             account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionMarkerKey)
         }
+    }
 
+    /// Steps 1 to 3: everything on the device, the legacy iCloud copy when `deletesICloud`, then routing.
+    private func eraseDevice(appState: AppState, deletesICloud: Bool) async throws {
         // 1. Durable records across both store configurations, each saved as it goes. Every delete is
         //    wholesale and single-user - the log store carries no
         //    owner column, and the policy and active-session stores clear their one record without a
@@ -145,6 +177,11 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         // The outbox would otherwise upload the deleted records to the next account signed in here.
         try await account?.syncStore.clearOutbox()
         account?.cursorStore.reset()
+        // The Rep Today data in the user's iCloud from before accounts. Never throws: a deletion iCloud
+        // cannot take now is owed and retried on a later launch.
+        if deletesICloud {
+            await legacyICloud?.erase()
+        }
 
         // 2. The Keychain identifier - mandatory, since it outlives a reinstall. A no-op for the
         //    local-UUID user who never signed in with Apple (`SecItemDelete` tolerates "not found").

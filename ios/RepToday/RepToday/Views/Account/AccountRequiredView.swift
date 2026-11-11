@@ -9,9 +9,9 @@ import SwiftUI
 struct AccountRequiredView: View {
     @State private var signIn: AccountSignInViewModel
 
-    init(auth: any AccountAuthServiceProtocol, onSignedIn: @escaping @MainActor (AccountIdentity) -> Void) {
+    init(auth: any AccountAuthServiceProtocol, onSignedIn: @escaping @MainActor (AccountIdentity) throws -> Void) {
         _signIn = State(initialValue: AccountSignInViewModel(auth: auth, context: .existingUser) { identity in
-            onSignedIn(identity)
+            try onSignedIn(identity)
         })
     }
 

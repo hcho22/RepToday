@@ -187,36 +187,153 @@ final class AccountSignInTests: XCTestCase {
 
     // MARK: - Linking
 
-    func testSigningInToADifferentAccountUploadsEverythingToIt() async throws {
+    /// The phone's data belongs to the account it is linked to: linking a different account is refused,
+    /// and nothing is re-queued, re-read or uploaded for it.
+    func testLinkingADifferentAccountIsRefusedAndUploadsNothing() async throws {
+        let fixture = try await linkedFixture()
+        await fixture.coordinator.syncNow()
+        let pushesBefore = await fixture.server.pushCalls
+
+        XCTAssertThrowsError(try fixture.coordinator.linkAccount(Self.otherAccount)) { error in
+            XCTAssertEqual(error as? AccountLinkError, .belongsToAnotherAccount(linked: Self.originalAccount))
+        }
+        await fixture.coordinator.syncNow()
+
+        XCTAssertEqual(fixture.appState.account, Self.originalAccount)
+        XCTAssertEqual(fixture.cursor.cursor(), 17, "the linked account's cursor is untouched")
+        let outbox = try await fixture.stack.outbox()
+        XCTAssertEqual(outbox, [], "nothing is queued for the other account")
+        let pushesAfter = await fixture.server.pushCalls
+        XCTAssertEqual(pushesAfter, pushesBefore)
+        let pushed = await fixture.server.pushedChanges
+        XCTAssertEqual(pushed, 2, "only the original upload of the profile and the log")
+    }
+
+    /// Signing in to another account from the Account screen is refused, signs that session out, and
+    /// signing back in to the original account carries on as before.
+    func testSigningInToAnotherAccountOffersSigningBackInToTheOriginal() async throws {
+        let fixture = try await linkedFixture()
+        let auth = StubAccountAuthService(isConfigured: true)
+        let vm = AccountSignInViewModel(auth: auth, context: .existingUser, eraseThisDevice: {}) { identity in
+            try fixture.coordinator.linkAccount(identity)
+        }
+
+        await vm.signInWithGoogle()
+
+        XCTAssertEqual(vm.phase, .belongsToAnotherAccount(attempted: Self.otherAccount))
+        let session = await auth.currentIdentity()
+        XCTAssertNil(session, "the other account's session is signed out, so sync cannot use it")
+        XCTAssertEqual(fixture.appState.account, Self.originalAccount)
+        XCTAssertTrue(vm.canEraseThisDevice)
+
+        vm.showChoices()
+        await vm.signInWithApple()
+
+        XCTAssertEqual(vm.phase, .signedIn(Self.originalAccount))
+        XCTAssertNil(vm.message)
+        XCTAssertEqual(fixture.appState.account, Self.originalAccount)
+    }
+
+    /// An account deleted from another device: this phone's old history must not upload into the new
+    /// account the same Apple ID now signs in to. The phone refuses, then erases its data on request
+    /// (the account itself is not deleted again) and starts over, after which the new account links.
+    func testAnAccountDeletedElsewhereIsErasedHereBeforeAnotherAccountLinks() async throws {
+        let fixture = try await linkedFixture()
+        try await fixture.stack.logs.save(SyncFixtures.log(daysAgo: 0))
+        await fixture.server.failPush(call: 1, with: .accountDeleting)
+        await fixture.coordinator.syncNow()
+        XCTAssertEqual(fixture.coordinator.status, .needsSignIn)
+
+        let service = AccountDeletionService(
+            userService: fixture.stack.users,
+            workoutLogService: fixture.stack.logs,
+            sessionPolicyStore: fixture.stack.policies,
+            activeSessionStore: fixture.stack.activeSessions,
+            authService: MockAuthService(),
+            outsideActivityService: fixture.stack.activities,
+            account: AccountDeletionService.AccountTeardown(
+                remote: fixture.server,
+                auth: StubAccountAuthService(isConfigured: true),
+                syncStore: fixture.stack.store,
+                cursorStore: fixture.cursor,
+                defaults: fixture.defaults
+            )
+        )
+        let auth = StubAccountAuthService(isConfigured: true)
+        let vm = AccountSignInViewModel(
+            auth: auth,
+            context: .existingUser,
+            eraseThisDevice: { try await service.eraseThisDevice(appState: fixture.appState) }
+        ) { identity in
+            try fixture.coordinator.linkAccount(identity)
+        }
+        await vm.signInWithGoogle()
+        XCTAssertEqual(vm.phase, .belongsToAnotherAccount(attempted: Self.otherAccount))
+
+        vm.requestErase()
+        XCTAssertTrue(vm.isEraseConfirmationPresented)
+        await vm.confirmErase()
+
+        XCTAssertNil(vm.message)
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNil(user)
+        let logs = try await fixture.stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(logs, [])
+        let outbox = try await fixture.stack.outbox()
+        XCTAssertEqual(outbox, [])
+        XCTAssertNil(fixture.appState.account)
+        XCTAssertFalse(fixture.appState.isOnboarded, "the phone starts setting up again")
+        let deletions = await fixture.server.deleteCalls
+        XCTAssertEqual(deletions, 0, "erasing the phone deletes no account")
+
+        XCTAssertNoThrow(try fixture.coordinator.linkAccount(Self.otherAccount))
+        XCTAssertEqual(fixture.appState.account, Self.otherAccount)
+    }
+
+    func testTheOtherAccountScreenNamesWhoSignedInAndOffersErasingOnlyWhereItCan() {
+        let withErase = AccountSignInPanel.anotherAccountText(Self.otherAccount, canErase: true)
+        XCTAssertTrue(withErase.hasPrefix("You signed in as you@example.com."))
+        XCTAssertTrue(withErase.contains("erase this phone's Rep Today data"))
+        let withoutErase = AccountSignInPanel.anotherAccountText(Self.originalAccount, canErase: false)
+        XCTAssertTrue(withoutErase.hasPrefix("You signed in to a different account."))
+        XCTAssertFalse(withoutErase.contains("erase"))
+    }
+
+    // MARK: - Fixtures
+
+    private static let originalAccount = AccountIdentity(userId: "user_stub_apple", email: nil, method: .apple)
+    private static let otherAccount = AccountIdentity(userId: "user_stub_google", email: "you@example.com", method: .google)
+
+    private struct LinkedFixture {
+        let stack: SyncTestStack
+        let server: FakeAccountServer
+        let cursor: InMemorySyncCursorStore
+        let appState: AppState
+        let coordinator: AccountSyncCoordinator
+        let defaults: UserDefaults
+    }
+
+    /// A phone linked to `originalAccount`, holding a profile and a log.
+    private func linkedFixture() async throws -> LinkedFixture {
         let suite = "AccountSignInTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let stack = SyncTestStack()
         try await stack.users.save(SyncFixtures.user())
         try await stack.logs.save(SyncFixtures.log(daysAgo: 1))
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "first", email: nil, method: .email))
+        try appState.linkAccount(Self.originalAccount)
         appState.isOnboarded = true
         let server = FakeAccountServer()
         let cursor = InMemorySyncCursorStore(cursor: 17)
         let coordinator = AccountSyncCoordinator(
             engine: stack.engine(server, cursor: cursor),
             store: stack.store,
-            cursorStore: cursor,
             appState: appState,
             migrator: LegacyAccountMigrator(appState: appState, store: stack.store, importer: LegacyICloudImportMonitor(settled: .nothingToImport), defaults: defaults),
             beginBackgroundWork: { _ in {} },
             onRemoteChangesApplied: {}
         )
-        await coordinator.syncNow()
-
-        coordinator.linkAccount(AccountIdentity(userId: "second", email: nil, method: .email))
-        XCTAssertEqual(cursor.cursor(), 0, "a different account is read from its start")
-        try await HostedSurface.settle(until: { coordinator.status == .upToDate && appState.account?.userId == "second" }, timeout: 5)
-        await coordinator.syncNow()
-        XCTAssertEqual(appState.account?.userId, "second")
-        XCTAssertNil(appState.legacyMigrationStage, "switching accounts is not a migration")
-        let logs = await server.rows(of: .workoutLog)
-        XCTAssertEqual(logs.count, 1)
+        return LinkedFixture(stack: stack, server: server, cursor: cursor, appState: appState, coordinator: coordinator, defaults: defaults)
     }
 }

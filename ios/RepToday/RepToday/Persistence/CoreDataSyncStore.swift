@@ -84,6 +84,25 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
         }
     }
 
+    func eraseSyncedRecords() async throws {
+        try await context.perform {
+            try self.deleteAll(CDUser.fetchRequest())
+            try self.deleteAll(CDSessionPolicy.fetchRequest())
+            try self.deleteAll(CDWorkoutLog.fetchRequest())
+            try self.deleteAll(CDOutsideActivity.fetchRequest())
+            try self.deleteAll(CDSyncChange.fetchRequest())
+            if self.context.hasChanges {
+                try self.context.save()
+            }
+        }
+    }
+
+    private func deleteAll<Record: NSManagedObject>(_ request: NSFetchRequest<Record>) throws {
+        for record in try context.fetch(request) {
+            context.delete(record)
+        }
+    }
+
     func enqueueAllRecords(changedAt: Date) async throws -> Int {
         try await context.perform {
             var queued = 0

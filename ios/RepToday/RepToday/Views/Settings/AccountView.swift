@@ -4,7 +4,9 @@ import SwiftUI
 ///
 /// Signing in is required and happens before the app opens, so there is nothing optional here. The one
 /// action it can offer is signing in again, when the account no longer accepts this device's session;
-/// the data stays on the phone until then. Premium stays with the App Store account.
+/// the data stays on the phone until then. Signing in to a different account than the one this phone
+/// saves to is refused - two accounts' data never mix - and offers erasing this phone's data instead.
+/// Premium stays with the App Store account.
 struct AccountView: View {
     @Environment(\.services) private var services
     @Environment(AppState.self) private var appState
@@ -52,11 +54,16 @@ struct AccountView: View {
         .navigationTitle("Account")
         .onAppear {
             if reSignIn == nil {
-                reSignIn = AccountSignInViewModel(auth: services.accountAuthService, context: .existingUser) { identity in
+                let deletionService = services.accountDeletionService
+                reSignIn = AccountSignInViewModel(
+                    auth: services.accountAuthService,
+                    context: .existingUser,
+                    eraseThisDevice: { [appState] in try await deletionService.eraseThisDevice(appState: appState) }
+                ) { identity in
                     if let syncCoordinator {
-                        syncCoordinator.linkAccount(identity)
+                        try syncCoordinator.linkAccount(identity)
                     } else {
-                        appState.linkAccount(identity)
+                        try appState.linkAccount(identity)
                     }
                 }
             }

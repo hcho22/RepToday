@@ -1,3 +1,4 @@
+import CloudKit
 import XCTest
 @testable import RepToday
 
@@ -31,7 +32,7 @@ final class AccountDeletionAccountTests: XCTestCase {
         let appState: AppState
     }
 
-    private func makeFixture() async throws -> Fixture {
+    private func makeFixture(legacyICloud: LegacyICloudErasure? = nil) async throws -> Fixture {
         let stack = SyncTestStack()
         let user = SyncFixtures.user()
         try await stack.users.save(user)
@@ -60,11 +61,12 @@ final class AccountDeletionAccountTests: XCTestCase {
                 cursorStore: cursor,
                 engine: stack.engine(server, cursor: cursor),
                 defaults: defaults
-            )
+            ),
+            legacyICloud: legacyICloud
         )
-        let appState = await MainActor.run { () -> AppState in
+        let appState = try await MainActor.run { () throws -> AppState in
             let state = AppState(userDefaults: defaults)
-            state.linkAccount(Self.identity)
+            try state.linkAccount(Self.identity)
             state.isOnboarded = true
             return state
         }
@@ -182,9 +184,9 @@ final class AccountDeletionAccountTests: XCTestCase {
                 defaults: defaults
             )
         )
-        let appState = await MainActor.run { () -> AppState in
+        let appState = try await MainActor.run { () throws -> AppState in
             let state = AppState(userDefaults: defaults)
-            state.linkAccount(Self.identity)
+            try state.linkAccount(Self.identity)
             state.isOnboarded = true
             return state
         }
@@ -195,19 +197,79 @@ final class AccountDeletionAccountTests: XCTestCase {
         XCTAssertEqual(outbox, [])
     }
 
+    // MARK: - The legacy iCloud copy
+
+    func testDeletionAlsoDeletesTheLegacyICloudCopyAndIsSafeToRepeat() async throws {
+        let deleter = SpyLegacyICloudDeleter()
+        let erasure = LegacyICloudErasure(deleter: deleter, defaults: defaults)
+        let fixture = try await makeFixture(legacyICloud: erasure)
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        let calls = await deleter.calls
+        XCTAssertEqual(calls, 2, "a repeat asks again, and a zone already gone counts as deleted")
+        XCTAssertFalse(erasure.isOwed)
+    }
+
+    /// With iCloud unavailable the rest of the deletion still completes; the iCloud deletion is owed
+    /// and lands on a later launch's retry.
+    func testAnICloudDeletionThatCannotRunIsOwedAndRetriedWithoutBlockingTheRest() async throws {
+        let deleter = SpyLegacyICloudDeleter(failuresLeft: 1)
+        let erasure = LegacyICloudErasure(deleter: deleter, defaults: defaults)
+        let fixture = try await makeFixture(legacyICloud: erasure)
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        let deleteCalls = await fixture.server.deleteCalls
+        XCTAssertEqual(deleteCalls, 1)
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNil(user)
+        await MainActor.run { XCTAssertFalse(fixture.appState.isOnboarded) }
+        XCTAssertTrue(erasure.isOwed, "the iCloud deletion is still owed")
+
+        await erasure.retryIfOwed()
+        XCTAssertFalse(erasure.isOwed)
+        await erasure.retryIfOwed()
+        let calls = await deleter.calls
+        XCTAssertEqual(calls, 2, "nothing is retried once it has landed")
+    }
+
+    /// Erasing the phone, when its data belongs to another account, deletes neither that account nor
+    /// its iCloud copy.
+    func testErasingThisDeviceDeletesNoAccountAndNoICloudCopy() async throws {
+        let deleter = SpyLegacyICloudDeleter()
+        let fixture = try await makeFixture(legacyICloud: LegacyICloudErasure(deleter: deleter, defaults: defaults))
+
+        try await fixture.service.eraseThisDevice(appState: fixture.appState)
+
+        let deleteCalls = await fixture.server.deleteCalls
+        XCTAssertEqual(deleteCalls, 0)
+        let calls = await deleter.calls
+        XCTAssertEqual(calls, 0)
+        let logs = try await fixture.stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(logs.isEmpty)
+        let outbox = try await fixture.stack.outbox()
+        XCTAssertEqual(outbox, [])
+        await MainActor.run {
+            XCTAssertNil(fixture.appState.account)
+            XCTAssertFalse(fixture.appState.isOnboarded)
+            XCTAssertFalse(fixture.appState.isAccountDeletionInProgress)
+        }
+    }
+
     @MainActor
     func testNothingSyncsWhileDeletionIsInProgress() async throws {
         let stack = SyncTestStack()
         try await stack.users.save(SyncFixtures.user())
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         appState.isOnboarded = true
         let server = FakeAccountServer()
         let cursor = InMemorySyncCursorStore()
         let coordinator = AccountSyncCoordinator(
             engine: stack.engine(server, cursor: cursor),
             store: stack.store,
-            cursorStore: cursor,
             appState: appState,
             migrator: LegacyAccountMigrator(appState: appState, store: stack.store, importer: LegacyICloudImportMonitor(settled: .nothingToImport), defaults: defaults),
             beginBackgroundWork: { _ in {} },
@@ -221,5 +283,23 @@ final class AccountDeletionAccountTests: XCTestCase {
         await coordinator.syncNow()
         let pushesAfter = await server.pushCalls
         XCTAssertEqual(pushesAfter, 1)
+    }
+}
+
+/// The CloudKit zone deletion, scripted: fails `failuresLeft` times, then succeeds.
+private actor SpyLegacyICloudDeleter: LegacyICloudDataDeleting {
+    private(set) var calls = 0
+    private var failuresLeft: Int
+
+    init(failuresLeft: Int = 0) {
+        self.failuresLeft = failuresLeft
+    }
+
+    func deleteLegacyICloudData() async throws {
+        calls += 1
+        if failuresLeft > 0 {
+            failuresLeft -= 1
+            throw CKError(.notAuthenticated)
+        }
     }
 }

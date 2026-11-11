@@ -29,7 +29,7 @@ struct RootView: View {
                     // A user who onboarded before accounts signs in once before anything else (US-AU04).
                     // Their data is untouched until then, and moves to the account afterwards.
                     AccountRequiredView(auth: services.accountAuthService) { identity in
-                        linkAccount(identity)
+                        try linkAccount(identity)
                     }
                     .transition(.opacity)
                 } else if appState.isOnboarded {
@@ -50,7 +50,7 @@ struct RootView: View {
                     // pre-account user - and flips into the main app. A freshly onboarded user lands on
                     // Today: the Welcome Page is for cold launches.
                     OnboardingView(services: services) { identity in
-                        linkAccount(identity)
+                        try linkAccount(identity)
                         appOpenReconciliationComplete = false
                         appState.markWelcomeSeen()
                         appState.isOnboarded = true
@@ -147,11 +147,11 @@ struct RootView: View {
     }
 
     /// Links the account the user just signed in to, through the sync coordinator when there is one.
-    private func linkAccount(_ identity: AccountIdentity) {
+    private func linkAccount(_ identity: AccountIdentity) throws {
         if let syncCoordinator {
-            syncCoordinator.linkAccount(identity)
+            try syncCoordinator.linkAccount(identity)
         } else {
-            appState.linkAccount(identity)
+            try appState.linkAccount(identity)
         }
     }
 

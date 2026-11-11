@@ -10,6 +10,7 @@ struct NoOpSyncStore: SyncStore {
     func apply(_ records: [RemoteSyncRecord]) async throws -> Int { 0 }
     func enqueueAllRecords(changedAt: Date) async throws -> Int { 0 }
     func clearOutbox() async throws {}
+    func eraseSyncedRecords() async throws {}
 }
 
 /// A cursor held in memory, for tests and the mock container.

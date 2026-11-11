@@ -233,7 +233,7 @@ The user's required sign-in identity: a Clerk user, signed in with Apple, Google
 Data lives on the device first: Core Data stays the store the app runs on, every change also lands in the sync **outbox** (`CDSyncChange`) in the same save, and the outbox uploads to the account on Rep Today's Convex backend whenever the phone is online, idempotent by record id, with the newer change winning; other devices pull what changed.
 Sessions generate, play and log with no connection; only signing in, account deletion and the Coach need one.
 Every account function checks that the caller owns the data (`convex/ownership.ts`).
-A user who onboarded before accounts signs in once on their next launch, and their on-device and iCloud history moves to the account (`LegacyAccountMigrationStage`); iCloud sync ends there and the iCloud copy is never deleted.
+A user who onboarded before accounts signs in once on their next launch, and their on-device and iCloud history moves to the account (`LegacyAccountMigrationStage`); iCloud sync ends there; the move never deletes the iCloud copy, and account deletion does.
 Deleting the account deletes its server data and the Clerk user first, then everything on the device.
 The owning code is `Services/Account/`, `Services/Sync/`, `Persistence/CoreDataSyncStore.swift`, `convex/sync.ts` and `convex/accounts.ts`.
 

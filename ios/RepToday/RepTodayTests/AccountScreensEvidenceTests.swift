@@ -157,7 +157,7 @@ final class AccountScreensEvidenceTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "user_1", email: "riley@example.com", method: .apple))
+        try appState.linkAccount(AccountIdentity(userId: "user_1", email: "riley@example.com", method: .apple))
         appState.isOnboarded = true
         for (style, name) in [(UIUserInterfaceStyle.light, "account-light.png"), (.dark, "account-dark.png")] {
             let (host, _) = HostedSurface.host(

@@ -56,6 +56,11 @@ struct RepTodayApp: App {
         // telemetry gate travels the same way the install id does - built from this `AppState`, so
         // it is bound to the store the Settings toggle writes rather than to one it is assumed to
         // share.
+        // Account deletion also deletes the Rep Today data in the user's iCloud from before accounts;
+        // a deletion iCloud could not take is retried below, on every launch until it lands.
+        let legacyICloudErasure = LegacyICloudErasure(
+            deleter: CloudKitLegacyICloudDataDeleter(containerIdentifier: PersistenceController.cloudKitContainerIdentifier)
+        )
         let services = ServiceContainer.live(
             context: PersistenceController.shared.viewContext,
             installId: appState.installId,
@@ -63,15 +68,16 @@ struct RepTodayApp: App {
             coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
             analyticsGate: appState.analyticsGate,
             analyticsConsentGeneration: appState.analyticsConsentGenerationProvider,
-            legacyICloudImport: PersistenceController.shared.legacyICloudImport
+            legacyICloudImport: PersistenceController.shared.legacyICloudImport,
+            legacyICloudErasure: legacyICloudErasure
         )
         self.services = services
+        Task { await legacyICloudErasure.retryIfOwed() }
         // Clerk restores the cached session at launch, before anything asks for a token.
         (services.accountAuthService as? ClerkAccountAuthService)?.start()
         _syncCoordinator = State(initialValue: AccountSyncCoordinator(
             engine: services.syncEngine,
             store: services.syncStore,
-            cursorStore: services.syncCursorStore,
             appState: appState,
             migrator: LegacyAccountMigrator(
                 appState: appState,

@@ -37,6 +37,13 @@ enum AccountAuthError: Error, Equatable {
     case failed(String)
 }
 
+/// Why the device was not linked to the account the user signed in to.
+enum AccountLinkError: Error, Equatable {
+    /// The device's data belongs to `linked`, a different account. It is never uploaded to, or merged
+    /// with, another account; signing in to `linked`, or erasing the device's data, are the ways on.
+    case belongsToAnotherAccount(linked: AccountIdentity)
+}
+
 /// Signs the user in to their Rep Today account and hands the sync layer a session token
 /// (M3, US-AU02/US-AU04).
 ///

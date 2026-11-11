@@ -15,10 +15,15 @@ import { accountError, findAccount, requireOwner } from "./ownership";
  *    this owner fail, and schedules `finishDeletion` for `DELETION_GRACE_MS` later. Both commit in
  *    one transaction, so the finishing job exists whenever the mark does.
  * 2. The Clerk user is deleted through Clerk's Backend API with the deployment's `CLERK_SECRET_KEY`.
- *    A 404 means an earlier attempt already deleted it. If Clerk fails, `cancelDeletion` clears the
- *    mark - the scheduled job then finds a different (or no) deletion and does nothing - and the
- *    action throws, so nothing was deleted and the caller can try again.
- * 3. `purgeData` removes the owner's rows straight away, in batches.
+ *    A 404 means an earlier attempt already deleted it. When the request fails, the action asks
+ *    Clerk whether the user still exists, because a lost response or a second device's deletion can
+ *    mean it is already gone. Only when Clerk answers that the user still exists does
+ *    `cancelDeletion` clear the mark - the scheduled job then finds a different (or no) deletion and
+ *    does nothing - and the action throws, so nothing was deleted and the caller can try again. When
+ *    Clerk cannot be reached at all, the mark stays (the account refuses writes) and the scheduled job
+ *    completes the deletion the user asked for.
+ * 3. Once Clerk has confirmed the user is gone, the mark is re-asserted (a concurrent attempt may have
+ *    cleared it in between) and `purgeData` removes the owner's rows straight away, in batches.
  * 4. `finishDeletion` runs after the grace period, once every session token issued before the Clerk
  *    user was deleted has expired (Clerk session tokens live about a minute). It removes anything a
  *    still-valid token wrote in the meantime - none can, because the mark refuses writes - and then
@@ -34,7 +39,7 @@ export const DELETION_GRACE_MS = 10 * 60 * 1000;
 /** Rows removed per table per transaction; larger accounts continue in a scheduled follow-up. */
 export const PURGE_BATCH = 200;
 
-/** Clerk's Backend API origin. Overridable only so a test can point it elsewhere. */
+/** Clerk's Backend API origin. */
 const CLERK_API_ORIGIN = "https://api.clerk.com";
 
 /**
@@ -69,31 +74,64 @@ export const deleteAccount = action({
     }
 
     const startedAt: number = await ctx.runMutation(internal.accounts.beginDeletion, owner);
-    try {
-      await deleteClerkUser(owner.clerkUserId, secret);
-    } catch (error) {
+    const clerkUser = await deleteClerkUser(owner.clerkUserId, secret);
+    if (clerkUser === "exists") {
       await ctx.runMutation(internal.accounts.cancelDeletion, { ownerId: owner.ownerId, startedAt });
       throw accountError("deletion_failed", "We couldn't delete your account. Nothing was deleted.");
     }
-    await ctx.runMutation(internal.accounts.purgeData, { ownerId: owner.ownerId, startedAt });
+    if (clerkUser === "unknown") {
+      throw accountError("deletion_failed", "We couldn't confirm your account was deleted. Please try again.");
+    }
+    const mark: number = await ctx.runMutation(internal.accounts.beginDeletion, owner);
+    await ctx.runMutation(internal.accounts.purgeData, { ownerId: owner.ownerId, startedAt: mark });
     return { deleted: true };
   },
 });
 
+/** Whether the Clerk user is gone, still exists, or could not be found out. */
+type ClerkUserState = "gone" | "exists" | "unknown";
+
 /**
- * Deletes the Clerk user. 200 is success and 404 means it is already gone; anything else, or a
- * network failure, throws.
+ * Deletes the Clerk user. 200 is success and 404 means it is already gone. When the request fails -
+ * a refusal, or a network failure that may have lost Clerk's answer - Clerk is asked whether the user
+ * still exists.
  */
-async function deleteClerkUser(clerkUserId: string, secret: string): Promise<void> {
-  const origin = process.env.CLERK_API_ORIGIN ?? CLERK_API_ORIGIN;
-  const response = await fetch(`${origin}/v1/users/${encodeURIComponent(clerkUserId)}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  if (response.ok || response.status === 404) {
-    return;
+async function deleteClerkUser(clerkUserId: string, secret: string): Promise<ClerkUserState> {
+  try {
+    const response = await fetch(clerkUserURL(clerkUserId), {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    if (response.ok || response.status === 404) {
+      return "gone";
+    }
+  } catch {
+    // Clerk may have acted before the connection failed; the lookup below finds out.
   }
-  throw new Error(`Clerk user deletion failed with status ${response.status}`);
+  return await lookUpClerkUser(clerkUserId, secret);
+}
+
+/** Asks Clerk whether the user exists: 404 means gone, 200 means it exists, anything else is unknown. */
+async function lookUpClerkUser(clerkUserId: string, secret: string): Promise<ClerkUserState> {
+  try {
+    const response = await fetch(clerkUserURL(clerkUserId), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    if (response.status === 404) {
+      return "gone";
+    }
+    if (response.ok) {
+      return "exists";
+    }
+  } catch {
+    // Unreachable: neither answer is known.
+  }
+  return "unknown";
+}
+
+function clerkUserURL(clerkUserId: string): string {
+  return `${CLERK_API_ORIGIN}/v1/users/${encodeURIComponent(clerkUserId)}`;
 }
 
 /**
@@ -118,7 +156,7 @@ export const beginDeletion = internalMutation({
   },
 });
 
-/** Clears a mark Clerk could not act on, so the account carries on as if deletion was never asked. */
+/** Clears a mark Clerk refused to act on, so the account carries on as if deletion was never asked. */
 export const cancelDeletion = internalMutation({
   args: { ownerId: v.string(), startedAt: v.number() },
   handler: async (ctx, { ownerId, startedAt }) => {

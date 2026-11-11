@@ -45,7 +45,6 @@ final class AccountSyncCoordinator {
 
     private let engine: SyncEngine?
     private let store: any SyncStore
-    private let cursorStore: any SyncCursorStore
     private let appState: AppState
     private let migrator: LegacyAccountMigrator
     private let now: () -> Date
@@ -70,7 +69,6 @@ final class AccountSyncCoordinator {
     init(
         engine: SyncEngine?,
         store: any SyncStore,
-        cursorStore: any SyncCursorStore,
         appState: AppState,
         migrator: LegacyAccountMigrator,
         now: @escaping () -> Date = Date.init,
@@ -79,7 +77,6 @@ final class AccountSyncCoordinator {
     ) {
         self.engine = engine
         self.store = store
-        self.cursorStore = cursorStore
         self.appState = appState
         self.migrator = migrator
         self.now = now
@@ -148,23 +145,15 @@ final class AccountSyncCoordinator {
 
     // MARK: - Account changes
 
-    /// Links the account the user just signed in to, synchronously, then syncs. Signing in to a
-    /// different account than the one this device synced with starts that account from a full upload
-    /// of the device's records.
-    func linkAccount(_ identity: AccountIdentity) {
-        let switchesAccount = appState.account.map { $0.userId != identity.userId } ?? false
-        appState.linkAccount(identity)
+    /// Links the account the user just signed in to, synchronously, then syncs.
+    ///
+    /// - Throws: `AccountLinkError.belongsToAnotherAccount` when the device is linked to a different
+    ///   account; nothing changes then.
+    func linkAccount(_ identity: AccountIdentity) throws {
+        try appState.linkAccount(identity)
         failureCount = 0
         status = engine == nil ? .localOnly : .syncing
-        guard switchesAccount else {
-            requestSync(after: .zero)
-            return
-        }
-        cursorStore.reset()
-        Task {
-            _ = try? await store.enqueueAllRecords(changedAt: LegacyAccountMigrator.queuedAt)
-            requestSync(after: .zero)
-        }
+        requestSync(after: .zero)
     }
 
     // MARK: - The cycle

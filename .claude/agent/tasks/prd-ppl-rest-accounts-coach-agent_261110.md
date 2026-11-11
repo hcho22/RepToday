@@ -204,7 +204,7 @@ Exit criteria: fresh install, existing-user migration, offline use and account d
 **Acceptance Criteria:**
 - [x] Core Data remains the on-device store; changes queue and sync to Convex when online; idempotent by record id.
 - [x] Sessions generate, play and log fully offline.
-- [ ] CloudKit container and sync removed. (Sync is removed: no new user ever mirrors iCloud, and a pre-account user's mirror stops once their move has queued everything. The iCloud container entitlement and `NSPersistentCloudKitContainer` stay for that one-time import and go in a later build, after every TestFlight user has moved; ADR-0016.)
+- [ ] CloudKit container and sync removed. (Deferred, captain-accepted: the iCloud mirror stays on only for a user who onboarded before accounts and whose history has not finished uploading; no new user ever mirrors iCloud, and the mirror stops once the move has queued everything. Removing the CloudKit container (`NSPersistentCloudKitContainer`), the iCloud container entitlement and the `remote-notification` background mode moves to a later build, once the upload window has passed; ADR-0016.)
 
 #### US-AU04: Existing-user migration
 **Acceptance Criteria:**
@@ -213,7 +213,7 @@ Exit criteria: fresh install, existing-user migration, offline use and account d
 
 #### US-AU05: Account deletion and privacy
 **Acceptance Criteria:**
-- [x] Delete account removes Convex data and the Clerk user, and wipes local data.
+- [x] Delete account removes Convex data and the Clerk user, and wipes local data. (It also deletes the legacy iCloud copy - the Core Data CloudKit zone in the user's private database - while the container exists; when iCloud is unavailable that deletion is owed and retried on a later launch.)
 - [x] Privacy policy and App Store privacy labels updated before release. (The policy source `gtm/03-site/privacy.html` and the label declarations in `artifacts/reports/accounts-m3/validation.md` are updated; publishing the site and entering the labels in App Store Connect are release steps.)
 
 ### M4 - Coach Agent

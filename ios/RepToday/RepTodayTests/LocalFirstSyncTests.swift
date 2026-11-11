@@ -342,6 +342,71 @@ final class LocalFirstSyncTests: XCTestCase {
         XCTAssertEqual(outbox, [])
     }
 
+    /// The reported sequence: signing in to account X during onboarding restores its first page of
+    /// logs, the connection drops on the next page, and the user signs in to account Y instead. Y's
+    /// new plan must not carry any of X's history.
+    func testAnInterruptedRestoreLeavesNothingForTheNextAccount() async throws {
+        let stack = SyncTestStack()
+        let first = FakeAccountServer()
+        let firstUser = SyncFixtures.user(id: "first-user")
+        for log in [SyncFixtures.log(daysAgo: 3), SyncFixtures.log(daysAgo: 2)] {
+            await first.seed(.workoutLog, recordId: log.id.uuidString, clientUpdatedAt: SyncFixtures.base,
+                             content: .workoutLog(payload: try SyncFixtures.payload(log), completedAt: log.completedAt))
+        }
+        await first.seed(.profile, recordId: firstUser.id, clientUpdatedAt: SyncFixtures.base,
+                         content: .profile(payload: try SyncFixtures.payload(firstUser), focusAreas: []))
+        await first.failPull(call: 2, with: .unreachable)
+        let policies = DeterministicSessionPolicyService(store: stack.policies, exerciseService: try MockExerciseService(), userService: stack.users)
+        let accountX = AccountIdentity(userId: "user_x", email: nil, method: .apple)
+        let accountY = AccountIdentity(userId: "user_y", email: nil, method: .google)
+
+        let signInToX = OnboardingViewModel(userService: stack.users, sessionPolicyService: policies, accountRestorer: stack.engine(first, pullPageSize: 1))
+        do {
+            _ = try await signInToX.completeSignIn(as: accountX)
+            XCTFail("the restore was interrupted")
+        } catch let error as OnboardingViewModel.CompletionError {
+            XCTAssertEqual(error, .accountUnreachable)
+        }
+        let afterFailure = try await stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(afterFailure, [], "a failed restore leaves none of X's history behind")
+
+        let signInToY = OnboardingViewModel(
+            userService: stack.users,
+            sessionPolicyService: policies,
+            accountRestorer: stack.engine(FakeAccountServer()),
+            userIdentifier: { "second-user" }
+        )
+        let completion = try await signInToY.completeSignIn(as: accountY)
+
+        XCTAssertEqual(completion, .created)
+        let user = try await stack.users.currentUser()
+        XCTAssertEqual(user?.id, "second-user")
+        let logs = try await stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(logs, [], "Y's plan starts with no history from X")
+    }
+
+    /// A restore starts from an empty store, so whatever an earlier attempt left (the app closed
+    /// mid-restore) never mixes into the account being restored.
+    func testARestoreReplacesWhateverAnEarlierAttemptLeft() async throws {
+        let stack = SyncTestStack()
+        try await stack.users.save(SyncFixtures.user(id: "left-behind"))
+        try await stack.logs.save(SyncFixtures.log(daysAgo: 5))
+        let server = FakeAccountServer()
+        let user = SyncFixtures.user(id: "restored-user")
+        await server.seed(.profile, recordId: user.id, clientUpdatedAt: SyncFixtures.base,
+                          content: .profile(payload: try SyncFixtures.payload(user), focusAreas: []))
+
+        let types = try await stack.engine(server).restoreFromAccount()
+
+        XCTAssertEqual(types, [.profile])
+        let restoredUser = try await stack.users.currentUser()
+        XCTAssertEqual(restoredUser?.id, "restored-user")
+        let logs = try await stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(logs, [])
+        let outbox = try await stack.outbox()
+        XCTAssertEqual(outbox, [])
+    }
+
     // MARK: - Offline (FR-10)
 
     /// An airplane-mode session: the session is generated, played and logged with no connection, the

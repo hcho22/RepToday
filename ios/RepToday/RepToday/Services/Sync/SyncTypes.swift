@@ -89,6 +89,9 @@ protocol SyncStore: Sendable {
     func enqueueAllRecords(changedAt: Date) async throws -> Int
     /// Empties the outbox (account deletion).
     func clearOutbox() async throws
+    /// Deletes every synced record on the device and the outbox, without queueing anything: the clean
+    /// slate an account restore writes onto.
+    func eraseSyncedRecords() async throws
 }
 
 /// The account backend (`ConvexSyncRemote`).

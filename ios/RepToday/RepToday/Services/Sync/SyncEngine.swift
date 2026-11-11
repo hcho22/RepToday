@@ -25,7 +25,9 @@ struct DefaultsSyncCursorStore: SyncCursorStore, @unchecked Sendable {
 /// Brings back the plan and history an account already holds, for a device that has just signed in
 /// to it (US-AU02). `SyncEngine` is the implementation; onboarding depends only on this.
 protocol AccountRestoring: Sendable {
-    /// Pulls everything the account holds into the device's store. Returns the kinds of record found.
+    /// Replaces the device's synced records with everything the account holds. Returns the kinds of
+    /// record found. A restore that fails leaves no synced records behind, so nothing from one account
+    /// can stay on a device that goes on to sign in to another.
     func restoreFromAccount() async throws -> Set<SyncRecordType>
 }
 
@@ -92,13 +94,21 @@ actor SyncEngine: AccountRestoring {
         _ = try? await running?.value
     }
 
-    /// Pulls everything the account holds into the store, from the start - how a device that has just
-    /// signed in to an existing account gets that account's plan and history back. Returns the kinds of
-    /// record the account held.
+    /// Pulls everything the account holds into an emptied store, from the start - how a device that
+    /// has just signed in to an existing account during onboarding, holding no data of its own, gets
+    /// that account's plan and history back. Returns the kinds of record the account held. Whatever an
+    /// earlier or a failed restore wrote is erased, so a partly restored account never stays behind.
     func restoreFromAccount() async throws -> Set<SyncRecordType> {
         await waitForIdle()
+        try await store.eraseSyncedRecords()
         cursorStore.reset()
-        return try await pullAll().types
+        do {
+            return try await pullAll().types
+        } catch {
+            try? await store.eraseSyncedRecords()
+            cursorStore.reset()
+            throw error
+        }
     }
 
     private func runCycle() async throws -> SyncReport {

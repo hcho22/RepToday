@@ -45,9 +45,9 @@ final class LegacyAccountMigrationTests: XCTestCase {
         XCTAssertEqual(appState.account?.userId, "user_new")
     }
 
-    func testANewUserLinkingDuringOnboardingDoesNotStartAMigration() {
+    func testANewUserLinkingDuringOnboardingDoesNotStartAMigration() throws {
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         appState.isOnboarded = true
         XCTAssertNil(appState.legacyMigrationStage)
         XCTAssertFalse(appState.needsAccountSignIn)
@@ -60,10 +60,10 @@ final class LegacyAccountMigrationTests: XCTestCase {
         XCTAssertFalse(LegacyAccountMigrationStage.complete.mirrorsICloud)
     }
 
-    func testStagesOnlyMoveForward() {
+    func testStagesOnlyMoveForward() throws {
         defaults.set(true, forKey: AppState.Keys.isOnboarded)
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         XCTAssertEqual(appState.legacyMigrationStage, .importingFromICloud)
         appState.advanceLegacyMigration(to: .complete)
         appState.advanceLegacyMigration(to: .uploading)
@@ -112,7 +112,7 @@ final class LegacyAccountMigrationTests: XCTestCase {
         let server = FakeAccountServer()
         await server.failPush(call: 2, with: .unreachable)
         let appState = legacyAppState()
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         let first = coordinatorFor(stack: stack, appState: appState, server: server, importer: SettledImporter(.imported))
 
         await first.syncNow()
@@ -149,7 +149,7 @@ final class LegacyAccountMigrationTests: XCTestCase {
         await server.seed(.profile, recordId: newer.id, clientUpdatedAt: SyncFixtures.base,
                           content: .profile(payload: try SyncFixtures.payload(newer), focusAreas: []))
         let appState = legacyAppState()
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         let coordinator = coordinatorFor(stack: stack, appState: appState, server: server, importer: SettledImporter(.imported))
 
         await coordinator.syncNow()
@@ -169,7 +169,7 @@ final class LegacyAccountMigrationTests: XCTestCase {
         let stack = SyncTestStack()
         _ = try await seedLegacyHistory(in: stack)
         let appState = legacyAppState()
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         let server = FakeAccountServer()
         for launch in 1...5 {
             let coordinator = coordinatorFor(stack: stack, appState: appState, server: server, importer: SettledImporter(.unconfirmed))
@@ -211,7 +211,7 @@ final class LegacyAccountMigrationTests: XCTestCase {
         let stack = SyncTestStack()
         _ = try await seedLegacyHistory(in: stack)
         let appState = legacyAppState()
-        appState.linkAccount(Self.identity)
+        try appState.linkAccount(Self.identity)
         let importer = CountingImporter()
         let coordinator = coordinatorFor(stack: stack, appState: appState, server: FakeAccountServer(), importer: importer)
 
@@ -295,7 +295,7 @@ final class LegacyAccountMigrationTests: XCTestCase {
     private func signIn(stack: SyncTestStack, importer: any LegacyICloudImporting) -> (AppState, FakeAccountServer, AccountSyncCoordinator) {
         let appState = legacyAppState()
         XCTAssertEqual(appState.legacyMigrationStage, .awaitingSignIn)
-        appState.linkAccount(Self.identity)
+        XCTAssertNoThrow(try appState.linkAccount(Self.identity))
         let server = FakeAccountServer()
         return (appState, server, coordinatorFor(stack: stack, appState: appState, server: server, importer: importer))
     }
@@ -310,7 +310,6 @@ final class LegacyAccountMigrationTests: XCTestCase {
         return AccountSyncCoordinator(
             engine: stack.engine(server, cursor: cursor, pushBatchSize: 10),
             store: stack.store,
-            cursorStore: cursor,
             appState: appState,
             migrator: LegacyAccountMigrator(appState: appState, store: stack.store, importer: importer, defaults: defaults, importTimeout: .milliseconds(10)),
             beginBackgroundWork: { _ in {} },

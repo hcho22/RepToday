@@ -28,6 +28,8 @@ struct AccountSignInPanel: View {
                 codeEntry(challenge)
             case .signedIn(let identity):
                 signedIn(identity)
+            case .belongsToAnotherAccount(let attempted):
+                anotherAccount(attempted)
             }
 
             if let message = viewModel.message {
@@ -54,6 +56,12 @@ struct AccountSignInPanel: View {
             #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .alert(Self.eraseConfirmationTitle, isPresented: $viewModel.isEraseConfirmationPresented) {
+            Button("Erase", role: .destructive) { Task { await viewModel.confirmErase() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(Self.eraseConfirmationMessage)
+        }
         .task { await viewModel.load() }
         .onChange(of: viewModel.message) { _, message in
             if let message {
@@ -181,6 +189,59 @@ struct AccountSignInPanel: View {
             }
         }
     }
+
+    // MARK: - Another account's phone
+
+    private func anotherAccount(_ attempted: AccountIdentity) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(Self.anotherAccountTitle)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(Self.anotherAccountText(attempted, canErase: viewModel.canEraseThisDevice))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            primaryButton("Sign in to my account", working: false, enabled: true) {
+                viewModel.showChoices()
+            }
+            if viewModel.canEraseThisDevice {
+                Button(role: .destructive) {
+                    viewModel.requestErase()
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        if viewModel.activity == .erasing {
+                            ProgressView()
+                        }
+                        Text("Erase this phone's Rep Today data")
+                            .font(Theme.Typography.body)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.Colors.danger)
+                .disabled(viewModel.isWorking)
+                .accessibilityHint("Asks you to confirm first")
+            }
+        }
+    }
+
+    static let anotherAccountTitle = "This phone saves to another account"
+
+    static func anotherAccountText(_ attempted: AccountIdentity, canErase: Bool) -> String {
+        let who = attempted.email.map { "You signed in as \($0)." } ?? "You signed in to a different account."
+        let keep = "Rep Today keeps each account's plan and sessions to that account, so this phone stays with the one it already saves to."
+        return canErase
+            ? "\(who) \(keep) Sign in to that account, or erase this phone's Rep Today data to start again with another one."
+            : "\(who) \(keep) Sign in to that account to carry on."
+    }
+
+    static let eraseConfirmationTitle = "Erase this phone's Rep Today data?"
+    static let eraseConfirmationMessage = "Your plan, sessions and activities are erased from this phone, including changes not yet saved to your account. Your account is not deleted. You'll set Rep Today up again and choose an account at the end."
 
     static func signedInText(_ identity: AccountIdentity) -> String {
         if let email = identity.email, !email.isEmpty {

@@ -89,13 +89,13 @@ final class StrengthGraduationViewModelTests: XCTestCase {
     /// The path with no Welcome Page - straight after onboarding - still waits behind the preparation
     /// state. A cold launch waits behind the Welcome Page instead
     /// (`testTheWelcomePageCoversTheLaunchAndHoldsTheGraduationUntilLetsGo`).
-    func testRootWaitsForReconciliationBeforeGeneratingPhaseDependentTabs() async {
+    func testRootWaitsForReconciliationBeforeGeneratingPhaseDependentTabs() async throws {
         let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
+        try appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         appState.markWelcomeSeen()
         let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
@@ -156,13 +156,13 @@ final class StrengthGraduationViewModelTests: XCTestCase {
     /// US-HO01: on a cold launch the Welcome Page replaces the launch spinner - the reconciliation runs
     /// behind it with "Let's go" waiting - and a graduation reveal decided meanwhile waits for "Let's go"
     /// rather than stacking on the page, its one-shot flag untouched until it is shown.
-    func testTheWelcomePageCoversTheLaunchAndHoldsTheGraduationUntilLetsGo() async {
+    func testTheWelcomePageCoversTheLaunchAndHoldsTheGraduationUntilLetsGo() async throws {
         let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
+        try appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         XCTAssertTrue(appState.isWelcomePending)
         let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
@@ -227,13 +227,13 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         XCTAssertFalse(AccessibilityTree.labels(in: host.view).contains(WelcomeCopy.letsGo))
     }
 
-    func testPastCelebrationDoesNotPromoteAUserWhoNoLongerQualifies() async {
+    func testPastCelebrationDoesNotPromoteAUserWhoNoLongerQualifies() async throws {
         let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
+        try appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         appState.markStrengthGraduationCelebrated()
         let userService = CountingUserService(user: MockPersistence.sampleUser)
@@ -266,7 +266,7 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let appState = AppState(userDefaults: defaults)
-        appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
+        try appState.linkAccount(AccountIdentity(userId: "user_test", email: nil, method: .email))
         appState.isOnboarded = true
         // Past the cold-launch Welcome Page ("Let's go"), where the graduation reveal is shown.
         appState.markWelcomeSeen()

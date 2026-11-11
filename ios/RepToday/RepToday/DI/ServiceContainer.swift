@@ -285,6 +285,9 @@ struct ServiceContainer {
     ///     rows capture it so a later re-enable cannot revive work from before the opt-out.
     ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
     ///     pseudonym at request time so account deletion rotates an already-configured client.
+    ///   - legacyICloudErasure: Deletes the Rep Today data in the user's iCloud from before accounts
+    ///     during account deletion. `nil` by default, so a test building this container never reaches
+    ///     CloudKit.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
@@ -295,7 +298,8 @@ struct ServiceContainer {
         analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil,
         accountConfiguration: Bundle = .main,
-        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport)
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport),
+        legacyICloudErasure: LegacyICloudErasure? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
@@ -460,7 +464,8 @@ struct ServiceContainer {
                     syncStore: syncStore,
                     cursorStore: syncCursorStore,
                     engine: syncEngine
-                )
+                ),
+                legacyICloud: legacyICloudErasure
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,

@@ -10,6 +10,10 @@ import Observation
 /// reached - the user is still signed in, and "Try again" retries only the finishing, never the
 /// sign-in. A session already on the device (the app closed mid-flow) is offered back as
 /// "Continue as ...".
+///
+/// When the device's data belongs to a different account than the one just signed in to, finishing is
+/// refused (`AccountLinkError`): that session is signed out, and the panel offers signing in to the
+/// original account or, where the host allows it, erasing this phone's data first.
 @MainActor
 @Observable
 final class AccountSignInViewModel {
@@ -22,11 +26,14 @@ final class AccountSignInViewModel {
         case code(EmailCodeChallenge)
         /// Signed in; finishing (or waiting to retry finishing).
         case signedIn(AccountIdentity)
+        /// Signed in to `attempted`, but this phone's data belongs to another account. The attempted
+        /// session has been signed out.
+        case belongsToAnotherAccount(attempted: AccountIdentity)
     }
 
     /// What the panel says while it works.
     enum Activity: Equatable {
-        case apple, google, sendingCode, verifyingCode, finishing
+        case apple, google, sendingCode, verifyingCode, finishing, erasing
     }
 
     private(set) var phase: Phase = .choosing
@@ -35,6 +42,8 @@ final class AccountSignInViewModel {
     private(set) var message: String?
     var email = ""
     var code = ""
+    /// Whether the confirmation for erasing this phone's data is showing. Bound by the panel.
+    var isEraseConfirmationPresented = false
 
     /// Whether this build can really sign in. `false` in a Debug build without Clerk, where the panel
     /// says sign-in is simulated.
@@ -42,6 +51,7 @@ final class AccountSignInViewModel {
 
     private let auth: any AccountAuthServiceProtocol
     private let context: Context
+    private let eraseThisDevice: (@MainActor () async throws -> Void)?
     private let finish: @MainActor (AccountIdentity) async throws -> Void
 
     /// Where the panel is shown, which only changes how a connection problem is explained.
@@ -50,16 +60,23 @@ final class AccountSignInViewModel {
         case existingUser
     }
 
+    /// - Parameter eraseThisDevice: erases this phone's Rep Today data, offered when the data belongs
+    ///   to another account; `nil` where that cannot happen.
     init(
         auth: any AccountAuthServiceProtocol,
         context: Context,
+        eraseThisDevice: (@MainActor () async throws -> Void)? = nil,
         finish: @escaping @MainActor (AccountIdentity) async throws -> Void
     ) {
         self.auth = auth
         self.isConfigured = auth.isConfigured
         self.context = context
+        self.eraseThisDevice = eraseThisDevice
         self.finish = finish
     }
+
+    /// Whether erasing this phone's data is offered.
+    var canEraseThisDevice: Bool { eraseThisDevice != nil }
 
     var isWorking: Bool { activity != nil }
 
@@ -155,6 +172,27 @@ final class AccountSignInViewModel {
         phase = .choosing
     }
 
+    // MARK: - Another account's phone
+
+    /// Asks to confirm erasing this phone's data, after signing in to another account was refused.
+    func requestErase() {
+        guard case .belongsToAnotherAccount = phase, canEraseThisDevice, !isWorking else { return }
+        isEraseConfirmationPresented = true
+    }
+
+    /// Erases this phone's Rep Today data; the host then starts setting up again.
+    func confirmErase() async {
+        guard case .belongsToAnotherAccount = phase, let eraseThisDevice, !isWorking else { return }
+        message = nil
+        activity = .erasing
+        defer { activity = nil }
+        do {
+            try await eraseThisDevice()
+        } catch {
+            message = "We couldn't erase this phone's data. Please try again."
+        }
+    }
+
     // MARK: - Steps
 
     private func signIn(_ activity: Activity, _ attempt: () async throws -> AccountIdentity) async {
@@ -177,6 +215,10 @@ final class AccountSignInViewModel {
         defer { activity = nil }
         do {
             try await finish(identity)
+        } catch AccountLinkError.belongsToAnotherAccount {
+            // This session must not stay signed in: sync would upload this phone's data with its token.
+            await auth.signOut()
+            phase = .belongsToAnotherAccount(attempted: identity)
         } catch {
             message = context == .onboarding
                 ? "You're signed in, but we couldn't reach your account to save your plan. Check your connection and try again."

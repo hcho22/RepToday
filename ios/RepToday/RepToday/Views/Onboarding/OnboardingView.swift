@@ -15,7 +15,7 @@ struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
     @State private var signIn: AccountSignInViewModel
 
-    init(services: ServiceContainer, onComplete: @escaping (AccountIdentity) -> Void) {
+    init(services: ServiceContainer, onComplete: @escaping (AccountIdentity) throws -> Void) {
         self.init(
             viewModel: OnboardingViewModel(
                 userService: services.userService,
@@ -34,12 +34,12 @@ struct OnboardingView: View {
     init(
         viewModel: OnboardingViewModel,
         accountAuth: any AccountAuthServiceProtocol = StubAccountAuthService(),
-        onComplete: @escaping (AccountIdentity) -> Void = { _ in }
+        onComplete: @escaping (AccountIdentity) throws -> Void = { _ in }
     ) {
         _viewModel = State(initialValue: viewModel)
         _signIn = State(initialValue: AccountSignInViewModel(auth: accountAuth, context: .onboarding) { identity in
             _ = try await viewModel.completeSignIn(as: identity)
-            onComplete(identity)
+            try onComplete(identity)
         })
     }
 

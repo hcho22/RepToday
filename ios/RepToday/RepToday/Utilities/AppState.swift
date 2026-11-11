@@ -371,9 +371,16 @@ final class AppState {
 
     /// Links the device to the account the user just signed in to. For a user who onboarded before
     /// accounts - the only onboarded user who can be unlinked, since onboarding now ends by signing
-    /// in - the first link starts the move of their history (`importingFromICloud`). Signing in again,
-    /// or to another account, is never a migration.
-    func linkAccount(_ identity: AccountIdentity) {
+    /// in - the first link starts the move of their history (`importingFromICloud`). Signing in again
+    /// is never a migration.
+    ///
+    /// - Throws: `AccountLinkError.belongsToAnotherAccount` when the device is already linked to a
+    ///   different account. Two accounts' data never mix: the device's data stays with the account it
+    ///   is linked to until it is erased (`AccountDeletionServiceProtocol.eraseThisDevice`).
+    func linkAccount(_ identity: AccountIdentity) throws {
+        if let account, account.userId != identity.userId {
+            throw AccountLinkError.belongsToAnotherAccount(linked: account)
+        }
         let wasUnlinked = account == nil
         account = identity
         if legacyMigrationStage == .awaitingSignIn || (isOnboarded && wasUnlinked && legacyMigrationStage == nil) {
