@@ -11,6 +11,10 @@ import Foundation
 ///   fills its slots from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side
 ///   ladder first. Each ladder contributes its current rung, unchanged until earned. A session never
 ///   mixes groups: only the Core Sprinkle and the bookends cross days.
+/// - **Focus Areas** (decision 20, M2). A movement a Focus Area covers (`FocusArea.covers`) is ordered
+///   first among its kind of station - so on a short session it takes the slot - is given the Practice
+///   slot first, and is padded first (and cut last) by the fit. Abs adds a second Core Sprinkle. The
+///   Rotation never changes, and with no Focus Area the session is exactly the M1 session.
 /// - **Sets and reps** (decisions 13-16). Every main, Practice and core station runs
 ///   `RepGrammar.setsPerStation` (4) rounds. Main and core stations start at the user's served Earned
 ///   Reps (`AdaptiveOverload`); a Practice Movement runs at `RepGrammar.practiceValue`.
@@ -103,9 +107,11 @@ enum SessionAssembly {
         }
     }
 
-    /// Core Sprinkles by length: none up to 10 minutes, one beyond (two with an Abs Focus Area, M2).
-    static func coreSprinkleCount(forRequestedMinutes minutes: Int) -> Int {
-        minutes <= cooldownThresholdMinutes ? 0 : 1
+    /// Core Sprinkles by length: none up to 10 minutes, one beyond - two with an Abs Focus Area
+    /// (decision 20).
+    static func coreSprinkleCount(forRequestedMinutes minutes: Int, focusAreas: [FocusArea] = []) -> Int {
+        guard minutes > cooldownThresholdMinutes else { return 0 }
+        return focusAreas.contains(.abs) ? 2 : 1
     }
 
     /// The core ladders in canonical order, the Core Sprinkle's tie-break.
@@ -213,6 +219,9 @@ enum SessionAssembly {
     /// ladders fill a short session, which stretches, which core ladder), while every filter and the fit
     /// still decide each pick. When that leaves nothing new the default session is returned, which is how
     /// a sequence of presses cycles back.
+    ///
+    /// `activities` are the logged Outside Activities the Rotation reads (decision 21), for today's group
+    /// and the Cycle the Core Sprinkle rotates on.
     static func assemble(
         requestedMinutes: Int,
         user: User,
@@ -222,11 +231,13 @@ enum SessionAssembly {
         variation: SessionVariation = .none,
         trainingDay: TrainingDay? = nil,
         history: [WorkoutLog]? = nil,
+        activities: [OutsideActivity] = [],
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
         let day = trainingDay ?? TrainingRotation.trainingDay(
             logs: history ?? recentLogs,
+            activities: activities,
             trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
             asOf: asOf,
             calendar: calendar
@@ -241,6 +252,7 @@ enum SessionAssembly {
                 offered: variation.offeredExerciseIds,
                 trainingDay: day,
                 history: history,
+                activities: activities,
                 asOf: asOf,
                 calendar: calendar
             )
@@ -255,6 +267,7 @@ enum SessionAssembly {
             offered: [],
             trainingDay: day,
             history: history,
+            activities: activities,
             asOf: asOf,
             calendar: calendar
         )
@@ -271,6 +284,7 @@ enum SessionAssembly {
         offered: Set<String>,
         trainingDay: TrainingDay,
         history: [WorkoutLog]?,
+        activities: [OutsideActivity],
         asOf: Date,
         calendar: Calendar
     ) -> Workout {
@@ -283,6 +297,7 @@ enum SessionAssembly {
             offered: offered,
             trainingDay: trainingDay,
             history: history,
+            activities: activities,
             asOf: asOf,
             calendar: calendar
         )
@@ -320,6 +335,7 @@ enum SessionAssembly {
             pool: ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
             recentLogs: recentLogs,
             history: recentLogs,
+            activities: [],
             trainable: Set(TrainingDay.rotation),
             level: user.profile.fitnessLevel,
             phase: user.phase,
@@ -332,6 +348,7 @@ enum SessionAssembly {
             startingRepMultiplier: AdaptiveOverload.neutralStartingRepMultiplier,
             withheldByStartSeed: [],
             sitsLong: user.profile.sitsLong,
+            focusAreas: [],
             offered: [],
             asOf: asOf,
             calendar: .current
@@ -366,17 +383,39 @@ enum SessionAssembly {
     }
 
     /// Today's plan for this user (ADR-0012): the Rotation over their full log `history` (`nil` when
-    /// `recentLogs` already is the full history), passing over any day they cannot train.
+    /// `recentLogs` already is the full history) and their logged Outside Activities (decision 21),
+    /// passing over any day they cannot train.
     static func trainingPlan(
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
         history: [WorkoutLog]? = nil,
+        activities: [OutsideActivity] = [],
         asOf: Date,
         calendar: Calendar = .current
     ) -> TrainingPlan {
         TrainingRotation.plan(
             logs: history ?? recentLogs,
+            activities: activities,
+            trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
+            asOf: asOf,
+            calendar: calendar
+        )
+    }
+
+    /// The Cycle strip for this user (decision 19), read exactly as `trainingPlan` reads the Rotation.
+    static func cycleSteps(
+        user: User,
+        library: [Exercise],
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog]? = nil,
+        activities: [OutsideActivity] = [],
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> [CycleStep] {
+        TrainingRotation.cycleSteps(
+            logs: history ?? recentLogs,
+            activities: activities,
             trainable: trainableDays(user: user, library: library, recentLogs: recentLogs),
             asOf: asOf,
             calendar: calendar
@@ -411,6 +450,7 @@ enum SessionAssembly {
         offered: Set<String> = [],
         trainingDay: TrainingDay,
         history: [WorkoutLog]? = nil,
+        activities: [OutsideActivity] = [],
         asOf: Date,
         calendar: Calendar = .current
     ) -> SessionPlan {
@@ -447,6 +487,7 @@ enum SessionAssembly {
             pool: pool,
             recentLogs: recentLogs,
             history: history ?? recentLogs,
+            activities: activities,
             trainable: trainableDays(in: eligible),
             level: user.profile.fitnessLevel,
             phase: user.phase,
@@ -459,6 +500,7 @@ enum SessionAssembly {
             startingRepMultiplier: startSeed.volume.repMultiplier,
             withheldByStartSeed: withheld,
             sitsLong: user.profile.sitsLong,
+            focusAreas: user.profile.focusAreas,
             offered: offered,
             asOf: asOf,
             calendar: calendar
@@ -657,9 +699,11 @@ enum SessionAssembly {
 
     /// Lands `plan` on `targetSeconds` (decisions 16-17), deterministically and in this order:
     /// 1. **Cut** - while the session runs long, take a step off the main or core station with the most
-    ///    room above its short-session floor (the later station on a tie).
+    ///    room above its short-session floor (the later station on a tie), a station a Focus Area covers
+    ///    only once no other station can give.
     /// 2. **Pad** - while it runs short, add a step to the main or core station padded least so far (the
-    ///    earlier station on a tie), up to the top of the level's range.
+    ///    earlier station on a tie), up to the top of the level's range - the stations a Focus Area covers
+    ///    first (decision 20), the others once those are at the top.
     /// 3. **Rest** - then grow the rest after a round, and on a 45 or 60 minute session the pause between
     ///    movements, five seconds at a time up to their caps.
     /// Each step is taken only if it brings the session closer to the target, so the loop ends at the
@@ -672,6 +716,10 @@ enum SessionAssembly {
         while plan.totalSeconds > targetSeconds {
             let cuttable = plan.stations.indices.filter { plan.stations[$0].value - RepGrammar.step >= plan.stations[$0].floor }
             guard let index = cuttable.max(by: { lhs, rhs in
+                // An unfocused station gives first; a focused one is cut last.
+                let lFocused = plan.stations[lhs].isFocused
+                let rFocused = plan.stations[rhs].isFocused
+                if lFocused != rFocused { return lFocused }
                 let l = plan.stations[lhs].value - plan.stations[lhs].floor
                 let r = plan.stations[rhs].value - plan.stations[rhs].floor
                 return l != r ? l < r : lhs < rhs
@@ -686,6 +734,10 @@ enum SessionAssembly {
         while plan.totalSeconds < targetSeconds {
             let paddable = plan.stations.indices.filter { plan.stations[$0].value + RepGrammar.step <= plan.stations[$0].ceiling }
             let ordered = paddable.sorted { lhs, rhs in
+                // A focused station is padded first (decision 20).
+                let lFocused = plan.stations[lhs].isFocused
+                let rFocused = plan.stations[rhs].isFocused
+                if lFocused != rFocused { return lFocused }
                 let l = plan.stations[lhs].padSteps
                 let r = plan.stations[rhs].padSteps
                 return l != r ? l < r : lhs < rhs
@@ -741,8 +793,20 @@ struct PlannedItem: Equatable {
     let ceiling: Int
     /// The number the station started at, so the fit can pad evenly.
     let start: Int
+    /// Whether one of the user's Focus Areas covers the movement (decision 20): the fit pads it first and
+    /// cuts it last.
+    let isFocused: Bool
 
-    init(exercise: Exercise, role: StationRole?, value: Int, earned: Int?, sets: Int, floor: Int, ceiling: Int) {
+    init(
+        exercise: Exercise,
+        role: StationRole?,
+        value: Int,
+        earned: Int?,
+        sets: Int,
+        floor: Int,
+        ceiling: Int,
+        isFocused: Bool = false
+    ) {
         self.exercise = exercise
         self.role = role
         self.value = value
@@ -751,11 +815,21 @@ struct PlannedItem: Equatable {
         self.floor = min(floor, value)
         self.ceiling = max(ceiling, value)
         self.start = value
+        self.isFocused = isFocused
     }
 
     /// A station the fit never moves.
-    static func fixed(_ exercise: Exercise, role: StationRole?, value: Int, sets: Int) -> PlannedItem {
-        PlannedItem(exercise: exercise, role: role, value: value, earned: nil, sets: sets, floor: value, ceiling: value)
+    static func fixed(_ exercise: Exercise, role: StationRole?, value: Int, sets: Int, isFocused: Bool = false) -> PlannedItem {
+        PlannedItem(
+            exercise: exercise,
+            role: role,
+            value: value,
+            earned: nil,
+            sets: sets,
+            floor: value,
+            ceiling: value,
+            isFocused: isFocused
+        )
     }
 
     var reps: Int? { exercise.isHold ? nil : value }
@@ -867,6 +941,8 @@ private struct Builder {
     let recentLogs: [WorkoutLog]
     /// The full log history the Rotation replays to find the Cycle the Core Sprinkle rotates on.
     let history: [WorkoutLog]
+    /// The logged Outside Activities the Rotation reads alongside `history` (decision 21).
+    let activities: [OutsideActivity]
     /// The Training Days this user can train (`SessionAssembly.trainableDays`), as the Rotation reads them.
     let trainable: Set<TrainingDay>
     let level: FitnessLevel
@@ -890,6 +966,9 @@ private struct Builder {
     /// The desk-worker `sitsLong` signal (US-M03): a reorder of the bookend pools toward posture and hip
     /// openers, never a sizing lever.
     let sitsLong: Bool
+    /// The user's Focus Areas (decision 20): what they cover is ordered first, given the Practice slot
+    /// first and padded first; Abs adds a second Core Sprinkle.
+    let focusAreas: [FocusArea]
     /// The moves a **Different workout** press asks the session to avoid: ranked behind their
     /// alternatives wherever the plan has a choice, never filtered.
     let offered: Set<String>
@@ -903,6 +982,7 @@ private struct Builder {
         pool: [Exercise],
         recentLogs: [WorkoutLog],
         history: [WorkoutLog],
+        activities: [OutsideActivity],
         trainable: Set<TrainingDay>,
         level: FitnessLevel,
         phase: Phase,
@@ -915,6 +995,7 @@ private struct Builder {
         startingRepMultiplier: Double,
         withheldByStartSeed: Set<String>,
         sitsLong: Bool,
+        focusAreas: [FocusArea],
         offered: Set<String>,
         asOf: Date,
         calendar: Calendar
@@ -923,6 +1004,7 @@ private struct Builder {
         self.pool = pool
         self.recentLogs = recentLogs
         self.history = history
+        self.activities = activities
         self.trainable = trainable
         self.level = level
         self.phase = phase
@@ -935,6 +1017,7 @@ private struct Builder {
         self.startingRepMultiplier = startingRepMultiplier
         self.withheldByStartSeed = withheldByStartSeed
         self.sitsLong = sitsLong
+        self.focusAreas = focusAreas
         self.offered = offered
         self.asOf = asOf
         self.calendar = calendar
@@ -957,7 +1040,10 @@ private struct Builder {
         )
 
         let stations = mainStations(day: day, slots: SessionAssembly.mainSlotCount(forRequestedMinutes: requestedMinutes))
-            + coreStations(count: SessionAssembly.coreSprinkleCount(forRequestedMinutes: requestedMinutes))
+            + coreStations(count: SessionAssembly.coreSprinkleCount(
+                forRequestedMinutes: requestedMinutes,
+                focusAreas: focusAreas
+            ))
 
         let isLong = requestedMinutes > SessionAssembly.shortSessionMaxMinutes
         return SessionPlan(
@@ -994,9 +1080,13 @@ private struct Builder {
     /// The main and Practice stations (decisions 8-11): each due ladder's current rung, in slot order,
     /// then - for the slots the day's ladders cannot fill - a Practice Movement for the first ladder, then
     /// the second. A ladder with no eligible rung (movement access, an injury) contributes nothing.
+    ///
+    /// Focus Areas (decision 20): a ladder whose current rung a Focus Area covers goes ahead of the others
+    /// (behind only a Different workout press, which asks for other moves), and the Practice slot goes
+    /// first to a ladder a Focus Area covers - by its current rung or by the rung above it.
     private mutating func mainStations(day: TrainingDay, slots: Int) -> [PlannedItem] {
         let eligibleIds = Set(pool.map(\.id))
-        let ladders = orderedLadders(for: day).compactMap { ladder -> ChainSelection? in
+        let selections = orderedLadders(for: day).compactMap { ladder -> ChainSelection? in
             ProgressionChainSelection.selectInChain(
                 library.filter { $0.progressionChainId == ladder },
                 eligibleIds: eligibleIds,
@@ -1005,12 +1095,37 @@ private struct Builder {
                 withheldByStartSeed: withheldByStartSeed
             )
         }
+        let ladders = focusFirst(selections) { selection in
+            offered.contains(selection.exercise.id) ? nil : focusAreas.covers(selection.exercise)
+        }
         let mains = Array(ladders.prefix(slots))
         var items = mains.compactMap { mainItem(for: $0.exercise, role: .main) }
-        for main in mains.prefix(max(0, slots - mains.count)) {
+        let practiceOrder = focusFirst(mains) { main in
+            focusAreas.covers(main.exercise) || nextRung(above: main).map(focusAreas.covers) == true
+        }
+        for main in practiceOrder.prefix(max(0, slots - mains.count)) {
             if let practice = practiceItem(for: main) { items.append(practice) }
         }
         return items
+    }
+
+    /// `items` with the focused ones first, each group keeping its incoming order. `isFocused` returns
+    /// `nil` for an item that must stay behind both groups (a Different workout press already showed it).
+    private func focusFirst<Item>(_ items: [Item], isFocused: (Item) -> Bool?) -> [Item] {
+        guard !focusAreas.isEmpty else { return items }
+        let ranked = items.map { item -> Int in
+            switch isFocused(item) {
+            case true?: return 0
+            case false?: return 1
+            case nil: return 2
+            }
+        }
+        return items.indices.sorted { ranked[$0] != ranked[$1] ? ranked[$0] < ranked[$1] : $0 < $1 }.map { items[$0] }
+    }
+
+    /// The rung above `main` on its ladder, if there is one.
+    private func nextRung(above main: ChainSelection) -> Exercise? {
+        library.first { $0.progressionChainId == main.chainId && $0.progressionOrder == main.order + 1 }
     }
 
     /// The day's ladders in slot order: least recently worked first (never worked ahead of worked, then
@@ -1077,7 +1192,8 @@ private struct Builder {
             earned: RepGrammar.served(earned: target.earned, for: kind, level: level),
             sets: RepGrammar.setsPerStation,
             floor: RepGrammar.shortSessionFloor(for: kind),
-            ceiling: isHeld ? target.value : RepGrammar.earnedRange(for: kind, level: level).upperBound
+            ceiling: isHeld ? target.value : RepGrammar.earnedRange(for: kind, level: level).upperBound,
+            isFocused: focusAreas.covers(exercise)
         )
     }
 
@@ -1094,7 +1210,8 @@ private struct Builder {
                 harder,
                 role: .practice,
                 value: RepGrammar.practiceValue(for: RepGrammar.kind(of: harder)),
-                sets: RepGrammar.setsPerStation
+                sets: RepGrammar.setsPerStation,
+                isFocused: focusAreas.covers(harder)
             )
         }
         guard let lower = chain.first(where: { $0.progressionOrder == main.order - 1 }),
@@ -1107,7 +1224,8 @@ private struct Builder {
             earned: nil,
             sets: item.sets,
             floor: item.floor,
-            ceiling: item.ceiling
+            ceiling: item.ceiling,
+            isFocused: item.isFocused
         )
     }
 
@@ -1132,6 +1250,7 @@ private struct Builder {
             canonical: SessionAssembly.coreLadders,
             library: library,
             logs: history,
+            activities: activities,
             trainable: trainable,
             asOf: asOf,
             calendar: calendar

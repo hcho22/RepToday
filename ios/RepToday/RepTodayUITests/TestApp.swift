@@ -91,12 +91,38 @@ final class TestApp {
     ///   - answersHealthPrompt: whether to dismiss the Health share sheet the main tabs raise on
     ///     arrival. `true` for launches that land on the tabs; `false` for a launch that parks on
     ///     onboarding, where there is no sheet and the wait would only cost time.
-    func launch(_ posture: TelemetryPosture, onboarded: Bool = true, answersHealthPrompt: Bool = true) {
+    ///   - passesWelcomePage: whether to tap "Let's go" on the Welcome Page an onboarded cold launch
+    ///     opens on (US-HO01), so the launch lands on the main tabs like it did before the page existed.
+    ///     `false` for the suite that asserts the page itself.
+    func launch(
+        _ posture: TelemetryPosture,
+        onboarded: Bool = true,
+        answersHealthPrompt: Bool = true,
+        passesWelcomePage: Bool = true
+    ) {
         app.launchArguments = ["-AppState.isOnboarded", onboarded ? "YES" : "NO"] + posture.arguments
         app.launch()
+        if onboarded && passesWelcomePage {
+            passWelcomePage()
+        }
         if answersHealthPrompt {
             answerHealthPromptIfPresented()
         }
+    }
+
+    /// Taps "Let's go" on the Welcome Page once the app behind it is ready (US-HO01).
+    func passWelcomePage() {
+        let letsGo = app.buttons["Let's go"]
+        XCTAssertTrue(letsGo.waitForExistence(timeout: 20), "an onboarded cold launch opens on the Welcome Page")
+        let ready = testCase.expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: letsGo)
+        testCase.wait(for: [ready], timeout: 20)
+        letsGo.tap()
+    }
+
+    /// Sends the app to the background and brings it back - a resume, not a launch.
+    func backgroundAndResume() {
+        XCUIDevice.shared.press(.home)
+        app.activate()
     }
 
     /// Terminates the running app, for the tests that relaunch mid-case into a different posture.
@@ -119,6 +145,7 @@ final class TestApp {
     var staticTexts: XCUIElementQuery { app.staticTexts }
     var buttons: XCUIElementQuery { app.buttons }
     var alerts: XCUIElementQuery { app.alerts }
+    var sheets: XCUIElementQuery { app.sheets }
     var switches: XCUIElementQuery { app.switches }
     var tabBars: XCUIElementQuery { app.tabBars }
     var navigationBars: XCUIElementQuery { app.navigationBars }

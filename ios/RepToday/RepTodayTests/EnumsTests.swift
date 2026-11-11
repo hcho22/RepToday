@@ -63,13 +63,15 @@ final class EnumsTests: XCTestCase {
         XCTAssertEqual(FitnessLevel.allCases.count, 3)
     }
 
-    func testPrimaryGoalRawValues() {
-        XCTAssertEqual(PrimaryGoal.stayActive.rawValue, "stay_active")
-        XCTAssertEqual(PrimaryGoal.buildStrength.rawValue, "build_strength")
-        XCTAssertEqual(PrimaryGoal.increaseEnergy.rawValue, "increase_energy")
-        XCTAssertEqual(PrimaryGoal.reduceStress.rawValue, "reduce_stress")
-        XCTAssertEqual(PrimaryGoal.loseWeight.rawValue, "lose_weight")
-        XCTAssertEqual(PrimaryGoal.allCases.count, 5)
+    func testFocusAreaRawValues() {
+        XCTAssertEqual(FocusArea.allCases.map(\.rawValue), ["chest", "shoulders", "arms", "back", "abs", "legs", "glutes"])
+    }
+
+    func testOutsideActivityTypeRawValues() {
+        XCTAssertEqual(
+            OutsideActivityType.allCases.map(\.rawValue),
+            ["run", "bike", "hike", "swim", "row", "climb", "other"]
+        )
     }
 
     func testSessionShapeRawValues() {
@@ -108,7 +110,7 @@ final class EnumsTests: XCTestCase {
     func testIdentifiableIdMatchesRawValue() {
         XCTAssertEqual(Pillar.mobility.id, "mobility")
         XCTAssertEqual(MovementPattern.locomotion.id, "locomotion")
-        XCTAssertEqual(PrimaryGoal.loseWeight.id, "lose_weight")
+        XCTAssertEqual(FocusArea.glutes.id, "glutes")
         XCTAssertEqual(PerceivedDifficulty.tooHard.id, "too_hard")
     }
 
@@ -124,7 +126,8 @@ final class EnumsTests: XCTestCase {
         assertJSONStringRoundTrip(ExerciseCategory.allCases)
         assertJSONStringRoundTrip(Equipment.allCases)
         assertJSONStringRoundTrip(FitnessLevel.allCases)
-        assertJSONStringRoundTrip(PrimaryGoal.allCases)
+        assertJSONStringRoundTrip(FocusArea.allCases)
+        assertJSONStringRoundTrip(OutsideActivityType.allCases)
         assertJSONStringRoundTrip(SessionShape.allCases)
         assertJSONStringRoundTrip(PerceivedDifficulty.allCases)
         assertJSONStringRoundTrip(Sex.allCases)

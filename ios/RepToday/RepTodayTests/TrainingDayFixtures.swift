@@ -23,6 +23,7 @@ enum TrainingDayFixtures {
         phase: Phase = .discipline,
         injuries: [String] = [],
         sitsLong: Bool = false,
+        focusAreas: [FocusArea] = [],
         asOf: Date = TrainingDayFixtures.asOf
     ) -> User {
         User(
@@ -35,7 +36,7 @@ enum TrainingDayFixtures {
                 heightCm: 175,
                 weightKg: 75,
                 fitnessLevel: level,
-                primaryGoal: .stayActive,
+                focusAreas: focusAreas,
                 sitsLong: sitsLong,
                 injuries: injuries,
                 typicalAvailableMinutes: 15

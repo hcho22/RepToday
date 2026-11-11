@@ -152,20 +152,6 @@ enum MovementAudience: String, Codable, CaseIterable, Hashable {
     }
 }
 
-// MARK: - PrimaryGoal
-
-/// The user's primary motivation, captured in onboarding. Informs tone and template
-/// insights; it never overrides the deterministic engine.
-enum PrimaryGoal: String, Codable, CaseIterable, Identifiable, Hashable {
-    case stayActive = "stay_active"
-    case buildStrength = "build_strength"
-    case increaseEnergy = "increase_energy"
-    case reduceStress = "reduce_stress"
-    case loseWeight = "lose_weight"
-
-    var id: String { rawValue }
-}
-
 // MARK: - SessionShape
 
 /// The structural shape the engine selects from requested minutes:

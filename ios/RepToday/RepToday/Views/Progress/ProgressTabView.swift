@@ -39,6 +39,7 @@ struct ProgressTabView: View {
             initialValue: ProgressViewModel(
                 userService: services.userService,
                 workoutLogService: services.workoutLogService,
+                outsideActivityService: services.outsideActivityService,
                 exerciseService: services.exerciseService,
                 subscriptionService: services.subscriptionService,
                 premiumSessionAuthority: services.premiumSessionAuthority,
@@ -1439,14 +1440,16 @@ private struct PhaseProgressCard: View {
     }
 
     /// Ties the weeks bar to the second half of the consistency signal - the score that has to hold
-    /// above the bar - stated as steady facts, never a warning.
+    /// above the bar - stated as steady facts, never a warning. The phase is earned on Rep Today
+    /// sessions alone, so this number counts sessions only and is named apart from the Consistency
+    /// Score, which also counts Outside Activities.
     private var consistencyNote: String {
         let threshold = Int(progress.scoreThreshold.rounded())
         let score = Int(progress.currentScore.rounded())
         if progress.meetsScoreThreshold {
-            return "Consistency \(score), holding above \(threshold). Sustain it across \(progress.requiredWeeks) weeks."
+            return "Session consistency \(score), holding above \(threshold). Sustain it across \(progress.requiredWeeks) weeks."
         }
-        return "Consistency \(score), building toward \(threshold)+. That's the bar to sustain."
+        return "Session consistency \(score), building toward \(threshold)+. That's the bar to sustain."
     }
 
     private var consistencyAccessibility: String {

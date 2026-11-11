@@ -90,6 +90,54 @@ final class AppState {
         injuryFlagsRevision &+= 1
     }
 
+    /// Bumped when the user saves a change to an input of today's plan from outside Today - their Focus
+    /// Areas in Settings (US-HO02) - so the Ready screen rebuilds the session on screen right away
+    /// instead of on the next cold launch. Outside Activities are logged from Today itself, which
+    /// reloads directly. Transient, like `injuryFlagsRevision`: a relaunch regenerates anyway.
+    var planInputsRevision: Int = 0
+
+    func markPlanInputsChanged() {
+        planInputsRevision &+= 1
+    }
+
+    /// Whether the Welcome Page (US-HO01, decision 19) is still owed this launch. True at every cold
+    /// launch - `AppState` is built once per process - and cleared by "Let's go", so a resume from the
+    /// background, which keeps the process, never shows it again. Never persisted.
+    private(set) var isWelcomePending = true
+
+    /// "Let's go" on the Welcome Page, or a freshly finished onboarding, which lands on Today directly.
+    func markWelcomeSeen() {
+        isWelcomePending = false
+    }
+
+    /// Whether the user turned on Apple Health workout suggestions (US-HO05, decision 22). Off by
+    /// default: Health is read only after the user chooses it, and Rep Today asks for read access at
+    /// that moment. HealthKit never says whether read access was granted, so this records the choice,
+    /// not the permission.
+    var healthWorkoutSuggestionsEnabled: Bool {
+        didSet {
+            userDefaults.set(healthWorkoutSuggestionsEnabled, forKey: Keys.healthWorkoutSuggestionsEnabled)
+        }
+    }
+
+    /// Apple Health workouts the user answered "Ignore" to, so they are never suggested again.
+    private(set) var dismissedHealthWorkoutIds: Set<UUID> {
+        didSet {
+            userDefaults.set(dismissedHealthWorkoutIds.map(\.uuidString).sorted(), forKey: Keys.dismissedHealthWorkoutIds)
+        }
+    }
+
+    func dismissHealthWorkout(_ id: UUID) {
+        dismissedHealthWorkoutIds.insert(id)
+    }
+
+    /// Clears the Apple Health suggestion choice and its dismissals. Called after a successful account
+    /// deletion, so the next account starts from the default (off).
+    func resetHealthSuggestionState() {
+        healthWorkoutSuggestionsEnabled = false
+        dismissedHealthWorkoutIds = []
+    }
+
     /// The opt-out consent flag (US-T06): `true` means anonymous usage data may be emitted.
     ///
     /// Telemetry is on by default and turned off from Settings, so this is the *user's* copy of the
@@ -502,6 +550,11 @@ final class AppState {
 
         hasSeenClassicsUpdateNote = userDefaults.bool(forKey: Keys.hasSeenClassicsUpdateNote)
 
+        healthWorkoutSuggestionsEnabled = userDefaults.bool(forKey: Keys.healthWorkoutSuggestionsEnabled)
+        dismissedHealthWorkoutIds = Set(
+            (userDefaults.stringArray(forKey: Keys.dismissedHealthWorkoutIds) ?? []).compactMap(UUID.init(uuidString:))
+        )
+
         // Nothing celebrated by default: an absent key resolves to `.discipline`, the phase every user
         // starts in, so a fresh install has congratulated nothing and the reveal can still fire once
         // the earned phase first crosses into `.strength` (US-SP06).
@@ -595,6 +648,8 @@ final class AppState {
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
         static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
+        static let healthWorkoutSuggestionsEnabled = "AppState.healthWorkoutSuggestionsEnabled"
+        static let dismissedHealthWorkoutIds = "AppState.dismissedHealthWorkoutIds"
     }
 }
 

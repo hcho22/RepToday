@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            17,
+            18,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -28,6 +28,7 @@ final class ServiceContainerTests: XCTestCase {
         _ = try await services.phaseService.phase(for: user, recentLogs: [])
         _ = try await services.userService.currentUser()
         _ = try await services.workoutLogService.workoutLogs(from: nil, to: nil)
+        _ = try await services.outsideActivityService.activities(from: nil, to: nil)
         _ = try await services.activeSessionStore.load(for: user.id)
         _ = services.sessionCompletionService
         _ = try await services.healthKitService.authorizationStatus()

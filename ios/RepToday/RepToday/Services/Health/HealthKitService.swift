@@ -5,10 +5,13 @@ import HealthKit
 /// device only, and degrades gracefully whenever Health is unavailable or the user denies access.
 ///
 /// Design:
-/// - **Write with a bounded duplicate check.** Rep Today requests share access alone (`read: []`) and
-///   never requests general Health read authorization. Before writing, a metadata-filtered `HKSampleQuery`
-///   checks only for a workout Rep Today previously saved with the same external UUID, so both Health usage
-///   descriptions are required without exposing unrelated Health data to the app.
+/// - **Write with a bounded duplicate check.** At launch Rep Today requests share access alone
+///   (`read: []`). Before writing, a metadata-filtered `HKSampleQuery` checks only for a workout Rep Today
+///   previously saved with the same external UUID.
+/// - **Opt-in workout read (US-HO05).** Only when the user turns on Apple Health suggestions does Rep
+///   Today ask to read workouts - the workout type and nothing else - and only then does
+///   `recentWorkouts(since:)` return anything. The caller drops Rep Today's own workouts
+///   (`HealthWorkoutSuggestions`), and nothing read is applied until the user taps "Add it".
 /// - **Never gates the loop.** Every method is best-effort: no Health data available (e.g. iPad), a
 ///   denied authorization, or a write failure all return quietly, so a completed session is never blocked
 ///   (the completion recorder also wraps the call in `try?`).
@@ -48,6 +51,80 @@ final class HealthKitService: HealthKitServiceProtocol {
         guard HKHealthStore.isHealthDataAvailable() else { return .sharingDenied }
         try await healthStore.requestAuthorization(toShare: shareTypes, read: [])
         return Self.map(healthStore.authorizationStatus(for: HKObjectType.workoutType()))
+    }
+
+    func requestWorkoutReadAuthorization() async throws {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        try await healthStore.requestAuthorization(toShare: shareTypes, read: [HKObjectType.workoutType()])
+    }
+
+    func recentWorkouts(since: Date) async throws -> [HealthWorkoutCandidate] {
+        guard HKHealthStore.isHealthDataAvailable() else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: since, end: nil, options: [])
+        let workouts: [HKWorkout] = try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKObjectType.workoutType(),
+                predicate: predicate,
+                limit: Self.recentWorkoutLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]
+            ) { _, samples, error in
+                if let error {
+                    // No read access reads as "no data" rather than an error worth surfacing.
+                    if (error as? HKError)?.code == .errorAuthorizationDenied
+                        || (error as? HKError)?.code == .errorAuthorizationNotDetermined {
+                        continuation.resume(returning: [])
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
+                } else {
+                    continuation.resume(returning: (samples ?? []).compactMap { $0 as? HKWorkout })
+                }
+            }
+            healthStore.execute(query)
+        }
+        return workouts.map(Self.candidate(from:))
+    }
+
+    /// The most workouts one suggestion read looks at.
+    static let recentWorkoutLimit = 50
+
+    /// The HealthKit-free candidate for one Health workout.
+    static func candidate(from workout: HKWorkout) -> HealthWorkoutCandidate {
+        HealthWorkoutCandidate(
+            id: workout.uuid,
+            type: outsideActivityType(for: workout.workoutActivityType),
+            start: workout.startDate,
+            durationMinutes: max(1, Int((workout.duration / 60).rounded())),
+            distanceMeters: distanceMeters(of: workout),
+            sourceBundleIdentifier: workout.sourceRevision.source.bundleIdentifier,
+            externalUUID: workout.metadata?[HKMetadataKeyExternalUUID] as? String
+        )
+    }
+
+    /// Decision 21's activity types, from Health's: runs, rides and hikes, swims, rows and climbs; every
+    /// other workout is "other" and works no group.
+    static func outsideActivityType(for activity: HKWorkoutActivityType) -> OutsideActivityType {
+        switch activity {
+        case .running: return .run
+        case .cycling, .handCycling: return .bike
+        case .hiking: return .hike
+        case .swimming, .swimBikeRun: return .swim
+        case .rowing, .paddleSports: return .row
+        case .climbing: return .climb
+        default: return .other
+        }
+    }
+
+    /// The workout's distance, read from whichever distance statistic it carries.
+    private static func distanceMeters(of workout: HKWorkout) -> Double? {
+        let types: [HKQuantityTypeIdentifier] = [.distanceWalkingRunning, .distanceCycling, .distanceSwimming]
+        for identifier in types {
+            if let sum = workout.statistics(for: HKQuantityType(identifier))?.sumQuantity() {
+                let meters = sum.doubleValue(for: .meter())
+                if meters > 0 { return meters }
+            }
+        }
+        return nil
     }
 
     func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws {

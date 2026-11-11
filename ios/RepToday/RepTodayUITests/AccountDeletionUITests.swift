@@ -40,6 +40,7 @@ final class AccountDeletionUITests: XCTestCase {
 
         // US-AD01: the destructive row is present and reachable by a finger.
         let deleteRow = app.buttons["Delete Account"]
+        scrollUntilHittable(deleteRow, in: app)
         XCTAssertTrue(deleteRow.waitForExistence(timeout: 10), "Settings has no Delete Account control")
         XCTAssertTrue(deleteRow.isHittable, "the Delete Account row is not reachable by a finger")
         attachScreenshot(named: "01-settings-delete-account-row")
@@ -92,6 +93,7 @@ final class AccountDeletionUITests: XCTestCase {
         settings.tap()
 
         let deleteRow = app.buttons["Delete Account"]
+        scrollUntilHittable(deleteRow, in: app)
         XCTAssertTrue(deleteRow.waitForExistence(timeout: 10), "Settings has no Delete Account control")
         deleteRow.tap()
 
@@ -99,9 +101,10 @@ final class AccountDeletionUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 10), "no confirmation alert was presented")
         cancel.tap()
 
-        // Still on Settings - the toggle from the Privacy section is present, and onboarding is not.
+        // Still on Settings - its Delete Account row, scrolled into view above, is still there (the
+        // Privacy toggle at the top of the lazy list may be out of the tree), and onboarding is not.
         XCTAssertTrue(
-            app.switches["Share anonymous usage data"].waitForExistence(timeout: 10),
+            deleteRow.waitForExistence(timeout: 10) && app.navigationBars["Settings"].exists,
             "cancelling should leave the user on the Settings screen"
         )
         XCTAssertFalse(

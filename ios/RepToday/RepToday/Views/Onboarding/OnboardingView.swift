@@ -96,6 +96,7 @@ struct OnboardingView: View {
         case .welcome:      WelcomeStep(viewModel: viewModel)
         case .basics:       BasicsStep(viewModel: viewModel)
         case .fitnessLevel: FitnessLevelStep(viewModel: viewModel)
+        case .focusAreas:   FocusAreasStep(viewModel: viewModel)
         case .why:          WhyStep(viewModel: viewModel)
         case .lifestyle:    LifestyleStep(viewModel: viewModel)
         case .duration:     DurationStep(viewModel: viewModel)
@@ -104,37 +105,57 @@ struct OnboardingView: View {
 
     // MARK: - Navigation controls
 
-    private var navigationControls: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            if !viewModel.isFirstStep {
-                Button(action: viewModel.goBack) {
-                    Text("Back")
-                        .font(Theme.Typography.button)
-                        .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.buttonHeight)
-                }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                .disabled(viewModel.isFinishing)
-            }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-            Button(action: primaryAction) {
-                ZStack {
-                    if viewModel.isFinishing {
-                        ProgressView().tint(Theme.Colors.onAccent)
-                    } else {
-                        Text(primaryTitle)
-                            .font(Theme.Typography.button)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.buttonHeight)
+    /// Back and the primary action side by side, or stacked (primary first) at the accessibility text
+    /// sizes, where two half-width buttons would truncate their titles.
+    private var navigationControls: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+        return layout {
+            if dynamicTypeSize.isAccessibilitySize {
+                primaryButton
+                backButton
+            } else {
+                backButton
+                primaryButton
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .disabled(!viewModel.canAdvance || viewModel.isFinishing)
         }
+    }
+
+    @ViewBuilder
+    private var backButton: some View {
+        if !viewModel.isFirstStep {
+            Button(action: viewModel.goBack) {
+                Text("Back")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: Theme.Spacing.buttonHeight)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .disabled(viewModel.isFinishing)
+        }
+    }
+
+    private var primaryButton: some View {
+        Button(action: primaryAction) {
+            ZStack {
+                if viewModel.isFinishing {
+                    ProgressView().tint(Theme.Colors.onAccent)
+                } else {
+                    Text(primaryTitle)
+                        .font(Theme.Typography.button)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.buttonHeight)
+        }
+        .accentFilledButtonStyle()
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
 
     private var primaryTitle: String {
@@ -581,6 +602,23 @@ private struct FitnessLevelStep: View {
     }
 }
 
+// MARK: - Focus Areas (US-HO02)
+
+private struct FocusAreasStep: View {
+    @Bindable var viewModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            StepHeader(
+                title: FocusAreasCopy.onboardingTitle,
+                subtitle: FocusAreasCopy.onboardingSubtitle
+            )
+
+            FocusAreaList(selection: $viewModel.selectedFocusAreas)
+        }
+    }
+}
+
 // MARK: - Why
 
 private struct WhyStep: View {
@@ -623,7 +661,7 @@ private struct LifestyleStep: View {
                     Text("I sit 6+ hours most days")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
-                    Text("We'll lean your shorter sessions toward mobility.")
+                    Text("We'll lean your warm-ups and cooldowns toward hip and posture stretches.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

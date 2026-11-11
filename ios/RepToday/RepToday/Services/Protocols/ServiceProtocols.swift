@@ -2,8 +2,9 @@ import Foundation
 
 /// The authorization state Rep Today needs from HealthKit.
 ///
-/// Rep Today writes (shares) workouts only, so this mirrors the *sharing* authorization the real
-/// `HealthKitService` (US-N03) reports; `MockHealthKitService` returns `.notDetermined`.
+/// This mirrors the *sharing* authorization the real `HealthKitService` (US-N03) reports - the one
+/// HealthKit discloses; read access for the opt-in workout suggestions (US-HO05) is never reported.
+/// `MockHealthKitService` returns `.notDetermined`.
 enum HealthKitAuthorizationStatus: Equatable {
     case notDetermined
     case sharingDenied
@@ -47,21 +48,39 @@ protocol WorkoutEngineProtocol {
 
     /// Assembles a complete session for `trainingDay` (ADR-0012); `nil` lets the Rotation decide. Today
     /// passes the Rest Day's "Train anyway" group here. `history` is the full log history the Rotation
-    /// replays (a Cycle reaches back past any bounded window); every other step reads `recentLogs`.
+    /// replays (a Cycle reaches back past any bounded window) together with the logged Outside
+    /// `activities` (decision 21); every other step reads `recentLogs`.
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
         history: [WorkoutLog],
+        activities: [OutsideActivity],
         sessionPolicy: SessionPolicy,
         variation: SessionVariation,
         trainingDay: TrainingDay?
     ) async throws -> Workout
 
     /// Today's place in the Rotation for `user` (ADR-0012): a Training Day, or a Rest Day after a
-    /// completed Cycle, replayed over the full log `history`. Days the user cannot train at all are
-    /// passed over.
-    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan
+    /// completed Cycle, replayed over the full log `history` and the logged Outside `activities`
+    /// (decision 21). Days the user cannot train at all are passed over.
+    func trainingPlan(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> TrainingPlan
+
+    /// The Cycle strip the Welcome Page shows (decision 19), read exactly as `trainingPlan` reads the
+    /// Rotation.
+    func cycleSteps(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> [CycleStep]
 
     /// The Rest Day's optional Recovery flow (US-TD05): a short, mobility-only session that neither
     /// advances the Rotation nor counts as a session.
@@ -91,6 +110,7 @@ extension WorkoutEngineProtocol {
         user: User,
         recentLogs: [WorkoutLog],
         history: [WorkoutLog],
+        activities: [OutsideActivity],
         sessionPolicy: SessionPolicy,
         variation: SessionVariation,
         trainingDay: TrainingDay?
@@ -105,8 +125,25 @@ extension WorkoutEngineProtocol {
     }
 
     /// A test double that predates Training Days follows the Rotation over every group.
-    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
-        TrainingRotation.plan(logs: history, asOf: asOf)
+    func trainingPlan(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> TrainingPlan {
+        TrainingRotation.plan(logs: history, activities: activities, asOf: asOf)
+    }
+
+    /// A test double that predates the Welcome Page follows the Rotation over every group.
+    func cycleSteps(
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        activities: [OutsideActivity],
+        asOf: Date
+    ) async throws -> [CycleStep] {
+        TrainingRotation.cycleSteps(logs: history, activities: activities, asOf: asOf)
     }
 
     /// A test double that predates the Recovery flow has none to offer.
@@ -159,7 +196,16 @@ protocol SessionPolicyServiceProtocol {
 /// Calculates the forgiving consistency score from completed workouts.
 protocol ConsistencyServiceProtocol {
     func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency
+    /// The score with each logged Outside Activity counted as showing up (US-HO04).
+    func consistency(for logs: [WorkoutLog], activities: [OutsideActivity], weeklyGoal: Int) async throws -> Consistency
     func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency
+}
+
+extension ConsistencyServiceProtocol {
+    /// A test double that predates Outside Activities scores the sessions alone.
+    func consistency(for logs: [WorkoutLog], activities: [OutsideActivity], weeklyGoal: Int) async throws -> Consistency {
+        try await consistency(for: logs, weeklyGoal: weeklyGoal)
+    }
 }
 
 /// Evaluates which journey phase a user has earned.
@@ -197,11 +243,38 @@ protocol WorkoutLogServiceProtocol {
     func deleteAllLogs() async throws
 }
 
+/// Reads and writes logged Outside Activities (US-HO04): workouts done outside Rep Today that count as
+/// showing up and give the group they worked a day off.
+protocol OutsideActivityServiceProtocol {
+    /// Activities whose `date` falls in `[startDate, endDate)`, oldest first; a `nil` bound is open.
+    func activities(from startDate: Date?, to endDate: Date?) async throws -> [OutsideActivity]
+    /// Inserts, or updates in place by `id`.
+    func save(_ activity: OutsideActivity) async throws
+    func delete(id: UUID) async throws
+    /// Bulk-deletes every activity for account deletion. A no-op (never an error) when there are none.
+    func deleteAll() async throws
+}
+
 /// Coordinates HealthKit authorization and workout writes.
 protocol HealthKitServiceProtocol {
     func authorizationStatus() async throws -> HealthKitAuthorizationStatus
     func requestAuthorization() async throws -> HealthKitAuthorizationStatus
     func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws
+    /// Asks for read access to workouts (US-HO05). Called only when the user turns on Apple Health
+    /// suggestions; HealthKit never reports whether read access was granted.
+    func requestWorkoutReadAuthorization() async throws
+    /// Workouts recorded in Health that started at or after `since`, from every source. The caller
+    /// filters out Rep Today's own (`HealthWorkoutSuggestions`). Empty when Health is unavailable or read
+    /// access was not granted.
+    func recentWorkouts(since: Date) async throws -> [HealthWorkoutCandidate]
+}
+
+extension HealthKitServiceProtocol {
+    /// A test double that predates Health suggestions asks for nothing.
+    func requestWorkoutReadAuthorization() async throws {}
+
+    /// A test double that predates Health suggestions has no workouts to suggest.
+    func recentWorkouts(since: Date) async throws -> [HealthWorkoutCandidate] { [] }
 }
 
 /// Reads and refreshes premium entitlement state, and drives the paywall (US-N04).

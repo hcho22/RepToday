@@ -46,7 +46,6 @@ final class GenerousRuntimePaceTests: XCTestCase {
                 heightCm: 175,
                 weightKg: 75,
                 fitnessLevel: level,
-                primaryGoal: .stayActive,
                 sitsLong: false,
                 injuries: [],
                 typicalAvailableMinutes: 15

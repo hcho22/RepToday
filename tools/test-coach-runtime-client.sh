@@ -15,7 +15,7 @@ root=Path(sys.argv[1]);package=Path(sys.argv[2]);app=root/'ios/RepToday/RepToday
 sources=[]
 for directory in ['Models','Services/Engine','Services/Consistency']:
  sources+=list((app/directory).glob('*.swift'))
-sources+=[app/p for p in ['Services/Protocols/ServiceProtocols.swift','Services/Progress/ProgressAnalytics.swift',
+sources+=[app/p for p in ['Services/Protocols/ServiceProtocols.swift','Services/Health/HealthWorkoutSuggestions.swift','Services/Progress/ProgressAnalytics.swift',
  'Services/Coach/CoachAnalyticsInsight.swift','Services/Coach/CoachContextBundle.swift',
  'Services/Coach/CoachProxyClient.swift','Services/Coach/CoachRuntimeAuthentication.swift','Services/Coach/CoachStaging.swift','Services/Coach/CoachProofSchemaProbe.swift','Services/Coach/CoachRuntimeProofProbe.swift',
  'Services/Coach/CoachSyntheticFixtures.swift','ViewModels/CoachSyntheticQAViewModel.swift','Utilities/AppState.swift']]

@@ -57,6 +57,6 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today saves your completed sessions as workouts in Health so your movement counts where you already track it.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Rep Today checks Health for workouts it previously saved so it can avoid adding duplicate completed sessions. It does not read your other Health data.</string>
+	<string>When you turn on Apple Health suggestions, Rep Today reads the workouts you record, like runs and swims, to offer them as outside activities that give those muscles a day off. It also checks for sessions it saved so it never adds one twice. It does not read your other Health data.</string>
 </dict>
 </plist>

@@ -3,6 +3,10 @@ import XCTest
 /// Exercises the foundation presentation through onboarding, a real completed session, and a cold
 /// relaunch. No seeded workout history or mocked services: every log is written by the player.
 final class FoundationsUITests: XCTestCase {
+    /// A Back flag removes pull and hinge work (`InjuryContraindication`). Under Training Days one
+    /// session never holds both, so the control is a Pull Day: once Back is protected, the Rotation
+    /// passes over the Pull Day it can no longer train and the Legs Day it serves keeps its squat and
+    /// lunge work without its hinges.
     func testProtectingBackRemovesPullAndHingeFromTheNextSession() throws {
         continueAfterFailure = false
         let app = TestApp(self)
@@ -20,6 +24,7 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Start moving"].waitForExistence(timeout: 5))
         app.buttons["Start moving"].tap()
         app.answerHealthPromptIfPresented()
+        XCTAssertTrue(advanceToTrainingDay("Pull Day", in: app), "Today never reached a Pull Day")
         XCTAssertTrue(app.buttons["60 minute session"].waitForExistence(timeout: 15))
         let chips = app.descendants(matching: .scrollView)
             .containing(.button, identifier: "60 minute session").allElementsBoundByIndex.last!
@@ -35,15 +40,13 @@ final class FoundationsUITests: XCTestCase {
         let hinges = ["Glute Bridge", "Single-Leg Glute Bridge", "Marching Glute Bridge",
                       "Long-Lever Single-Leg Bridge", "Assisted Nordic Curl", "Nordic Curl",
                       "Bodyweight Good Morning", "Single-Leg Romanian Deadlift"]
-        let otherStrength = ["Wall Push-Up", "Incline Push-Up", "Knee Push-Up", "Wall Sit",
-                             "Sumo Squat", "Hollow Hold", "Forearm Plank"]
+        let otherStrength = ["Wall Sit", "Bodyweight Squat", "Sumo Squat", "Reverse Lunge", "Split Squat"]
         func planned(_ names: [String]) -> [String] {
             names.filter { element($0 + ",", in: app).exists }
         }
         let beforePull = planned(pulls)
         let beforeHinge = planned(hinges)
         XCTAssertFalse(beforePull.isEmpty, "The control session must actually contain Pull work")
-        XCTAssertFalse(beforeHinge.isEmpty, "The control session must actually contain Hinge work")
         try capture("05-before-back-protection")
 
         app.tabBars.buttons["Profile"].tap()
@@ -71,6 +74,7 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [filtered], timeout: 10), .completed)
         XCTAssertFalse(planned(otherStrength).isEmpty,
                        "The regenerated session must still contain unprotected strength work")
+        XCTAssertTrue(element("Legs Day: ", in: app).exists, "the Rotation passes over the Pull Day it can no longer train")
         try capture("07-session-after-back-protection")
         let transcript = "Before protecting Back: Pull = \(beforePull); Hinge = \(beforeHinge).\n"
             + "After saving Back: Pull = \(planned(pulls)); Hinge = \(planned(hinges)); other strength = \(planned(otherStrength)).\n"

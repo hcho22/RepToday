@@ -132,7 +132,10 @@ struct UserProfile: Codable, Equatable {
     var heightCm: Double
     var weightKg: Double
     var fitnessLevel: FitnessLevel
-    var primaryGoal: PrimaryGoal
+    /// The body parts the user wants to improve (decision 20), in canonical order; empty when they chose
+    /// none. Replaces the never-read goal list (`primaryGoal`), so a profile stored before Focus Areas
+    /// decodes with none.
+    var focusAreas: [FocusArea] = []
     /// "Do you sit 6+ hours most days?" - the desk-worker signal. Since US-M03 it *biases* bookend
     /// selection toward posture/hip openers (`SessionAssembly.postureHipLean`), never sizing any block:
     /// US-M01 retired the Movement Practice mobility block it used to size, so it is a pure ordering
@@ -148,6 +151,76 @@ struct UserProfile: Codable, Equatable {
     /// persisted before it existed decodes unchanged, and a build without it ignores the key.
     /// Written only through `UserServiceProtocol.saveTrainerChoice(_:)`.
     var trainer: Trainer? = nil
+
+    init(
+        age: Int,
+        sex: Sex,
+        heightCm: Double,
+        weightKg: Double,
+        fitnessLevel: FitnessLevel,
+        focusAreas: [FocusArea] = [],
+        sitsLong: Bool,
+        injuries: [String],
+        typicalAvailableMinutes: Int,
+        trainer: Trainer? = nil
+    ) {
+        self.age = age
+        self.sex = sex
+        self.heightCm = heightCm
+        self.weightKg = weightKg
+        self.fitnessLevel = fitnessLevel
+        self.focusAreas = focusAreas.canonicallyOrdered
+        self.sitsLong = sitsLong
+        self.injuries = injuries
+        self.typicalAvailableMinutes = typicalAvailableMinutes
+        self.trainer = trainer
+    }
+}
+
+// MARK: - UserProfile coding
+
+extension UserProfile {
+    private enum CodingKeys: String, CodingKey {
+        case age, sex, heightCm, weightKg, fitnessLevel, focusAreas, sitsLong, injuries, typicalAvailableMinutes, trainer
+        /// The retired goal field (`PrimaryGoal`, replaced by Focus Areas in M2).
+        case legacyPrimaryGoal = "primaryGoal"
+    }
+
+    /// The value written under the retired `primaryGoal` key. A build from before Focus Areas requires
+    /// that key to decode a profile, and CloudKit can hand this record to such a build on another device,
+    /// so every profile keeps carrying it. Its value was never read by the engine.
+    static let legacyPrimaryGoalValue = "stay_active"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        age = try container.decode(Int.self, forKey: .age)
+        sex = try container.decode(Sex.self, forKey: .sex)
+        heightCm = try container.decode(Double.self, forKey: .heightCm)
+        weightKg = try container.decode(Double.self, forKey: .weightKg)
+        fitnessLevel = try container.decode(FitnessLevel.self, forKey: .fitnessLevel)
+        // A Focus Area a later build adds is dropped rather than failing the whole profile.
+        let rawAreas = try container.decodeIfPresent([String].self, forKey: .focusAreas) ?? []
+        focusAreas = rawAreas.compactMap(FocusArea.init(rawValue:)).canonicallyOrdered
+        sitsLong = try container.decode(Bool.self, forKey: .sitsLong)
+        injuries = try container.decode([String].self, forKey: .injuries)
+        typicalAvailableMinutes = try container.decode(Int.self, forKey: .typicalAvailableMinutes)
+        trainer = try container.decodeIfPresent(Trainer.self, forKey: .trainer)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(age, forKey: .age)
+        try container.encode(sex, forKey: .sex)
+        try container.encode(heightCm, forKey: .heightCm)
+        try container.encode(weightKg, forKey: .weightKg)
+        try container.encode(fitnessLevel, forKey: .fitnessLevel)
+        try container.encode(focusAreas, forKey: .focusAreas)
+        try container.encode(Self.legacyPrimaryGoalValue, forKey: .legacyPrimaryGoal)
+        try container.encode(sitsLong, forKey: .sitsLong)
+        try container.encode(injuries, forKey: .injuries)
+        try container.encode(typicalAvailableMinutes, forKey: .typicalAvailableMinutes)
+        try container.encodeIfPresent(trainer, forKey: .trainer)
+    }
 }
 
 // MARK: - Consistency

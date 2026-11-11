@@ -659,7 +659,7 @@ final class PersistenceTests: XCTestCase {
             createdAt: dateA,
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                fitnessLevel: .intermediate,
                 sitsLong: true, injuries: injuries, typicalAvailableMinutes: 15
             ),
             phase: .discipline,

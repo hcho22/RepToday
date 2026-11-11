@@ -47,7 +47,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             createdAt: date(daysAgo: 120),
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: .advanced, primaryGoal: .stayActive,
+                fitnessLevel: .advanced,
                 sitsLong: true, injuries: [], typicalAvailableMinutes: requestedMinutes
             ),
             phase: .discipline,

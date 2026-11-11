@@ -21,8 +21,11 @@ struct ReadyView: View {
     /// thing: the US-AC08 injury-flag revision, so confirming a safety filter regenerates the session
     /// already on this screen instead of waiting for a relaunch.
     @Environment(AppState.self) private var appState: AppState?
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: ReadyViewModel
+    /// The Outside Activity sheet on screen (US-HO04): a new entry, or an edit of a logged one.
+    @State private var activitySheet: ActivitySheet?
     /// What the active-session player is presented for (US-K01/US-K04): a fresh session started from
     /// Start, or an abandoned session resumed from the Ready Screen. The `.fullScreenCover` presents
     /// the player for it and clears it on dismiss.
@@ -46,12 +49,27 @@ struct ReadyView: View {
                 sessionPolicyService: services.sessionPolicyService,
                 workoutEngine: services.workoutEngine,
                 workoutLogService: services.workoutLogService,
+                outsideActivityService: services.outsideActivityService,
+                healthKitService: services.healthKitService,
                 consistencyService: services.consistencyService,
                 activeSessionStore: services.activeSessionStore,
                 analytics: services.analyticsService,
                 now: now
             )
         )
+    }
+
+    /// What the Outside Activity sheet is for (US-HO04).
+    private enum ActivitySheet: Identifiable {
+        case new
+        case edit(OutsideActivity)
+
+        var id: String {
+            switch self {
+            case .new: return "new"
+            case .edit(let activity): return activity.id.uuidString
+            }
+        }
     }
 
     /// What the player is presented for: a fresh start or a resumed abandoned session (US-K04).
@@ -82,10 +100,20 @@ struct ReadyView: View {
             }
         }
         .statusBarBacking()
-        // Re-runs on appear and whenever the user confirms an injury-flag change (US-AC08), so the
-        // session on screen is rebuilt against the safety filter they just set rather than the one in
-        // force when the tab was last opened.
-        .task(id: appState?.injuryFlagsRevision ?? 0) { await viewModel.load() }
+        // Re-runs on appear, whenever the user confirms an injury-flag change (US-AC08), and whenever they
+        // save new Focus Areas (US-HO02), so the session on screen is rebuilt against what they just set
+        // rather than what was in force when the tab was last opened.
+        .task(id: "\(appState?.injuryFlagsRevision ?? 0)-\(appState?.planInputsRevision ?? 0)") {
+            await viewModel.load()
+            await refreshHealthSuggestions()
+        }
+        // A workout recorded on a watch while the app sat in the background is offered on return.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await refreshHealthSuggestions() } }
+        }
+        .sheet(item: $activitySheet) { sheet in
+            activitySheetView(sheet)
+        }
         .fullScreenCover(item: $presentedPlayer) { presentation in
             switch presentation {
             case .fresh(let workout):
@@ -146,6 +174,8 @@ struct ReadyView: View {
                         )
                     }
 
+                    healthSuggestions
+
                     if let consistency = viewModel.consistency {
                         ConsistencyCard(consistency: consistency)
                     }
@@ -163,6 +193,8 @@ struct ReadyView: View {
                     ForEach(workout.blocks) { block in
                         BlockCard(block: block)
                     }
+
+                    outsideActivityCard
                 }
                 .padding(Theme.Spacing.lg)
             }
@@ -220,7 +252,7 @@ struct ReadyView: View {
                     Text(greeting)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Colors.textSecondary)
-                    Text("Rest Day")
+                    Text(WelcomeCopy.restTitle(for: viewModel.plan.restReason ?? .cycleComplete))
                         .font(Theme.Typography.largeTitle)
                         .foregroundStyle(Theme.Colors.textPrimary)
                         .accessibilityAddTraits(.isHeader)
@@ -238,8 +270,11 @@ struct ReadyView: View {
                     )
                 }
 
+                healthSuggestions
+
                 RestDayCard(
                     next: viewModel.plan.trainingDay,
+                    reason: viewModel.plan.restReason ?? .cycleComplete,
                     onRecovery: {
                         Task {
                             guard let recovery = await viewModel.recoveryWorkout() else { return }
@@ -253,9 +288,73 @@ struct ReadyView: View {
                 if let consistency = viewModel.consistency {
                     ConsistencyCard(consistency: consistency)
                 }
+
+                outsideActivityCard
             }
             .padding(Theme.Spacing.lg)
         }
+    }
+
+    // MARK: - Outside Activity (US-HO04, US-HO05)
+
+    /// The Apple Health workouts offered as "Add it / Ignore", newest first.
+    @ViewBuilder
+    private var healthSuggestions: some View {
+        ForEach(viewModel.healthSuggestions) { candidate in
+            HealthSuggestionCard(
+                candidate: candidate,
+                onAdd: { Task { await viewModel.addHealthSuggestion(candidate) } },
+                onIgnore: {
+                    appState?.dismissHealthWorkout(candidate.id)
+                    viewModel.ignoreHealthSuggestion(candidate)
+                }
+            )
+        }
+    }
+
+    private var outsideActivityCard: some View {
+        OutsideActivityCard(
+            activities: viewModel.recentActivities,
+            onLog: { activitySheet = .new },
+            onEdit: { activitySheet = .edit($0) }
+        )
+    }
+
+    private func activitySheetView(_ sheet: ActivitySheet) -> some View {
+        let existing: OutsideActivity?
+        switch sheet {
+        case .new: existing = nil
+        case .edit(let activity): existing = activity
+        }
+        return OutsideActivitySheet(
+            existing: existing,
+            offersHealthOptIn: appState.map { !$0.healthWorkoutSuggestionsEnabled } ?? false,
+            errorMessage: viewModel.activityErrorMessage,
+            onSave: { await viewModel.saveActivity($0) },
+            onDelete: { activity in
+                let deleted = await viewModel.deleteActivity(id: activity.id)
+                // A deleted Health workout stays gone: it was the user's call, not a suggestion to repeat.
+                if deleted, let healthId = activity.healthWorkoutId { appState?.dismissHealthWorkout(healthId) }
+                return deleted
+            },
+            onEnableHealthSuggestions: enableHealthSuggestions
+        )
+    }
+
+    /// The Apple Health opt-in (US-HO05): record the choice, ask for read access to workouts, then look.
+    private func enableHealthSuggestions() {
+        appState?.healthWorkoutSuggestionsEnabled = true
+        Task {
+            try? await services.healthKitService.requestWorkoutReadAuthorization()
+            await refreshHealthSuggestions()
+        }
+    }
+
+    private func refreshHealthSuggestions() async {
+        await viewModel.refreshHealthSuggestions(
+            enabled: appState?.healthWorkoutSuggestionsEnabled ?? false,
+            dismissed: appState?.dismissedHealthWorkoutIds ?? []
+        )
     }
 
     private var greeting: String {
@@ -459,18 +558,21 @@ enum ClassicsUpdateNoteCopy {
 /// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
 /// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
 /// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target.
-/// Today on a Rest Day (US-TD05, ADR-0012): the Cycle is done, so the card says so, offers the optional
-/// mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts the next group and
-/// forfeits the rest. Rest is framed as part of training, never as a gap.
+/// Today on a Rest Day (US-TD05, ADR-0012) or a day off an Outside Activity gave: the card says why,
+/// offers the optional mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts
+/// the next group and forfeits the rest. Rest is framed as part of training, never as a gap.
 struct RestDayCard: View {
     let next: TrainingDay
+    /// Why today holds no Training Day: the Cycle is done, its Rest Day came early, or an Outside
+    /// Activity worked the groups left (decision 21).
+    var reason: RestReason = .cycleComplete
     let onRecovery: () -> Void
     let onTrainAnyway: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("You trained Push, Pull and Legs.")
+                Text(WelcomeCopy.restReason(reason, next: next))
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -489,7 +591,7 @@ struct RestDayCard: View {
             }
             .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .accessibilityHint("Starts a five-minute stretch. Today stays a Rest Day.")
+            .accessibilityHint("Starts a five-minute stretch. Today stays a \(WelcomeCopy.restTitle(for: reason)).")
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Button(action: onTrainAnyway) {
@@ -586,7 +688,8 @@ private struct ConsistencyCard: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 }
+    /// A session or a logged Outside Activity (which counts as showing up) has been recorded.
+    private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 || consistency.score > 0 }
 
     var body: some View {
         // At the accessibility text sizes the score stacks under the words, so neither column is

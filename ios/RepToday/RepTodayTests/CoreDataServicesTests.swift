@@ -299,7 +299,7 @@ final class CoreDataServicesTests: XCTestCase {
             createdAt: base,
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                fitnessLevel: .intermediate,
                 sitsLong: true, injuries: [], typicalAvailableMinutes: 15
             ),
             phase: .discipline,

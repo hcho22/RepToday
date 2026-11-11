@@ -40,6 +40,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     private let activeSessionStore: any ActiveSessionStore
     private let authService: any AuthServiceProtocol
     private let coachAuthenticationCleanup: (@Sendable () async -> Void)?
+    /// Logged Outside Activities (US-HO04), kept in the on-device Local store and never synced to
+    /// iCloud. Optional so a caller that predates them still composes the teardown.
+    private let outsideActivityService: (any OutsideActivityServiceProtocol)?
 
     init(
         userService: any UserServiceProtocol,
@@ -47,7 +50,8 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         sessionPolicyStore: any SessionPolicyStore,
         activeSessionStore: any ActiveSessionStore,
         authService: any AuthServiceProtocol,
-        coachAuthenticationCleanup: (@Sendable () async -> Void)? = nil
+        coachAuthenticationCleanup: (@Sendable () async -> Void)? = nil,
+        outsideActivityService: (any OutsideActivityServiceProtocol)? = nil
     ) {
         self.userService = userService
         self.workoutLogService = workoutLogService
@@ -55,6 +59,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         self.activeSessionStore = activeSessionStore
         self.authService = authService
         self.coachAuthenticationCleanup = coachAuthenticationCleanup
+        self.outsideActivityService = outsideActivityService
     }
 
     func deleteAccount(appState: AppState) async throws {
@@ -65,6 +70,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         //    unreadable user therefore cannot leave the per-user policy or the device-local active
         //    session orphaned behind a "delete account" that reports done.
         try await workoutLogService.deleteAllLogs()
+        try await outsideActivityService?.deleteAll()
         try await sessionPolicyStore.deleteAll()
         try await activeSessionStore.clearAll()
         try await userService.deleteCurrentUser()
@@ -86,6 +92,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
                 appState.rotateAnalyticsInstallId()
                 appState.resetCoachAccountState()
             }
+            appState.resetHealthSuggestionState()
             appState.selectedTab = .home
             appState.isOnboarded = false
         }

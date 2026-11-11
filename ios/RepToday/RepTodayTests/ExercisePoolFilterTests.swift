@@ -73,7 +73,6 @@ final class ExercisePoolFilterTests: XCTestCase {
                 heightCm: 175,
                 weightKg: 75,
                 fitnessLevel: level,
-                primaryGoal: .stayActive,
                 sitsLong: true,
                 injuries: injuries,
                 typicalAvailableMinutes: 15

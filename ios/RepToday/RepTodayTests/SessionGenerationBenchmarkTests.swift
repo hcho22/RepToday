@@ -84,7 +84,6 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
                 heightCm: 175,
                 weightKg: 75,
                 fitnessLevel: .intermediate,
-                primaryGoal: .stayActive,
                 sitsLong: true,
                 injuries: [],
                 typicalAvailableMinutes: 20

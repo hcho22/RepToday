@@ -12,6 +12,9 @@ struct RootView: View {
     /// app open, and only when the user has just earned the Strength Phase and has not yet been
     /// congratulated for it.
     @State private var graduationLevel: FitnessLevel?
+    /// A graduation reveal decided on app open but held until the Welcome Page is dismissed, so the two
+    /// never stack. Its one-shot flag flips only when it is actually shown.
+    @State private var pendingGraduationLevel: FitnessLevel?
     @State private var appOpenReconciliationComplete = false
 
     var body: some View {
@@ -21,8 +24,11 @@ struct RootView: View {
             Group {
                 if appState.isOnboarded {
                     if appOpenReconciliationComplete {
-                        MainTabsView(selectedTab: $appState.selectedTab)
-                    } else {
+                        // Built behind the Welcome Page on a cold launch, so Today loads while the user
+                        // reads it (US-HO01).
+                        MainTabsView(selectedTab: $appState.selectedTab, isRevealed: !appState.isWelcomePending)
+                    } else if !appState.isWelcomePending {
+                        // Only straight after onboarding, which lands on Today without a Welcome Page.
                         ProgressView()
                             .controlSize(.large)
                             .accessibilityLabel("Preparing today’s session")
@@ -30,12 +36,27 @@ struct RootView: View {
                 } else {
                     // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
                     // user and seeded the cold-start policy, so the router only flips into the main app.
+                    // A freshly onboarded user lands on Today: the Welcome Page is for cold launches.
                     OnboardingView(services: services) {
                         appOpenReconciliationComplete = false
+                        appState.markWelcomeSeen()
                         appState.isOnboarded = true
                         appState.selectedTab = .home
                     }
                 }
+            }
+
+            // The Welcome Page (US-HO01, decision 19) on every cold launch after onboarding. It replaces
+            // the launch spinner: the app-open reconciliation and Today's load run behind it, and "Let's
+            // go" waits only for the shell to be ready.
+            if appState.isOnboarded && appState.isWelcomePending {
+                WelcomePageView(
+                    viewModel: WelcomeViewModel(services: services),
+                    isReady: appOpenReconciliationComplete,
+                    onContinue: dismissWelcome
+                )
+                .transition(.opacity)
+                .zIndex(0.5)
             }
 
             // The Strength-Phase graduation reveal (US-SP06) rides above the whole app shell as its own
@@ -55,6 +76,9 @@ struct RootView: View {
         // the moment we decide to show it - not on dismissal - so a force-quit while it is up can never
         // bring it back on the next open, and it never re-fires after a relaunch.
         .task(id: appState.isOnboarded) { await prepareAppOpen() }
+        .onChange(of: appState.isWelcomePending) { _, pending in
+            if !pending { presentGraduationIfReady() }
+        }
         // Debug-only, and inert unless the US-T06 probe launch argument is set: the HUD an
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
@@ -102,14 +126,32 @@ struct RootView: View {
         appOpenReconciliationComplete = true
         guard !appState.hasCelebratedStrengthGraduation, viewModel.earnedStrength,
               let level = viewModel.fitnessLevel else { return }
+        pendingGraduationLevel = level
+        presentGraduationIfReady()
+    }
 
-        // Ratchet the celebrated phase before presenting, so the reveal can never re-fire even if the
+    /// Shows a decided graduation reveal once nothing else is on top: the Welcome Page goes first.
+    private func presentGraduationIfReady() {
+        guard let level = pendingGraduationLevel, !appState.isWelcomePending else { return }
+        pendingGraduationLevel = nil
+        // Ratchet the celebrated phase as it is presented, so the reveal can never re-fire even if the
         // user force-quits while it is up.
         appState.markStrengthGraduationCelebrated()
         if reduceMotion {
             graduationLevel = level
         } else {
             withAnimation(.easeOut(duration: 0.25)) { graduationLevel = level }
+        }
+    }
+
+    /// "Let's go" on the Welcome Page: reveal Today - always Today, whichever tab was last open. Any
+    /// graduation reveal that was waiting follows (`onChange(of: isWelcomePending)`).
+    private func dismissWelcome() {
+        appState.selectedTab = .home
+        if reduceMotion {
+            appState.markWelcomeSeen()
+        } else {
+            withAnimation(.easeInOut(duration: 0.25)) { appState.markWelcomeSeen() }
         }
     }
 
@@ -127,6 +169,9 @@ struct RootView: View {
 private struct MainTabsView: View {
     @Environment(\.services) private var services
     @Binding var selectedTab: AppTab
+    /// False while the Welcome Page still covers the tabs, so nothing here prompts the user before
+    /// they reach Today.
+    let isRevealed: Bool
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -159,7 +204,8 @@ private struct MainTabsView: View {
         // Best-effort and non-blocking: the prompt only appears the first time (the request is idempotent
         // once answered), and the core loop never waits on it. `saveWorkoutLog` then writes each completed
         // session only when access was granted.
-        .task {
+        .task(id: isRevealed) {
+            guard isRevealed else { return }
             _ = try? await services.healthKitService.requestAuthorization()
         }
     }

@@ -44,7 +44,7 @@ final class ReadyRestDayTests: XCTestCase {
         let vm = try makeViewModel(logs: completedCycle())
         await vm.load()
         XCTAssertTrue(vm.showsRestDay)
-        XCTAssertEqual(vm.plan, .rest(next: .push, isEarly: false))
+        XCTAssertEqual(vm.plan, .rest(next: .push, reason: .cycleComplete))
         XCTAssertNil(vm.workout)
     }
 

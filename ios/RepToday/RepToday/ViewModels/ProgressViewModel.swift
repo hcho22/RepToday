@@ -84,6 +84,9 @@ final class ProgressViewModel {
 
     private let userService: any UserServiceProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
+    /// Logged Outside Activities (US-HO04), which count as showing up in the Consistency Score and its
+    /// trend exactly as on Today.
+    private let outsideActivityService: any OutsideActivityServiceProtocol
     private let consistencyService: any ConsistencyServiceProtocol
     private let exerciseService: any ExerciseServiceProtocol
     private let subscriptionService: any SubscriptionServiceProtocol
@@ -95,6 +98,7 @@ final class ProgressViewModel {
     init(
         userService: any UserServiceProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
+        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService(),
         exerciseService: any ExerciseServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
         premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority(),
@@ -105,6 +109,7 @@ final class ProgressViewModel {
     ) {
         self.userService = userService
         self.workoutLogService = workoutLogService
+        self.outsideActivityService = outsideActivityService
         self.exerciseService = exerciseService
         self.subscriptionService = subscriptionService
         self.premiumSessionAuthority = premiumSessionAuthority
@@ -136,9 +141,11 @@ final class ProgressViewModel {
         let weeklyGoal = user.consistency.weeklyGoal
 
         completedDays = Set(logs.map { calendar.startOfDay(for: $0.completedAt) })
-        consistency = try? await consistencyService.consistency(for: logs, weeklyGoal: weeklyGoal)
+        let activities = (try? await outsideActivityService.activities(from: nil, to: nil)) ?? []
+        consistency = try? await consistencyService.consistency(for: logs, activities: activities, weeklyGoal: weeklyGoal)
         trend = ConsistencyTrend.trend(
             logs: logs,
+            activities: activities,
             weeklyGoal: weeklyGoal,
             asOf: now(),
             calendar: calendar

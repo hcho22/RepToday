@@ -30,6 +30,7 @@ final class OnboardingViewModel {
         case welcome
         case basics
         case fitnessLevel
+        case focusAreas
         case why
         case lifestyle
         case duration
@@ -71,6 +72,8 @@ final class OnboardingViewModel {
     /// Weight in whole pounds (US-O04), likewise near the US adult median.
     var weightPounds: Int = 175
     var fitnessLevel: FitnessLevel = .beginner
+    /// The body parts the user wants to improve (decision 20). Optional: none is a complete answer.
+    var selectedFocusAreas: Set<FocusArea> = []
     var whyStatement: String = ""
     /// "Do you sit 6+ hours most days?" - biases short sessions toward mobility.
     var sitsLong: Bool = false
@@ -223,7 +226,7 @@ final class OnboardingViewModel {
     /// Ready Screen the flow ends on must not open onto a blocked Start (US-J01).
     var canAdvance: Bool {
         switch step {
-        case .welcome, .fitnessLevel, .why, .lifestyle, .duration:
+        case .welcome, .fitnessLevel, .focusAreas, .why, .lifestyle, .duration:
             return true
         case .basics:
             return !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -299,8 +302,6 @@ final class OnboardingViewModel {
     }
 
     /// Assemble the `User` aggregate from the collected answers, keyed by the given identifier.
-    /// `primaryGoal` defaults to `.stayActive`: the v6 flow captures motivation through the free-text
-    /// `why` instead, and `primaryGoal` only informs template tone, never the engine (see `PrimaryGoal`).
     func buildUser(identifier: String) -> User {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedWhy = whyStatement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -314,7 +315,7 @@ final class OnboardingViewModel {
             heightCm: heightCm,
             weightKg: weightKg,
             fitnessLevel: fitnessLevel,
-            primaryGoal: .stayActive,
+            focusAreas: selectedFocusAreas.canonicallyOrdered,
             sitsLong: sitsLong,
             injuries: selectedInjuries.map(\.tag).sorted(),
             typicalAvailableMinutes: durationMinutes

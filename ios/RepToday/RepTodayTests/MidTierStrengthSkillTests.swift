@@ -77,7 +77,7 @@ final class MidTierStrengthSkillTests: XCTestCase {
             id: "u1", displayName: "Test", createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: level, primaryGoal: .buildStrength, sitsLong: false,
+                fitnessLevel: level, sitsLong: false,
                 injuries: [], typicalAvailableMinutes: 20
             ),
             phase: .strength,
@@ -212,7 +212,7 @@ final class MidTierStrengthSkillTests: XCTestCase {
             id: "d1", displayName: "Disc", createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             profile: UserProfile(
                 age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: .advanced, primaryGoal: .buildStrength, sitsLong: false,
+                fitnessLevel: .advanced, sitsLong: false,
                 injuries: [], typicalAvailableMinutes: 20
             ),
             phase: .discipline,

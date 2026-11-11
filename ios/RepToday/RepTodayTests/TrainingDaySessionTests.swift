@@ -17,11 +17,12 @@ final class TrainingDaySessionTests: XCTestCase {
         level: FitnessLevel = .intermediate,
         phase: Phase = .discipline,
         injuries: [String] = [],
+        focusAreas: [FocusArea] = [],
         logs: [WorkoutLog] = []
     ) -> Workout {
         SessionAssembly.assemble(
             requestedMinutes: minutes,
-            user: TrainingDayFixtures.user(level: level, phase: phase, injuries: injuries),
+            user: TrainingDayFixtures.user(level: level, phase: phase, injuries: injuries, focusAreas: focusAreas),
             library: library,
             recentLogs: logs,
             trainingDay: day,
@@ -39,45 +40,50 @@ final class TrainingDaySessionTests: XCTestCase {
     /// Every main, Practice and core station runs exactly 4 sets; every rep and hold number is a multiple
     /// of 5; no session mixes groups; no primal; no `pull_ytw`; the bookends hold at most two stretches
     /// each; and the movement counts follow decision 8. Bound to literals so a changed constant cannot
-    /// silently loosen it.
+    /// silently loosen it. Focus Areas (US-HO03) keep every invariant; Abs adds one Core Sprinkle, so its
+    /// 45/60 minute sessions hold at most 9/10 distinct movements instead of 8/9.
     func testEverySessionKeepsTheTrainingDayInvariants() {
-        for level in FitnessLevel.allCases {
-            for phase in [Phase.discipline, .strength] {
-                for day in TrainingDay.rotation {
-                    for minutes in lengths {
-                        let workout = session(day, minutes: minutes, level: level, phase: phase)
-                        let label = "\(level) \(phase) \(day) \(minutes) min"
-                        let all = workout.blocks.flatMap(\.exercises)
-                        let circuit = stations(workout)
+        let focusSets: [[FocusArea]] = [[], [.abs], FocusArea.allCases, [.arms, .glutes, .shoulders]]
+        for focusAreas in focusSets {
+            let hasAbs = focusAreas.contains(.abs)
+            for level in FitnessLevel.allCases {
+                for phase in [Phase.discipline, .strength] {
+                    for day in TrainingDay.rotation {
+                        for minutes in lengths {
+                            let workout = session(day, minutes: minutes, level: level, phase: phase, focusAreas: focusAreas)
+                            let label = "\(level) \(phase) \(day) \(minutes) min focus \(focusAreas.map(\.rawValue))"
+                            let all = workout.blocks.flatMap(\.exercises)
+                            let circuit = stations(workout)
 
-                        XCTAssertEqual(workout.trainingDay, day, label)
-                        XCTAssertTrue(circuit.allSatisfy { $0.sets == 4 }, "\(label): a station is not 4 sets")
-                        for item in all {
-                            let value = item.reps ?? item.durationSeconds ?? 0
-                            XCTAssertEqual(value % 5, 0, "\(label): \(item.exercise.id) at \(value)")
+                            XCTAssertEqual(workout.trainingDay, day, label)
+                            XCTAssertTrue(circuit.allSatisfy { $0.sets == 4 }, "\(label): a station is not 4 sets")
+                            for item in all {
+                                let value = item.reps ?? item.durationSeconds ?? 0
+                                XCTAssertEqual(value % 5, 0, "\(label): \(item.exercise.id) at \(value)")
+                            }
+                            XCTAssertFalse(all.contains { $0.exercise.pillar == .primal }, "\(label): primal")
+                            XCTAssertFalse(all.contains { $0.exercise.id == "pull_ytw" }, "\(label): pull_ytw")
+
+                            let worked = circuit.filter { $0.role == .main || $0.role == .practice }
+                            XCTAssertTrue(
+                                worked.allSatisfy { day.patterns.contains($0.exercise.movementPattern) },
+                                "\(label): mixes groups \(worked.map(\.exercise.id))"
+                            )
+                            let core = circuit.filter { $0.role == .core }
+                            XCTAssertTrue(core.allSatisfy { $0.exercise.movementPattern == .core }, label)
+                            XCTAssertEqual(core.count, minutes <= 10 ? 0 : (hasAbs ? 2 : 1), "\(label): Core Sprinkle")
+
+                            let mains = [5: 1, 10: 1, 15: 1, 20: 1, 30: 2, 45: 3, 60: 4][minutes]!
+                            XCTAssertEqual(worked.count, mains, "\(label): main slots")
+
+                            let warmup = workout.blocks.first { $0.category == .warmup }?.exercises.count ?? 0
+                            let cooldown = workout.blocks.first { $0.category == .cooldown }?.exercises.count ?? 0
+                            XCTAssertLessThanOrEqual(warmup, 2, label)
+                            XCTAssertLessThanOrEqual(cooldown, 2, label)
+                            let distinct = Set(all.map(\.exercise.id)).count
+                            if minutes == 45 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 9 : 8, label) }
+                            if minutes == 60 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 10 : 9, label) }
                         }
-                        XCTAssertFalse(all.contains { $0.exercise.pillar == .primal }, "\(label): primal")
-                        XCTAssertFalse(all.contains { $0.exercise.id == "pull_ytw" }, "\(label): pull_ytw")
-
-                        let worked = circuit.filter { $0.role == .main || $0.role == .practice }
-                        XCTAssertTrue(
-                            worked.allSatisfy { day.patterns.contains($0.exercise.movementPattern) },
-                            "\(label): mixes groups \(worked.map(\.exercise.id))"
-                        )
-                        let core = circuit.filter { $0.role == .core }
-                        XCTAssertTrue(core.allSatisfy { $0.exercise.movementPattern == .core }, label)
-                        XCTAssertEqual(core.count, minutes <= 10 ? 0 : 1, "\(label): Core Sprinkle")
-
-                        let mains = [5: 1, 10: 1, 15: 1, 20: 1, 30: 2, 45: 3, 60: 4][minutes]!
-                        XCTAssertEqual(worked.count, mains, "\(label): main slots")
-
-                        let warmup = workout.blocks.first { $0.category == .warmup }?.exercises.count ?? 0
-                        let cooldown = workout.blocks.first { $0.category == .cooldown }?.exercises.count ?? 0
-                        XCTAssertLessThanOrEqual(warmup, 2, label)
-                        XCTAssertLessThanOrEqual(cooldown, 2, label)
-                        let distinct = Set(all.map(\.exercise.id)).count
-                        if minutes == 45 { XCTAssertLessThanOrEqual(distinct, 8, label) }
-                        if minutes == 60 { XCTAssertLessThanOrEqual(distinct, 9, label) }
                     }
                 }
             }
@@ -256,7 +262,7 @@ final class TrainingDaySessionTests: XCTestCase {
         ]
         XCTAssertEqual(
             SessionAssembly.trainingPlan(user: user, library: library, recentLogs: cycle, asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar),
-            .rest(next: .pull, isEarly: false)
+            .rest(next: .pull, reason: .cycleComplete)
         )
         let workout = SessionAssembly.assemble(
             requestedMinutes: 30,

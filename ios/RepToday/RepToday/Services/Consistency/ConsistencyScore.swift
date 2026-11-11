@@ -50,11 +50,15 @@ enum ConsistencyScore {
     ///
     /// `logs` are the user's completed sessions (any log is a show-up - logs are only written on
     /// completion - except a Rest Day's Recovery flow, which is not a session and is left out, US-TD05).
+    /// `activities` are the logged Outside Activities (US-HO04): each counts as showing up in its week -
+    /// for adherence, this week's count and the chain - exactly as a session does, while the session
+    /// totals (`totalWorkoutsCompleted`, `totalMinutesExercised`) stay Rep Today's own.
     /// `weeklyGoal` defaults to `defaultWeeklyGoal` and is clamped to at least 1 so
     /// adherence is always well-defined. An empty history yields a zeroed `Consistency` (score 0,
     /// chain 0) - a fresh user has simply not started yet, which is neither punished nor celebrated.
     static func evaluate(
         logs: [WorkoutLog],
+        activities: [OutsideActivity] = [],
         weeklyGoal: Int = defaultWeeklyGoal,
         asOf: Date,
         calendar: Calendar = .current
@@ -64,7 +68,7 @@ enum ConsistencyScore {
         let totalWorkouts = logs.count
         let totalMinutes = logs.reduce(0) { $0 + $1.durationMinutes }
 
-        guard !logs.isEmpty else {
+        guard !logs.isEmpty || !activities.isEmpty else {
             return Consistency(
                 weeklyGoal: goal,
                 score: 0,
@@ -84,6 +88,11 @@ enum ConsistencyScore {
             guard weeksAgo >= 0 else { continue }
             workoutsByWeek[weeksAgo, default: 0] += 1
             if log.wasReturn { returnWeeks.insert(weeksAgo) }
+        }
+        for activity in activities {
+            let weeksAgo = weeksAgo(activity.date, from: asOf, calendar)
+            guard weeksAgo >= 0 else { continue }
+            workoutsByWeek[weeksAgo, default: 0] += 1
         }
 
         let workoutsThisWeek = workoutsByWeek[0] ?? 0
@@ -232,6 +241,10 @@ final class ConsistencyScoreService: ConsistencyServiceProtocol {
 
     func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency {
         ConsistencyScore.evaluate(logs: logs, weeklyGoal: weeklyGoal, asOf: now(), calendar: calendar)
+    }
+
+    func consistency(for logs: [WorkoutLog], activities: [OutsideActivity], weeklyGoal: Int) async throws -> Consistency {
+        ConsistencyScore.evaluate(logs: logs, activities: activities, weeklyGoal: weeklyGoal, asOf: now(), calendar: calendar)
     }
 
     func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency {

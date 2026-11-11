@@ -1,6 +1,6 @@
 # PRD: Push/Pull/Legs Training Days, Rest Days, Accounts and the Coach Agent (2026-11-10)
 
-- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2-M4 not started.**
+- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2 implemented (2026-11-10); M3-M4 not started.**
   Every decision below was settled with the captain in a design grill on 2026-11-09 and 2026-11-10.
   The captain approved this PRD and its documentation changes on 2026-11-10.
   No implementation is authorized until the captain approves a milestone.
@@ -151,39 +151,39 @@ Exit criteria: all M2 stories pass and are verified in the simulator.
 #### US-HO01: Welcome Page
 **Description:** As a user, I want a welcome moment that tells me what today is before I land on Today.
 **Acceptance Criteria:**
-- [ ] Shown on every cold launch after onboarding, never on resume from background.
-- [ ] Shows greeting with name, today's Training Day or Rest Day, the cycle strip, and "Let's go".
-- [ ] Replaces the launch spinner; loading happens behind it.
-- [ ] Verify in the simulator, light and dark, Dynamic Type, Reduce Motion.
+- [x] Shown on every cold launch after onboarding, never on resume from background.
+- [x] Shows greeting with name, today's Training Day or Rest Day, the cycle strip, and "Let's go".
+- [x] Replaces the launch spinner; loading happens behind it.
+- [x] Verify in the simulator, light and dark, Dynamic Type, Reduce Motion.
 
 #### US-HO02: Focus Areas in onboarding and Settings
 **Description:** As a user, I want to pick the body parts I want to improve.
 **Acceptance Criteria:**
-- [ ] `PrimaryGoal` replaced by Focus Areas (decision 20), multi-select, optional.
-- [ ] New onboarding step and a Settings editor.
-- [ ] Persists locally (and to Convex after M3).
+- [x] `PrimaryGoal` replaced by Focus Areas (decision 20), multi-select, optional.
+- [x] New onboarding step and a Settings editor.
+- [x] Persists locally (and to Convex after M3).
 
 #### US-HO03: Focus Areas shape Training Days
 **Description:** As a user, I want my focus areas to get a bit more attention on their days.
 **Acceptance Criteria:**
-- [ ] Mapping per decision 20 (Chest -> horizontal push, Shoulders -> vertical push, Arms -> diamond/dips and rows, Back -> pull, Abs -> core, Legs -> squat and lunge, Glutes -> bridge and hinge).
-- [ ] Focused movements ordered first, padded first, Practice slot first; Abs adds a second Core Sprinkle.
-- [ ] Rotation unchanged; fit harness still green.
+- [x] Mapping per decision 20 (Chest -> horizontal push, Shoulders -> vertical push, Arms -> diamond/dips and rows, Back -> pull, Abs -> core, Legs -> squat and lunge, Glutes -> bridge and hinge).
+- [x] Focused movements ordered first, padded first, Practice slot first; Abs adds a second Core Sprinkle.
+- [x] Rotation unchanged; fit harness still green.
 
 #### US-HO04: Log an Outside Activity
 **Description:** As a user who ran three miles, I want to log it so tomorrow doesn't hit my legs again.
 **Acceptance Criteria:**
-- [ ] "Log outside activity" on Today: type, duration, optional distance.
-- [ ] Rotation applies decision 21; Today and the Welcome Page reflect the change immediately.
-- [ ] Counts as showing up for the Consistency Score; never completes a group.
-- [ ] Edit and delete a logged activity.
+- [x] "Log outside activity" on Today: type, duration, optional distance.
+- [x] Rotation applies decision 21; Today and the Welcome Page reflect the change immediately.
+- [x] Counts as showing up for the Consistency Score; never completes a group.
+- [x] Edit and delete a logged activity.
 
 #### US-HO05: Apple Health suggestions
 **Description:** As a user with an Apple Watch, I want my recorded workouts suggested so I don't retype them.
 **Acceptance Criteria:**
-- [ ] Opt-in Health read permission for workouts, with clear copy.
-- [ ] New Health workouts appear on Today as "Add it / Ignore"; nothing is applied without a tap.
-- [ ] Rep Today's own written workouts are never suggested back.
+- [x] Opt-in Health read permission for workouts, with clear copy.
+- [x] New Health workouts appear on Today as "Add it / Ignore"; nothing is applied without a tap.
+- [x] Rep Today's own written workouts are never suggested back.
 
 ### M3 - Accounts (Clerk + Convex, local-first)
 

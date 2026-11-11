@@ -21,7 +21,7 @@ app="$repo_root/ios/RepToday/RepToday"
 xcrun swiftc -parse-as-library -warnings-as-errors -D COACH_DEPLOY_TESTS \
     -module-cache-path "$private_build/module-cache" \
     "$repo_root/tools/coach-production-deploy.swift" "$repo_root/tools/coach-live-qa.swift" \
-    "$app"/Models/*.swift "$app/Services/Protocols/ServiceProtocols.swift" \
+    "$app"/Models/*.swift "$app/Services/Protocols/ServiceProtocols.swift" "$app/Services/Health/HealthWorkoutSuggestions.swift" \
     "$app"/Services/Consistency/*.swift "$app"/Services/Engine/*.swift \
     "$app/Services/Progress/ProgressAnalytics.swift" "$app/Services/Coach/CoachAnalyticsInsight.swift" "$app/Services/Coach/CoachRuntimeProofProbe.swift" \
     "$app/Services/Coach/CoachContextBundle.swift" "$app/Services/Coach/CoachSyntheticFixtures.swift" "$app/Services/Coach/CoachProxyClient.swift" "$app/Services/Coach/CoachRuntimeAuthentication.swift" \
