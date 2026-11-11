@@ -14,7 +14,7 @@ for directory in ['Models', 'Services/Engine', 'Services/Consistency', 'Services
                   'Persistence', 'Services/Programmer', 'Services/Progress']:
     sources.extend((app / directory).glob('*.swift'))
 sources.extend(app / path for path in [
-    'Services/Protocols/ServiceProtocols.swift', 'Services/Subscription/StoreKitFacade.swift',
+    'Services/Protocols/ServiceProtocols.swift', 'Services/Health/HealthWorkoutSuggestions.swift', 'Services/Subscription/StoreKitFacade.swift',
     'Services/Subscription/LiveStoreKitFacade.swift',
     'Services/Subscription/StoreKitSubscriptionService.swift', 'ViewModels/PaywallViewModel.swift',
     'ViewModels/AccountViewModel.swift', 'Services/Mock/MockServices.swift',

@@ -13,7 +13,7 @@ mkdir -p "$private_build"
 export CLANG_MODULE_CACHE_PATH="$private_build/module-cache"
 app="$repo_root/ios/RepToday/RepToday"
 sources=(tools/coach-production-deploy.swift tools/coach-live-qa.swift
-    "$app"/Models/*.swift "$app/Services/Protocols/ServiceProtocols.swift"
+    "$app"/Models/*.swift "$app/Services/Protocols/ServiceProtocols.swift" "$app/Services/Health/HealthWorkoutSuggestions.swift"
     "$app"/Services/Consistency/*.swift "$app"/Services/Engine/*.swift
     "$app/Services/Progress/ProgressAnalytics.swift" "$app/Services/Coach/CoachAnalyticsInsight.swift" "$app/Services/Coach/CoachRuntimeProofProbe.swift"
     "$app/Services/Coach/CoachContextBundle.swift" "$app/Services/Coach/CoachSyntheticFixtures.swift" "$app/Services/Coach/CoachProxyClient.swift" "$app/Services/Coach/CoachRuntimeAuthentication.swift")
