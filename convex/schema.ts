@@ -2,6 +2,37 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 /**
+ * The account-data columns every synced record table shares (M3, ADR-0016).
+ *
+ * - `ownerId` is the caller's Clerk identity as Convex verified it (`identity.tokenIdentifier`). It
+ *   is only ever read off the authenticated identity inside a function, never taken from arguments,
+ *   so a caller can neither read nor write a row it does not own (`convex/ownership.ts`).
+ * - `recordId` is the app's own record id (a `WorkoutLog.id`, an `OutsideActivity.id`, the
+ *   `User.id`), so a retried upload lands on the same row: sync is idempotent by record id.
+ * - `serverSeq` is the owner's strictly increasing change counter (`users.changeSeq`), the cursor a
+ *   device pulls changes after.
+ * - `clientUpdatedAt` is when the change was made on the device (ms since the epoch); the newer one
+ *   wins when two devices write the same record.
+ * - `payload` is the app's own JSON encoding of the record, stored verbatim as a string so the
+ *   server never rejects a field name Convex would refuse. `deleted` rows are tombstones that tell
+ *   other devices a record is gone; they carry no payload.
+ */
+const syncedRecord = {
+  ownerId: v.string(),
+  recordId: v.string(),
+  serverSeq: v.number(),
+  clientUpdatedAt: v.number(),
+  payload: v.optional(v.string()),
+  deleted: v.boolean(),
+};
+
+/**
+ * Two backends share this deployment and touch no table of the other's:
+ *
+ * - the account data (M3, ADR-0016): `users` plus the per-user record tables below, every row
+ *   owned by one Clerk identity and reached only through `convex/sync.ts` and `convex/accounts.ts`;
+ * - the telemetry evidence backend (`events`, `rateLimits`), described next.
+ *
  * The telemetry evidence backend: one immutable table with idempotent inserts.
  *
  * There is deliberately no funnel, cohort, or aggregate structure here. The evidence-table indexes
@@ -16,6 +47,70 @@ import { v } from "convex/values";
  * `generation_ms` and every other numeric property ride inside `props` and are stored as-is.
  */
 export default defineSchema({
+  /**
+   * One row per account: the Clerk identity and the owner's change counter. Created on the first
+   * authenticated write. `deletionStartedAt` is set while account deletion runs; every write is
+   * refused from then on, and the deletion job removes this row last.
+   */
+  users: defineTable({
+    ownerId: v.string(),
+    clerkUserId: v.string(),
+    createdAt: v.number(),
+    /** The last `serverSeq` handed out to one of this owner's rows. */
+    changeSeq: v.number(),
+    deletionStartedAt: v.optional(v.number()),
+  }).index("by_ownerId", ["ownerId"]),
+
+  /**
+   * The user aggregate (`User`: name, profile, phase, consistency, duration, cold start), one per
+   * owner. `recordId` is the device's `User.id`.
+   */
+  profiles: defineTable(syncedRecord)
+    .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /**
+   * The user's Focus Areas (decision 20), one row per owner, written with the profile they belong
+   * to. Kept as its own table so a server-side writer can change them without the whole profile.
+   */
+  focusAreas: defineTable({
+    ownerId: v.string(),
+    areas: v.array(v.string()),
+    serverSeq: v.number(),
+    clientUpdatedAt: v.number(),
+  }).index("by_ownerId", ["ownerId"]),
+
+  /** Completed sessions (`WorkoutLog`), one row per log. */
+  workoutLogs: defineTable({ ...syncedRecord, completedAt: v.number() })
+    .index("by_ownerId_recordId", ["ownerId", "recordId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /** Logged Outside Activities (US-HO04), one row per activity. */
+  outsideActivities: defineTable({ ...syncedRecord, date: v.number() })
+    .index("by_ownerId_recordId", ["ownerId", "recordId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /** The in-force `SessionPolicy`, one per owner. `recordId` is the `User.id` it belongs to. */
+  sessionPolicies: defineTable(syncedRecord)
+    .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /**
+   * Coach-written Custom Workouts (decision 27). Created empty in M3 so the owner's data has one
+   * shape from the start; M4 (US-CA04) fills it. Removed with the account.
+   */
+  customWorkouts: defineTable(syncedRecord)
+    .index("by_ownerId_recordId", ["ownerId", "recordId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /**
+   * The Coach agent's conversation memory (US-CA03). Created empty in M3; M4 fills it. Removed
+   * with the account.
+   */
+  coachMemory: defineTable(syncedRecord)
+    .index("by_ownerId_recordId", ["ownerId", "recordId"])
+    .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
   events: defineTable({
     /**
      * Client-generated idempotency key, stable across retries of one accepted event.
