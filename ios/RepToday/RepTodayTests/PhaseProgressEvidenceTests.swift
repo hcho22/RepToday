@@ -54,21 +54,23 @@ final class PhaseProgressEvidenceTests: XCTestCase {
         )
     }
 
-    /// A log this week whose single logged exercise clears the entry tier `exerciseId` - three sets
-    /// each meeting `value` (reps for a rep entry, seconds for a hold). Uses the *real* catalog's entry
-    /// exercises so the gate's own competence test clears them.
-    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
-        let sets = (0..<3).map { _ in
-            CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil)
-        }
+    /// A log this week whose single main station clears the entry tier `exerciseId` for the user's
+    /// level: four sets at the top of the range (reps, or seconds for a hold), at earned reps that had
+    /// reached it (US-TD03). Uses the *real* catalog's entry exercises so the gate's own competence test
+    /// clears them.
+    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool) -> WorkoutLog {
+        let top = RepGrammar.earnedRange(for: isHold ? .hold : .reps, level: disciplineUser().profile.fitnessLevel).upperBound
+        let set = CompletedSet(reps: isHold ? nil : top, durationSeconds: isHold ? top : nil)
         return WorkoutLog(
             id: UUID(), workoutId: UUID(),
             completedAt: date(weeksAgo: 0, dayOffset: 1),
             requestedMinutes: 20, durationMinutes: 20, wasReturn: false,
-            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil,
+            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
             exercises: [
                 LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                               movementPattern: pattern, completedSets: sets, skipped: false)
+                               movementPattern: pattern, completedSets: Array(repeating: set, count: RepGrammar.setsPerStation),
+                               skipped: false, role: .main,
+                               earnedReps: isHold ? nil : top, earnedDurationSeconds: isHold ? top : nil)
             ]
         )
     }
@@ -77,9 +79,9 @@ final class PhaseProgressEvidenceTests: XCTestCase {
     /// pull entry tiers cleared and the squat side of Legs, hinge and core untouched.
     private func validationLogs() -> [WorkoutLog] {
         var logs = (0..<5).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
-        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15))
-        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12))
-        logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true, value: 45))
+        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false))
+        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false))
+        logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true))
         return logs
     }
 

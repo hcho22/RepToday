@@ -202,6 +202,8 @@ enum ExerciseSwap {
 
             let overload = overloadTarget(
                 for: candidate,
+                like: prescription,
+                user: user,
                 library: library,
                 recentLogs: recentLogs,
                 sessionPolicy: sessionPolicy,
@@ -253,7 +255,14 @@ enum ExerciseSwap {
         }!
 
         return .substituted(
-            materialize(chosen.exercise, at: chosen.overload, sets: chosen.sets, stretch: slotStretch, like: prescription)
+            materialize(
+                chosen.exercise,
+                at: chosen.overload,
+                sets: chosen.sets,
+                stretch: slotStretch,
+                like: prescription,
+                level: user.profile.fitnessLevel
+            )
         )
     }
 
@@ -309,35 +318,59 @@ enum ExerciseSwap {
     /// one but not the other.
     private static func overloadTarget(
         for exercise: Exercise,
+        like prescription: PrescribedExercise,
+        user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         reentryScale: Double,
         startVolume: ColdStartOverride.VolumeSeed
     ) -> OverloadTarget {
-        let volume = exercise.pillar == .mobility ? .neutral : startVolume
-        return AdaptiveOverload.target(
+        let level = user.profile.fitnessLevel
+        let kind = RepGrammar.kind(of: exercise)
+        // A bookend stretch swaps for a stretch at its catalog length.
+        if exercise.pillar == .mobility {
+            return AdaptiveOverload.make(exercise, value: SessionAssembly.bookendValue(for: exercise), earned: 0)
+        }
+        // A Practice slot stays a Practice slot (US-TD04): the substitute runs at Practice reps.
+        if prescription.role == .practice {
+            return AdaptiveOverload.make(exercise, value: RepGrammar.practiceValue(for: kind), earned: 0)
+        }
+        let target = AdaptiveOverload.target(
             for: exercise,
+            level: level,
             recentLogs: recentLogs,
             progressionRate: sessionPolicy.progressionRate,
             reentryScale: reentryScale,
-            steppedDownSince: ProgressionChainSelection.stepDownDate(onto: exercise, library: library, recentLogs: recentLogs),
-            startingRepMultiplier: volume.repMultiplier,
-            startingSets: volume.sets
+            steppedDownSince: ProgressionChainSelection.stepDownDate(
+                onto: exercise,
+                library: library,
+                recentLogs: recentLogs,
+                level: level
+            ),
+            startingRepMultiplier: startVolume.repMultiplier
         )
+        // A main or core slot the fit padded above (or cut below) its own number hands the substitute the
+        // same number of steps, within the substitute's own floor and range. The slot's own number is its
+        // recorded Earned Reps held by the same Return or ramp ease the substitute's target carries, so
+        // that ease is applied once, never again as a cut.
+        let slotEarned = prescription.exercise.isHold ? prescription.earnedDurationSeconds : prescription.earnedReps
+        guard let slotEarned, let slotValue = prescription.reps ?? prescription.durationSeconds,
+              RepGrammar.kind(of: prescription.exercise) == kind else { return target }
+        let slotBase = AdaptiveOverload.held(slotEarned, for: kind, reentryScale: reentryScale)
+        let range = RepGrammar.earnedRange(for: kind, level: level)
+        let shifted = target.value + (slotValue - slotBase)
+        let value = min(max(shifted, RepGrammar.shortSessionFloor(for: kind)), max(range.upperBound, target.value))
+        return AdaptiveOverload.make(exercise, value: value, earned: target.earned)
     }
 
-    /// Builds the substitute prescription: the chosen movement at the original slot's rest and the set
-    /// count its budget fit settled on (the original's unless that was out of budget), carrying the
-    /// Step 6 target resolved for it under the session's own policy. The target is reps for a rep-based
-    /// movement and hold seconds for a hold, matched to the substitute's `isHold`, so a rep↔hold swap
-    /// within a pattern still yields a well-formed slot.
     private static func materialize(
         _ exercise: Exercise,
         at overload: OverloadTarget,
         sets: Int,
         stretch: Int,
-        like prescription: PrescribedExercise
+        like prescription: PrescribedExercise,
+        level: FitnessLevel
     ) -> PrescribedExercise {
         PrescribedExercise(
             id: UUID(),
@@ -346,7 +379,14 @@ enum ExerciseSwap {
             reps: exercise.isHold ? nil : overload.reps,
             durationSeconds: exercise.isHold ? overload.durationSeconds : nil,
             restSeconds: prescription.restSeconds,
-            stretchSeconds: !exercise.isHold && stretch > 0 ? stretch : nil
+            stretchSeconds: !exercise.isHold && stretch > 0 ? stretch : nil,
+            role: prescription.role,
+            earnedReps: prescription.role == .main || prescription.role == .core
+                ? (exercise.isHold ? nil : RepGrammar.served(earned: overload.earned, for: RepGrammar.kind(of: exercise), level: level))
+                : nil,
+            earnedDurationSeconds: prescription.role == .main || prescription.role == .core
+                ? (exercise.isHold ? RepGrammar.served(earned: overload.earned, for: RepGrammar.kind(of: exercise), level: level) : nil)
+                : nil
         )
     }
 

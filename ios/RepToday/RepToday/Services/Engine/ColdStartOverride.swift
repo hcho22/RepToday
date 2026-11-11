@@ -196,7 +196,7 @@ enum ColdStartOverride {
     /// Whether one session says the *tier* was beyond the user: they rated it `tooHard`. Deliberately
     /// narrower than `isVolumeDownSignal` - a skip is a preference, not a verdict on difficulty.
     static func isTierDownSignal(_ log: WorkoutLog) -> Bool {
-        log.perceivedDifficulty == .tooHard
+        !log.isRecovery && log.perceivedDifficulty == .tooHard
     }
 
     /// How much each volume down-signal eases the Start Seed's rep multiplier toward neutral: one
@@ -217,7 +217,8 @@ enum ColdStartOverride {
     /// exactly (`AdaptiveOverload` treats a `tooHard` rating and a skip identically), so the seeded
     /// volume and the ramp back off on the same evidence.
     static func isVolumeDownSignal(_ log: WorkoutLog) -> Bool {
-        log.perceivedDifficulty == .tooHard
+        guard !log.isRecovery else { return false }
+        return log.perceivedDifficulty == .tooHard
             || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
     }
 

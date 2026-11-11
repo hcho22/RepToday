@@ -256,4 +256,16 @@ final class ColdStartHandoffTests: XCTestCase {
         let b = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
         XCTAssertEqual(a, b)
     }
+
+    /// A Recovery flow is not a session: it is never one of the cold-start sessions, and a `tooHard`
+    /// rating on it eases no band.
+    func testARecoveryFlowIsNeverAColdStartSessionOrSignal() {
+        var recovery = TrainingDayFixtures.recoveryLog(completedAt: TrainingDayFixtures.date(daysAgo: 2))
+        recovery.perceivedDifficulty = .tooHard
+        let sessions = (3...7).map { TrainingDayFixtures.trainingLog(.push, completedAt: TrainingDayFixtures.date(daysAgo: $0)) }
+        let window = ColdStartHandoff.coldStartWindowLogs([recovery] + sessions)
+        XCTAssertEqual(Set(window.map(\.id)), Set(sessions.prefix(ColdStartHandoff.handoffThreshold).map(\.id)))
+        XCTAssertEqual(ColdStartOverride.tierDownSignalCount(recentLogs: [recovery]), 0)
+        XCTAssertEqual(ColdStartOverride.volumeDownSignalCount(recentLogs: [recovery]), 0)
+    }
 }

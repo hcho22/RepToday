@@ -166,6 +166,18 @@ final class ReturnOverrideTests: XCTestCase {
                        "a later Return starts a fresh ramp")
     }
 
+    /// A Recovery flow is not a session: it neither closes a gap nor uses up a Re-entry Ramp session,
+    /// and it is never held as one.
+    func testARecoveryFlowCountsTowardNoReturnRule() {
+        let recovery = TrainingDayFixtures.recoveryLog(completedAt: date(daysAgo: 1))
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: [log(daysAgo: 10), recovery], asOf: asOf, calendar: calendar))
+        XCTAssertEqual(ReturnOverride.daysSinceLastSession(recentLogs: [log(daysAgo: 10), recovery], asOf: asOf, calendar: calendar), 10)
+
+        let ramp = [returnLog(daysAgo: 3), log(daysAgo: 2), recovery]
+        XCTAssertEqual(ReturnOverride.rampSessionsRemaining(recentLogs: ramp), ReturnOverride.rampSessions - 1)
+        XCTAssertFalse(ReturnOverride.splitHeld(ramp).held.contains { $0.id == recovery.id })
+    }
+
     /// The ramp climbs from the floor back to neutral as its sessions are completed.
     func testRampScaleClimbsAsRemainingDecrements() {
         let three = ReturnOverride.rampScale(remaining: 3)

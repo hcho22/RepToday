@@ -1,36 +1,26 @@
 import XCTest
 @testable import RepToday
 
-/// Tests pipeline Step 7 of the deterministic engine (US-C07): assembling Steps 1-6 into a complete,
-/// timing-fit `Workout`.
+/// Tests pipeline Step 7 of the deterministic engine: assembling a Training Day into a complete,
+/// timing-fit `Workout` (`SessionAssembly`, ADR-0012/ADR-0013).
 ///
-/// Coverage mirrors the PRD acceptance criteria, run end-to-end over the real bundled library so the
-/// whole pipeline is exercised: every session opens with a warm-up; a cooldown closes a session only
-/// when it runs past 10 minutes; the planned wall-clock lands within ±1 minute of the request for
-/// 5/10/15/20/30; generation is under 100ms; the output is a fully-formed, capacity-relative session;
-/// and assembly is deterministic. The final block is the PRD's own validation case (intermediate user,
-/// some history, 20 minutes).
+/// Run end-to-end over the real bundled library so the whole pipeline is exercised: every session opens
+/// with a warm-up and closes with a cooldown past 10 minutes; the bookends are length-scaled; the planned
+/// wall-clock lands within `toleranceSeconds` of the request or runs honestly short; generation is under
+/// 100ms; the output is fully formed and capacity-relative; the Session Policy, cold-start and Return
+/// overrides reach the session; and assembly is deterministic. `TrainingDaySessionTests` owns the slot
+/// plan inside the circuit; `TrainingDayFitHarnessTests` the full fit matrix.
 final class SessionAssemblyTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        return calendar
-    }()
+    private var library: [Exercise] = []
 
-    private var asOf: Date {
-        calendar.date(from: DateComponents(year: 2026, month: 6, day: 29, hour: 12))!
+    override func setUp() async throws {
+        library = try await MockExerciseService().exercises()
     }
 
-    private func date(daysAgo: Int) -> Date {
-        calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!
-    }
-
-    private func library() async throws -> [Exercise] {
-        try await MockExerciseService().exercises()
-    }
+    private let lengths = [5, 10, 15, 20, 30, 45, 60]
 
     private func user(
         level: FitnessLevel = .intermediate,
@@ -38,261 +28,197 @@ final class SessionAssemblyTests: XCTestCase {
         sitsLong: Bool = false,
         injuries: [String] = []
     ) -> User {
-        User(
-            id: "u1",
-            displayName: "Test",
-            createdAt: asOf,
-            profile: UserProfile(
-                age: 35,
-                sex: .other,
-                heightCm: 175,
-                weightKg: 75,
-                fitnessLevel: level,
-                primaryGoal: .stayActive,
-                sitsLong: sitsLong,
-                injuries: injuries,
-                typicalAvailableMinutes: 15
-            ),
-            phase: phase,
-            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
-            consistency: Consistency(
-                weeklyGoal: 3,
-                score: 50,
-                workoutsThisWeek: 1,
-                longestChain: 0,
-                totalWorkoutsCompleted: 0,
-                totalMinutesExercised: 0
-            )
-        )
+        TrainingDayFixtures.user(level: level, phase: phase, injuries: injuries, sitsLong: sitsLong)
     }
-
-    /// A completed session `daysAgo` working `exercises` (id, pillar, pattern, per-set reps), used to
-    /// give the user "some history" so Steps 2-6 have signal.
-    private func log(
-        _ exercises: [(id: String, pillar: Pillar, pattern: MovementPattern, reps: Int)],
-        daysAgo: Int,
-        difficulty: PerceivedDifficulty? = nil
-    ) -> WorkoutLog {
-        WorkoutLog(
-            id: UUID(),
-            workoutId: UUID(),
-            completedAt: date(daysAgo: daysAgo),
-            requestedMinutes: 20,
-            durationMinutes: 20,
-            shape: .blend,
-            focusPillar: nil,
-            perceivedDifficulty: difficulty,
-            exercises: exercises.map { entry in
-                LoggedExercise(
-                    id: UUID(),
-                    exerciseId: entry.id,
-                    pillar: entry.pillar,
-                    movementPattern: entry.pattern,
-                    completedSets: [
-                        CompletedSet(reps: entry.reps, durationSeconds: nil),
-                        CompletedSet(reps: entry.reps, durationSeconds: nil),
-                        CompletedSet(reps: entry.reps, durationSeconds: nil),
-                    ],
-                    skipped: false
-                )
-            }
-        )
-    }
-
-    /// A few days of mixed history so the engine has staleness and capacity signal to read.
-    private func someHistory() -> [WorkoutLog] {
-        [
-            log([
-                ("push_standard", .strength, .push, 12),
-                ("squat_bodyweight", .strength, .squat, 15),
-            ], daysAgo: 2, difficulty: .justRight),
-            log([
-                ("mobility_cat_cow", .mobility, .mobility, 10),
-            ], daysAgo: 4),
-        ]
-    }
-
-    private let durations = [5, 10, 15, 20, 30]
 
     private func assemble(
         minutes: Int,
-        user: User,
-        library: [Exercise],
-        logs: [WorkoutLog]
+        user: User? = nil,
+        logs: [WorkoutLog] = [],
+        policy: SessionPolicy = .default,
+        day: TrainingDay? = nil
     ) -> Workout {
         SessionAssembly.assemble(
+            requestedMinutes: minutes,
+            user: user ?? self.user(),
+            library: library,
+            recentLogs: logs,
+            sessionPolicy: policy,
+            trainingDay: day,
+            asOf: TrainingDayFixtures.asOf,
+            calendar: TrainingDayFixtures.calendar
+        )
+    }
+
+    /// A few days of Training Day history: Push and Pull completed, so the Rotation serves Legs, and a
+    /// stretch used, so the bookends read variety.
+    private func someHistory() -> [WorkoutLog] {
+        [
+            TrainingDayFixtures.log([
+                TrainingDayFixtures.station("push_standard", pattern: .push, value: 20, earned: 20),
+                TrainingDayFixtures.station("core_forearm_plank", pattern: .core, role: .core, value: 30, earned: 30, isHold: true),
+                TrainingDayFixtures.station("mobility_cat_cow", pattern: .mobility, pillar: .mobility, role: nil, value: 10, sets: 1),
+            ], completedAt: TrainingDayFixtures.date(daysAgo: 3)),
+            TrainingDayFixtures.trainingLog(.pull, completedAt: TrainingDayFixtures.date(daysAgo: 2)),
+        ]
+    }
+
+    /// `workout` completed as prescribed, logged the way the player writes it: every station with its
+    /// role and the Earned Reps it was served from, each set at the served number.
+    private func logged(
+        _ workout: Workout,
+        at date: Date,
+        difficulty: PerceivedDifficulty? = .justRight,
+        wasReturn: Bool = false
+    ) -> WorkoutLog {
+        var log = TrainingDayFixtures.log(
+            workout.blocks.flatMap(\.exercises).map { item in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: item.exercise.id,
+                    pillar: item.exercise.pillar,
+                    movementPattern: item.exercise.movementPattern,
+                    completedSets: Array(repeating: CompletedSet(reps: item.reps, durationSeconds: item.durationSeconds), count: item.sets),
+                    skipped: false,
+                    role: item.role,
+                    earnedReps: item.earnedReps,
+                    earnedDurationSeconds: item.earnedDurationSeconds
+                )
+            },
+            completedAt: date,
+            difficulty: difficulty,
+            requestedMinutes: workout.requestedMinutes
+        )
+        log.wasReturn = wasReturn
+        return log
+    }
+
+    private func circuit(_ workout: Workout) -> [PrescribedExercise] {
+        workout.blocks.filter { $0.category == .strength }.flatMap(\.exercises)
+    }
+
+    /// The session lands within `toleranceSeconds` of `minutes`, or runs short only because the same plan,
+    /// re-fit, has no lever left (`isSaturated`) - an honest shortfall. It never overruns.
+    private func assertFillsOrRunsHonestlyShort(
+        _ workout: Workout,
+        minutes: Int,
+        user: User,
+        logs: [WorkoutLog],
+        policy: SessionPolicy = .default,
+        _ label: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let gap = SessionAssembly.plannedSeconds(of: workout) - minutes * 60
+        guard abs(gap) > SessionAssembly.toleranceSeconds else { return }
+        XCTAssertLessThan(gap, 0, "\(label): overruns by \(gap)s", file: file, line: line)
+        guard let day = workout.trainingDay else { return XCTFail("\(label): no Training Day", file: file, line: line) }
+        var plan = SessionAssembly.planSession(
             requestedMinutes: minutes,
             user: user,
             library: library,
             recentLogs: logs,
-            asOf: asOf,
-            calendar: calendar
+            sessionPolicy: policy,
+            trainingDay: day,
+            asOf: TrainingDayFixtures.asOf,
+            calendar: TrainingDayFixtures.calendar
         )
+        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+        XCTAssertTrue(plan.isSaturated, "\(label): runs \(-gap)s short with fit levers left", file: file, line: line)
+    }
+
+    /// A run-to-run-stable description of a workout's content (ids vary by design).
+    private func structuralSignature(_ workout: Workout) -> String {
+        workout.blocks.map { block in
+            let items = block.exercises.map { p in
+                "\(p.exercise.id):\(p.sets):\(p.reps.map(String.init) ?? "-"):\(p.durationSeconds.map(String.init) ?? "-"):\(p.restSeconds)"
+            }.joined(separator: ",")
+            return "\(block.category.rawValue)p\(block.transitionSeconds ?? 0)[\(items)]"
+        }.joined(separator: "|")
     }
 
     // MARK: - Warm-up always opens the session
 
-    func testEverySessionOpensWithAWarmUp() async throws {
-        let library = try await library()
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
-            let first = try XCTUnwrap(workout.blocks.first, "\(minutes) min produced no blocks")
-            XCTAssertEqual(first.category, .warmup, "\(minutes) min must open with a warm-up")
-            XCTAssertFalse(first.exercises.isEmpty, "\(minutes) min warm-up must have an exercise")
+    func testEverySessionOpensWithAWarmUp() throws {
+        for day in TrainingDay.rotation {
+            for minutes in lengths {
+                let workout = assemble(minutes: minutes, logs: someHistory(), day: day)
+                let first = try XCTUnwrap(workout.blocks.first, "\(day) \(minutes) min produced no blocks")
+                XCTAssertEqual(first.category, .warmup, "\(day) \(minutes) min must open with a warm-up")
+                XCTAssertFalse(first.exercises.isEmpty, "\(day) \(minutes) min warm-up must have an exercise")
+            }
         }
     }
 
-    /// US-001 validation case: a fresh (no-history) desk worker - the originally-reported
-    /// all-mobility failure profile - gets a **strength**-led single-focus session at 5 and 10
-    /// minutes. Each opens with a mobility warm-up and then trains strength; no mobility *training*
-    /// block appears (mobility survives only as the warm-up at these lengths).
-    func testShortSingleFocusLeadsStrengthForFreshDeskWorker() async throws {
-        let library = try await library()
-        for minutes in [5, 10] {
-            let workout = assemble(minutes: minutes, user: user(sitsLong: true), library: library, logs: [])
-            XCTAssertEqual(
-                workout.focusPillar, .strength,
-                "\(minutes) min single-focus must lead strength (US-001)"
-            )
-            // Opens with a mobility warm-up.
-            let first = try XCTUnwrap(workout.blocks.first, "\(minutes) min produced no blocks")
-            XCTAssertEqual(first.category, .warmup, "\(minutes) min must open with a warm-up")
-            XCTAssertTrue(
-                first.exercises.allSatisfy { $0.exercise.pillar == .mobility },
-                "\(minutes) min warm-up is mobility movements"
-            )
-            // A strength training block is present.
-            XCTAssertTrue(
-                workout.blocks.contains { $0.category == .strength },
-                "\(minutes) min must contain a strength training block"
-            )
-            // No mobility *training* block: mobility appears only in the warm-up.
-            XCTAssertFalse(
-                workout.blocks.contains { $0.category == .mobility },
-                "\(minutes) min must not contain a mobility training block"
-            )
-            let nonWarmupExercises = workout.blocks
-                .filter { $0.category != .warmup && $0.category != .cooldown }
-                .flatMap(\.exercises)
-            XCTAssertFalse(nonWarmupExercises.isEmpty, "\(minutes) min must have training exercises")
-            XCTAssertFalse(
-                nonWarmupExercises.contains { $0.exercise.pillar == .mobility },
-                "\(minutes) min: no mobility movement outside the warm-up"
-            )
+    /// The originally-reported failure profile - a fresh desk worker - gets a strength circuit at 5 and 10
+    /// minutes: a mobility warm-up, then the day's circuit, and no mobility movement outside the warm-up.
+    func testShortSessionsTrainStrengthForAFreshDeskWorker() throws {
+        for day in TrainingDay.rotation {
+            for minutes in [5, 10] {
+                let workout = assemble(minutes: minutes, user: user(sitsLong: true), day: day)
+                let label = "\(day) \(minutes) min"
+                XCTAssertEqual(workout.focusPillar, .strength, label)
+                XCTAssertEqual(workout.blocks.map(\.category), [.warmup, .strength], label)
+                let warmup = try XCTUnwrap(workout.blocks.first)
+                XCTAssertTrue(warmup.exercises.allSatisfy { $0.exercise.pillar == .mobility }, label)
+                XCTAssertFalse(circuit(workout).isEmpty, label)
+                XCTAssertFalse(circuit(workout).contains { $0.exercise.pillar == .mobility }, label)
+            }
         }
     }
 
-    // MARK: - Warm-up is beefier and scales with session length
+    // MARK: - Bookends scale with session length
 
-    /// The opening warm-up is seeded at the length-scaled count (`warmupExerciseCount`), every one a
-    /// distinct one-set mobility movement. This pins the "more fully loosened up before the Strength
-    /// block" behavior: a real session opens with 1-4 warm-up movements, not the single stretch the
-    /// old fit-dependent seeding usually produced.
-    func testWarmUpIsSeededAtTheLengthScaledCount() async throws {
-        let library = try await library()
-        for minutes in [5, 10, 15, 20, 30, 45, 60] {
-            let expected = SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes)
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
-            let warmup = try XCTUnwrap(workout.blocks.first, "\(minutes) min produced no blocks")
+    /// The warm-up is seeded at the length-scaled count, every one a distinct one-set stretch.
+    func testWarmUpIsSeededAtTheLengthScaledCount() throws {
+        for minutes in lengths {
+            let workout = assemble(minutes: minutes, logs: someHistory())
+            let warmup = try XCTUnwrap(workout.blocks.first)
             XCTAssertEqual(warmup.category, .warmup)
-            XCTAssertEqual(
-                warmup.exercises.count, expected,
-                "\(minutes) min warm-up should carry \(expected) movements"
-            )
-            // Every warm-up movement is a distinct one-set stretch (bookend one-set rule).
+            XCTAssertEqual(warmup.exercises.count, SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes), "\(minutes) min")
             XCTAssertTrue(warmup.exercises.allSatisfy { $0.sets == 1 }, "\(minutes) min: warm-up is one set each")
-            XCTAssertEqual(
-                Set(warmup.exercises.map { $0.exercise.id }).count, warmup.exercises.count,
-                "\(minutes) min: warm-up movements are distinct"
-            )
-            XCTAssertTrue(
-                warmup.exercises.allSatisfy { $0.exercise.pillar == .mobility },
-                "\(minutes) min: warm-up draws from the mobility pool"
-            )
+            XCTAssertEqual(Set(warmup.exercises.map(\.exercise.id)).count, warmup.exercises.count, "\(minutes) min: distinct")
+            XCTAssertTrue(warmup.exercises.allSatisfy { $0.exercise.pillar == .mobility }, "\(minutes) min: mobility")
         }
     }
 
-    /// A longer session opens with a warm-up at least as full as a shorter one, and strictly fuller
-    /// across the range - the length-scaled thoroughness the objective asks for.
-    func testWarmUpGrowsWithSessionLength() async throws {
-        let library = try await library()
-        func warmupCount(_ minutes: Int) throws -> Int {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
-            return try XCTUnwrap(workout.blocks.first { $0.category == .warmup }).exercises.count
+    /// The length bands themselves (decisions 7-8), bound to literals so a drifted boundary fails here:
+    /// warm-up 1 stretch up to 10 minutes and 2 beyond; cooldown none up to 10, 1 at 15-20, 2 from 30; main
+    /// slots 1 up to 20, 2 at 30, 3 at 45, 4 at 60; one Core Sprinkle past 10 minutes.
+    func testLengthBandsAreLeanAndLengthScaled() {
+        let warmup = [5: 1, 10: 1, 15: 2, 20: 2, 30: 2, 45: 2, 60: 2]
+        let cooldown = [5: 0, 10: 0, 15: 1, 20: 1, 30: 2, 45: 2, 60: 2]
+        let mains = [5: 1, 10: 1, 15: 1, 20: 1, 30: 2, 45: 3, 60: 4]
+        let core = [5: 0, 10: 0, 15: 1, 20: 1, 30: 1, 45: 1, 60: 1]
+        for minutes in lengths {
+            XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes), warmup[minutes], "\(minutes)")
+            XCTAssertEqual(SessionAssembly.cooldownExerciseCount(forRequestedMinutes: minutes), cooldown[minutes], "\(minutes)")
+            XCTAssertEqual(SessionAssembly.mainSlotCount(forRequestedMinutes: minutes), mains[minutes], "\(minutes)")
+            XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: minutes), core[minutes], "\(minutes)")
         }
-        let short = try warmupCount(10)
-        let mid = try warmupCount(20)
-        let long = try warmupCount(60)
-        XCTAssertLessThanOrEqual(short, mid, "a 20 min warm-up is at least as full as a 10 min one")
-        XCTAssertLessThan(short, long, "a 60 min session opens with a fuller warm-up than a 10 min one")
-        XCTAssertLessThanOrEqual(
-            long, SessionAssembly.maxWarmupExercises,
-            "the warm-up never exceeds its pool-budget ceiling"
-        )
+        XCTAssertEqual(SessionAssembly.maxWarmupExercises, 2)
+        XCTAssertEqual(SessionAssembly.maxCooldownExercises, 2)
     }
 
-    /// US-003 pins the exact length-scaled band mapping - a lean **1** at ≤10 min so the warm-up does
-    /// not crowd out strength in a tiny session, rising to **2 / 3 / 4** across 11-20 / 21-40 / 41-60 -
-    /// and the ceiling that caps it. Derived-expectation tests above track whatever the function returns;
-    /// this one fails if the band boundaries themselves ever drift.
-    func testWarmUpCountBandMappingIsLeanAndLengthScaled() {
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 5), 1)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 10), 1)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 11), 2)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 15), 2)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 20), 2)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 21), 3)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 30), 3)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 40), 3)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 41), 4)
-        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 60), 4)
-        XCTAssertEqual(SessionAssembly.maxWarmupExercises, 4, "the ceiling matches the top band")
-    }
-
-    /// The fuller warm-up must not over-drain the shared mobility pool. Since US-M01 the only
-    /// mobility-sourced blocks are the warm-up and cooldown bookends (no Movement Practice middle block),
-    /// so even the worst case - a long session where the warm-up hits its ceiling and the cooldown fills -
-    /// leaves real day-to-day variety headroom, and the cooldown is never starved of its holds.
-    func testFullerWarmUpDoesNotStarveThePoolOrCooldown() async throws {
-        let library = try await library()
+    /// Even the fullest bookends - a 60-minute session's two warm-up and two cooldown stretches - never
+    /// reuse a stretch and leave day-to-day variety headroom in the mobility pool.
+    func testFullBookendsDoNotStarveTheMobilityPool() throws {
         let mobilityTotal = library.filter { $0.pillar == .mobility }.count
-        // Mobility six days stale, strength worked yesterday - the worst case for bookend pool draw.
-        let mobilityStale = [
-            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
-        ]
-        let workout = assemble(minutes: 60, user: user(), library: library, logs: mobilityStale)
-
-        let cooldown = try XCTUnwrap(workout.blocks.first { $0.category == .cooldown }, "60 min must have a cooldown")
-        XCTAssertFalse(cooldown.exercises.isEmpty, "the cooldown keeps its holds")
-
-        // Mobility appears only in the warm-up and cooldown bookends - never a mobility training block.
-        XCTAssertFalse(
-            workout.blocks.contains { $0.category == .mobility },
-            "no mobility training block is emitted (US-M01)"
-        )
-
-        let mobilityIds = workout.blocks
-            .flatMap { $0.exercises }
-            .filter { $0.exercise.pillar == .mobility }
-            .map { $0.exercise.id }
-        XCTAssertEqual(Set(mobilityIds).count, mobilityIds.count, "no mobility movement is reused across bookends")
-        XCTAssertLessThanOrEqual(
-            Set(mobilityIds).count, mobilityTotal,
-            "the bookends cannot draw more movements than the pool holds"
-        )
-        XCTAssertGreaterThanOrEqual(
-            mobilityTotal - Set(mobilityIds).count, 2,
-            "the worst-case bookend draw leaves day-to-day variety headroom in the mobility pool"
-        )
+        for day in TrainingDay.rotation {
+            let workout = assemble(minutes: 60, logs: someHistory(), day: day)
+            let cooldown = try XCTUnwrap(workout.blocks.first { $0.category == .cooldown }, "\(day): 60 min has a cooldown")
+            XCTAssertEqual(cooldown.exercises.count, 2, "\(day)")
+            let mobilityIds = workout.blocks.flatMap(\.exercises).filter { $0.exercise.pillar == .mobility }.map(\.exercise.id)
+            XCTAssertEqual(Set(mobilityIds).count, mobilityIds.count, "\(day): a stretch is reused across bookends")
+            XCTAssertGreaterThanOrEqual(mobilityTotal - mobilityIds.count, 2, "\(day): no variety headroom left")
+        }
     }
 
     // MARK: - Cooldown only past 10 minutes
 
-    func testCooldownPresentOnlyWhenOverTenMinutes() async throws {
-        let library = try await library()
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
+    func testCooldownPresentOnlyWhenOverTenMinutes() {
+        for minutes in lengths {
+            let workout = assemble(minutes: minutes, logs: someHistory())
             let hasCooldown = workout.blocks.contains { $0.category == .cooldown }
             if minutes > 10 {
                 XCTAssertTrue(hasCooldown, "\(minutes) min should end with a cooldown")
@@ -303,1192 +229,510 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
-    // MARK: - Timing fit: within ±1 minute
-
-    func testTotalTimeLandsWithinOneMinuteForEveryDuration() async throws {
-        let library = try await library()
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
-            let planned = SessionAssembly.plannedSeconds(of: workout)
-            let target = minutes * 60
-            XCTAssertLessThanOrEqual(
-                abs(planned - target),
-                SessionAssembly.toleranceSeconds,
-                "\(minutes) min planned \(planned)s is outside ±60s of \(target)s"
-            )
-        }
-    }
-
-    func testTimingFitHoldsForAFreshUserToo() async throws {
-        let library = try await library()
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: [])
-            let planned = SessionAssembly.plannedSeconds(of: workout)
-            XCTAssertLessThanOrEqual(abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
-                                     "fresh-user \(minutes) min planned \(planned)s outside tolerance")
-        }
-    }
-
-    /// US-002 timing guard: the strength-dominant blend still lands inside ±60s at every blend length,
-    /// including the long ones (45, 60) where the lower mobility share leaves the strength/primal set
-    /// lever to carry more of the time, for both an active and a sedentary (larger-accessory) profile.
-    func testBlendTimingFitHoldsAcrossAllLengthsUnderStrengthDominance() async throws {
-        let library = try await library()
-        for sitsLong in [false, true] {
+    /// The cooldown is static holds: on every day and length that carries one, every cooldown stretch is
+    /// a hold.
+    func testCooldownIsStaticHolds() {
+        for day in TrainingDay.rotation {
             for minutes in [15, 20, 30, 45, 60] {
-                let workout = assemble(minutes: minutes, user: user(sitsLong: sitsLong), library: library, logs: [])
-                let planned = SessionAssembly.plannedSeconds(of: workout)
-                XCTAssertLessThanOrEqual(
-                    abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
-                    "sitsLong=\(sitsLong) \(minutes) min planned \(planned)s outside ±60s under US-002"
-                )
+                let cooldown = assemble(minutes: minutes, logs: someHistory(), day: day)
+                    .blocks.first { $0.category == .cooldown }?.exercises ?? []
+                XCTAssertFalse(cooldown.isEmpty, "\(day) \(minutes) min")
+                XCTAssertTrue(cooldown.allSatisfy { $0.exercise.isHold }, "\(day) \(minutes) min: \(cooldown.map(\.exercise.id))")
             }
         }
     }
 
-    /// The ±1 minute promise for the population the per-side work model actually changes: a long-tenured
-    /// user whose *holds* have grown well past their defaults.
-    ///
-    /// The two fit tests above run against `someHistory()`, whose logs sit near the movements' rep
-    /// defaults and contain no holds at all - which is precisely the configuration in which the setup /
-    /// per-unit split and the per-side doubling are both no-ops, so neither could ever have caught a
-    /// per-side slot blowing the budget. This drives every per-side hold in the catalog to the top of its
-    /// rail, where `AdaptiveOverload` clamps a per-side hold to `maxHoldSeconds / sidesPerSet` so that
-    /// the *set* still costs at most three minutes rather than six.
-    func testTimingFitHoldsForCapacityGrownPerSideHolds() async throws {
-        let library = try await library()
-        let perSideHolds = library.filter { $0.isHold && $0.sidesPerSet > 1 }
-        XCTAssertFalse(perSideHolds.isEmpty, "the catalog must carry per-side holds for this to test anything")
+    // MARK: - Timing fit
 
-        // Worked far above every rail, so the clamp is what decides the target rather than the log.
-        let grown = WorkoutLog(
-            id: UUID(),
-            workoutId: UUID(),
-            completedAt: date(daysAgo: 2),
-            requestedMinutes: 20,
-            durationMinutes: 20,
-            shape: .blend,
-            focusPillar: nil,
-            perceivedDifficulty: .tooEasy,
-            exercises: perSideHolds.map { hold in
-                LoggedExercise(
-                    id: UUID(),
-                    exerciseId: hold.id,
-                    pillar: hold.pillar,
-                    movementPattern: hold.movementPattern,
-                    completedSets: Array(
-                        repeating: CompletedSet(reps: nil, durationSeconds: 300),
-                        count: 3
-                    ),
-                    skipped: false
-                )
+    /// Every length, Training Day and history - with and without the desk-worker bias - lands within the
+    /// tolerance of the request, or runs honestly short.
+    func testEveryLengthFillsWithinToleranceOrRunsHonestlyShort() {
+        for (name, logs) in [("history", someHistory()), ("fresh", [WorkoutLog]())] {
+            for sitsLong in [false, true] {
+                let person = user(sitsLong: sitsLong)
+                for day in TrainingDay.rotation {
+                    for minutes in lengths {
+                        let workout = assemble(minutes: minutes, user: person, logs: logs, day: day)
+                        assertFillsOrRunsHonestlyShort(
+                            workout, minutes: minutes, user: person, logs: logs,
+                            "\(name) sitsLong=\(sitsLong) \(day) \(minutes) min"
+                        )
+                    }
+                }
             }
+        }
+    }
+
+    /// A long-tenured user whose holds have grown far past the range: every hold is served at most the
+    /// top of the level's range (per side, for a per-side hold), and the session still fits.
+    func testTimingFitHoldsForCapacityGrownHolds() {
+        let holds = library.filter { $0.isHold && $0.pillar == .strength }
+        XCTAssertTrue(holds.contains { $0.sidesPerSet > 1 }, "the catalog must carry per-side holds for this to test anything")
+        let grown = TrainingDayFixtures.log(
+            holds.map { TrainingDayFixtures.station($0.id, pattern: $0.movementPattern, value: 300, earned: 300, isHold: true) },
+            completedAt: TrainingDayFixtures.date(daysAgo: 2),
+            difficulty: .tooEasy
         )
-
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: [grown])
-
-            for item in workout.blocks.flatMap(\.exercises) where item.exercise.sidesPerSet > 1 {
-                guard let seconds = item.durationSeconds else { continue }
-                XCTAssertLessThanOrEqual(
-                    seconds * item.exercise.sidesPerSet,
-                    AdaptiveOverload.maxHoldSeconds,
-                    "\(item.exercise.id) prescribes \(seconds)s per side, so the set costs "
-                        + "\(seconds * item.exercise.sidesPerSet)s - past the rail it is supposed to obey"
-                )
-            }
-
-            let planned = SessionAssembly.plannedSeconds(of: workout)
-            XCTAssertLessThanOrEqual(
-                abs(planned - minutes * 60),
-                SessionAssembly.toleranceSeconds,
-                "\(minutes) min with grown per-side holds planned \(planned)s outside ±60s"
-            )
-        }
-    }
-
-    // MARK: - Even-round circuit timing (US-CC03/US-CC04, ADR-0003)
-
-    /// The seven acceptance lengths, including the extended 45/60 the base `durations` omit.
-    private let circuitDurations = [5, 10, 15, 20, 30, 45, 60]
-
-    /// A history that leaves primal stale so the 45/60 extended sessions carve out a dedicated primal
-    /// block (whose uniform round count US-CC03 also has to hold), while strength/mobility stay current.
-    private func stalePrimalSteadyHistory() -> [WorkoutLog] {
-        [
-            log([
-                ("push_standard", .strength, .push, 12),
-                ("squat_bodyweight", .strength, .squat, 15),
-            ], daysAgo: 2, difficulty: .justRight),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3),
-            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 14),
-        ]
-    }
-
-    /// US-CC03 validation: within every training block (the strength block, and at 45/60 the dedicated
-    /// primal block), every exercise carries an identical `sets` value - the block's round count - so
-    /// circuit rounds are structurally even and "Round N of M" is well-defined. The two blocks need not
-    /// equal each other; each is internally uniform.
-    func testTrainingBlocksCarryOneUniformRoundCountEachEvenRound() async throws {
-        let library = try await library()
-        for minutes in circuitDurations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
-            let trainingBlocks = workout.blocks.filter {
-                $0.category == .strength || $0.category == .primal
-            }
-            XCTAssertFalse(trainingBlocks.isEmpty, "\(minutes) min produced no training block")
-            for block in trainingBlocks {
-                let sets = Set(block.exercises.map(\.sets))
-                XCTAssertEqual(
-                    sets.count, 1,
-                    "\(minutes) min \(block.category) block is uneven: set counts \(sets.sorted()) must all equal the round count"
-                )
-                XCTAssertGreaterThanOrEqual(block.exercises.first?.sets ?? 0, SessionAssembly.minTrainingSets)
-                XCTAssertLessThanOrEqual(block.exercises.first?.sets ?? 0, SessionAssembly.maxTrainingSets)
-            }
-        }
-    }
-
-    /// US-CC03: the 45- and 60-minute extended sessions genuinely produce a dedicated primal block whose
-    /// own round count is uniform, read alongside the strength block's (they may differ from each other).
-    func testExtendedSessionPrimalAndStrengthBlocksAreEachInternallyUniform() async throws {
-        let library = try await library()
-        for minutes in [45, 60] {
-            let workout = assemble(minutes: minutes, user: user(level: .intermediate), library: library, logs: stalePrimalSteadyHistory())
-            let strength = try XCTUnwrap(workout.blocks.first { $0.category == .strength }, "\(minutes) min needs a strength block")
-            let primal = try XCTUnwrap(workout.blocks.first { $0.category == .primal }, "\(minutes) min extended needs a dedicated primal block")
-
-            XCTAssertEqual(Set(strength.exercises.map(\.sets)).count, 1, "\(minutes) min strength block round count is not uniform")
-            XCTAssertEqual(Set(primal.exercises.map(\.sets)).count, 1, "\(minutes) min primal block round count is not uniform")
-        }
-    }
-
-    /// ADR-0010: every rest is at most 15 seconds. Within each training block the between-round rest is
-    /// uniform across the block's stations and sits at `roundRestSeconds`, never above `maxRestSeconds`;
-    /// a bookend's between-set rest is capped the same way. Asserted for every length.
-    func testEveryRestIsAtMostFifteenSecondsForEveryLength() async throws {
-        let library = try await library()
-        for minutes in circuitDurations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
-            for block in workout.blocks {
-                let rests = Set(block.exercises.map(\.restSeconds))
-                if SessionAssembly.isCircuit(block.category) {
-                    XCTAssertEqual(rests, [SessionAssembly.roundRestSeconds], "\(minutes) min \(block.category) round rest \(rests.sorted())")
-                }
-                for rest in rests {
-                    XCTAssertLessThanOrEqual(rest, SessionAssembly.maxRestSeconds, "\(minutes) min \(block.category) rest \(rest)s")
+        for level in FitnessLevel.allCases {
+            let person = user(level: level)
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    let workout = assemble(minutes: minutes, user: person, logs: [grown], day: day)
+                    for item in circuit(workout) where item.exercise.isHold {
+                        let seconds = item.durationSeconds ?? 0
+                        XCTAssertLessThanOrEqual(
+                            seconds, RepGrammar.earnedRange(for: item.exercise, level: level).upperBound,
+                            "\(level) \(day) \(minutes) min: \(item.exercise.id) held \(seconds)s per side, past the top of the range"
+                        )
+                    }
+                    assertFillsOrRunsHonestlyShort(workout, minutes: minutes, user: person, logs: [grown], "\(level) \(day) \(minutes) min")
                 }
             }
         }
     }
 
-    /// US-CC04 / ADR-0010 validation: with rests fixed at 15 seconds and stretched work windows carrying
-    /// the fine fit, every one of the seven acceptance lengths still lands the planned
-    /// wall-clock within `toleranceSeconds` (±60s) of the request - measured with the updated even-round
-    /// formula `plannedSeconds` reports. Run for both a steady user and a fresh (no-history) one.
-    func testEveryLengthLandsWithinToleranceUnderEvenRoundModel() async throws {
-        let library = try await library()
-        for logs in [stalePrimalSteadyHistory(), []] {
-            for minutes in circuitDurations {
-                let workout = assemble(minutes: minutes, user: user(), library: library, logs: logs)
-                let planned = SessionAssembly.plannedSeconds(of: workout)
-                XCTAssertLessThanOrEqual(
-                    abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
-                    "\(minutes) min (history=\(logs.count)) planned \(planned)s is outside ±60s under the even-round model"
-                )
+    // MARK: - Sets and rests
+
+    /// Every circuit station runs four sets with one shared rest after a round, at most the round-rest cap
+    /// for the length and level; every stretch is one set with the bookend rest.
+    func testCircuitStationsShareFourSetsAndOneRoundRest() {
+        for level in FitnessLevel.allCases {
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    let workout = assemble(minutes: minutes, user: user(level: level), logs: someHistory(), day: day)
+                    let label = "\(level) \(day) \(minutes) min"
+                    for block in workout.blocks {
+                        if SessionAssembly.isCircuit(block.category) {
+                            XCTAssertTrue(block.exercises.allSatisfy { $0.sets == RepGrammar.setsPerStation }, label)
+                            let rests = Set(block.exercises.map(\.restSeconds))
+                            XCTAssertEqual(rests.count, 1, "\(label): round rest \(rests.sorted())")
+                            XCTAssertLessThanOrEqual(
+                                rests.first ?? 0, SessionAssembly.roundRestCap(for: level, requestedMinutes: minutes), label
+                            )
+                            XCTAssertGreaterThanOrEqual(rests.first ?? 0, SessionAssembly.baseRoundRestSeconds, label)
+                        } else {
+                            XCTAssertTrue(block.exercises.allSatisfy { $0.sets == 1 && $0.restSeconds == SessionAssembly.mobilityRestSeconds }, label)
+                        }
+                    }
+                }
             }
         }
     }
 
-    /// ADR-0010: both rest gaps - the between-station transition and the between-round rest - are at
-    /// most `maxRestSeconds` (15s), and the rest cap itself is 15 seconds.
-    func testBothRestGapsAreAtMostTheFifteenSecondCap() {
-        XCTAssertEqual(SessionAssembly.maxRestSeconds, 15)
-        XCTAssertLessThanOrEqual(SessionAssembly.transitionSeconds, SessionAssembly.maxRestSeconds)
-        XCTAssertLessThanOrEqual(SessionAssembly.roundRestSeconds, SessionAssembly.maxRestSeconds)
+    /// The rest rails (decision 17): the rest after a round starts at 15 seconds and grows to 60 on a
+    /// session of 30 minutes or less, or to the level cap (beginner 2:00, intermediate 1:30, advanced 1:00)
+    /// on a 45 or 60 minute one; the pause between stations is 15 seconds and grows to at most 60; no rest
+    /// the player opens runs past two minutes.
+    func testRestRailsFollowLengthAndLevel() {
+        XCTAssertEqual(SessionAssembly.baseRoundRestSeconds, 15)
+        XCTAssertEqual(SessionAssembly.transitionSeconds, 15)
+        XCTAssertEqual(SessionAssembly.maxTransitionSeconds, 60)
+        XCTAssertEqual(SessionAssembly.maxRestSeconds, 120)
         XCTAssertLessThanOrEqual(SessionAssembly.mobilityRestSeconds, SessionAssembly.maxRestSeconds)
-    }
-
-    /// US-CC03/US-CC04: a long session actually rotates - the strength block runs more than one round at
-    /// 45/60 (proving the round count is a live lever, not pinned at 1), while a tiny 5-minute session
-    /// stays lean. This guards against a regression that lands the time by some other means and leaves
-    /// every block a single round.
-    func testLongSessionsRunMultipleRounds() async throws {
-        let library = try await library()
+        for minutes in [5, 10, 15, 20, 30] {
+            for level in FitnessLevel.allCases {
+                XCTAssertEqual(SessionAssembly.roundRestCap(for: level, requestedMinutes: minutes), 60, "\(level) \(minutes)")
+            }
+        }
         for minutes in [45, 60] {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
-            let strength = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
-            XCTAssertGreaterThanOrEqual(
-                strength.exercises.first?.sets ?? 0, 2,
-                "\(minutes) min strength block should run at least two rounds"
-            )
+            XCTAssertEqual(SessionAssembly.roundRestCap(for: .beginner, requestedMinutes: minutes), 120)
+            XCTAssertEqual(SessionAssembly.roundRestCap(for: .intermediate, requestedMinutes: minutes), 90)
+            XCTAssertEqual(SessionAssembly.roundRestCap(for: .advanced, requestedMinutes: minutes), 60)
         }
+        XCTAssertLessThanOrEqual(SessionAssembly.roundRestCap(for: .beginner, requestedMinutes: 60), SessionAssembly.maxRestSeconds)
     }
 
-    // MARK: - No mobility middle block; freed minutes go to strength (US-M01)
-
-    /// US-M01 core: the Movement Practice mobility *training* block is no longer emitted at any length or
-    /// shape. This runs every blend length (15-60) against a strongly mobility-stale history - the exact
-    /// configuration in which the old engine produced (and padded) a Movement Practice block - and pins
-    /// that no `.mobility` block appears between the warm-up and cooldown. Mobility survives only as the
-    /// bookends. (Single-focus 5-10 is covered by `testShortSingleFocusLeadsStrengthForFreshDeskWorker`.)
-    func testNoMobilityMiddleBlockAtAnyBlendLength() async throws {
-        let library = try await library()
-        // Mobility six days stale, strength worked yesterday: the configuration that used to force the
-        // largest Movement Practice block.
-        let mobilityStale = [
-            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
-        ]
-        for minutes in [15, 20, 30, 45, 60] {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
-            XCTAssertFalse(
-                workout.blocks.contains { $0.category == .mobility },
-                "\(minutes) min must not emit a mobility training block (US-M01)"
-            )
-            // The middle (everything but the bookends) trains only strength/primal - no mobility movement.
-            let middle = workout.blocks
-                .filter { $0.category != .warmup && $0.category != .cooldown }
-                .flatMap(\.exercises)
-            XCTAssertFalse(
-                middle.contains { $0.exercise.pillar == .mobility },
-                "\(minutes) min: no mobility movement appears outside the bookends"
-            )
-        }
-    }
-
-    /// US-M01 decision 3: the minutes the Movement Practice block used to hold are reallocated to
-    /// **strength**, not to bookend stretching. On the same mobility-stale history, the strength training
-    /// time is strictly larger than the (now bookend-only) mobility time at every blend length - and the
-    /// session still lands within ±60s, so the freed budget genuinely went into strength sets rather than
-    /// being dropped.
-    func testFreedMinutesGoToStrengthNotStretching() async throws {
-        let library = try await library()
-        let mobilityStale = [
-            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
-        ]
-        for minutes in [15, 20, 30, 45, 60] {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
-
-            let strengthSeconds = workout.blocks
-                .filter { $0.category == .strength }
-                .reduce(0) { $0 + plannedSeconds($1) }
-            let mobilitySeconds = workout.blocks
-                .filter { $0.category == .warmup || $0.category == .cooldown }
-                .reduce(0) { $0 + plannedSeconds($1) }
-            XCTAssertGreaterThan(
-                strengthSeconds, mobilitySeconds,
-                "\(minutes) min: strength time must dominate the bookend mobility time (freed minutes -> strength)"
-            )
-
-            let planned = SessionAssembly.plannedSeconds(of: workout)
-            XCTAssertLessThanOrEqual(
-                abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
-                "\(minutes) min planned \(planned)s outside ±60s of \(minutes * 60)s"
-            )
+    /// A long session fills by reps and rest, never by more sets: at 45 and 60 minutes a fresh user's
+    /// circuit keeps four sets per station while the rest after a round or the pause between stations
+    /// grows past its 15-second start.
+    func testLongSessionsFillWithRestNotSets() throws {
+        for level in FitnessLevel.allCases {
+            for day in TrainingDay.rotation {
+                for minutes in [45, 60] {
+                    let workout = assemble(minutes: minutes, user: user(level: level), day: day)
+                    let block = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
+                    let label = "\(level) \(day) \(minutes) min"
+                    XCTAssertTrue(block.exercises.allSatisfy { $0.sets == RepGrammar.setsPerStation }, label)
+                    let rest = block.exercises[0].restSeconds
+                    let pause = block.transitionSeconds ?? SessionAssembly.transitionSeconds
+                    XCTAssertTrue(
+                        rest > SessionAssembly.baseRoundRestSeconds || pause > SessionAssembly.transitionSeconds,
+                        "\(label): rest \(rest)s, pause \(pause)s - the fit grew neither"
+                    )
+                }
+            }
         }
     }
 
     // MARK: - Latency under 100ms
 
-    func testGenerationLatencyUnder100ms() async throws {
-        let library = try await library()
-        let user = user()
+    func testGenerationLatencyUnder100ms() {
         let logs = someHistory()
-        // Warm the path once, then measure a single end-to-end assembly.
-        _ = assemble(minutes: 20, user: user, library: library, logs: logs)
-
+        _ = assemble(minutes: 60, logs: logs)
         let start = DispatchTime.now()
-        _ = assemble(minutes: 20, user: user, library: library, logs: logs)
+        _ = assemble(minutes: 60, logs: logs)
         let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
         XCTAssertLessThan(elapsedMs, 100, "assembly took \(elapsedMs)ms, over the 100ms budget")
     }
 
     // MARK: - Fully-formed, playable output
 
-    func testOutputIsFullyFormedAndCapacityRelative() async throws {
-        let library = try await library()
-        for minutes in durations {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
-            XCTAssertEqual(workout.requestedMinutes, minutes)
-            XCTAssertFalse(workout.blocks.isEmpty, "\(minutes) min produced no blocks")
-
-            for block in workout.blocks {
-                XCTAssertFalse(block.exercises.isEmpty, "block '\(block.title)' is empty")
-                for prescription in block.exercises {
-                    XCTAssertGreaterThanOrEqual(prescription.sets, 1, "every prescription needs >=1 set")
-                    if prescription.exercise.isHold {
-                        XCTAssertNotNil(prescription.durationSeconds, "\(prescription.exercise.id) hold needs seconds")
-                        XCTAssertNil(prescription.reps, "\(prescription.exercise.id) hold must not carry reps")
-                    } else {
-                        XCTAssertNotNil(prescription.reps, "\(prescription.exercise.id) rep movement needs reps")
-                        XCTAssertNil(prescription.durationSeconds, "\(prescription.exercise.id) reps must not carry seconds")
-                        // Capacity-relative, never a fixed heroic number: within the overload rails.
-                        XCTAssertLessThanOrEqual(prescription.reps!, AdaptiveOverload.maxReps,
-                                                 "\(prescription.exercise.id) reps must stay within the safety rail")
+    /// Every prescription is playable and capacity-relative: a hold carries seconds and a rep movement
+    /// reps; a main or core station is served between the short-session floor and the top of the level's
+    /// range; a Practice station at its Practice value; a stretch at its bookend value; all zero-equipment.
+    func testOutputIsFullyFormedAndCapacityRelative() {
+        for level in FitnessLevel.allCases {
+            for day in TrainingDay.rotation {
+                for minutes in lengths {
+                    let workout = assemble(minutes: minutes, user: user(level: level), logs: someHistory(), day: day)
+                    let label = "\(level) \(day) \(minutes) min"
+                    XCTAssertEqual(workout.requestedMinutes, minutes)
+                    for block in workout.blocks {
+                        XCTAssertFalse(block.exercises.isEmpty, "\(label): block '\(block.title)' is empty")
+                        for item in block.exercises {
+                            let exercise = item.exercise
+                            XCTAssertTrue(exercise.equipment.isEmpty, "Zero-Equipment Floor")
+                            XCTAssertEqual(item.durationSeconds != nil, exercise.isHold, "\(label): \(exercise.id)")
+                            XCTAssertEqual(item.reps != nil, !exercise.isHold, "\(label): \(exercise.id)")
+                            let value = item.reps ?? item.durationSeconds ?? 0
+                            let kind = RepGrammar.kind(of: exercise)
+                            switch item.role {
+                            case .main?, .core?:
+                                XCTAssertGreaterThanOrEqual(value, RepGrammar.shortSessionFloor(for: kind), "\(label): \(exercise.id)")
+                                XCTAssertLessThanOrEqual(value, RepGrammar.earnedRange(for: kind, level: level).upperBound, "\(label): \(exercise.id)")
+                                XCTAssertNotNil(item.earnedReps ?? item.earnedDurationSeconds, "\(label): \(exercise.id) records no Earned Reps")
+                            case .practice?:
+                                let atPractice = value == RepGrammar.practiceValue(for: kind)
+                                let atVolume = value >= RepGrammar.shortSessionFloor(for: kind)
+                                    && value <= RepGrammar.earnedRange(for: kind, level: level).upperBound
+                                XCTAssertTrue(atPractice || atVolume, "\(label): \(exercise.id) practice at \(value)")
+                                XCTAssertNil(item.earnedReps ?? item.earnedDurationSeconds, "\(label): Practice records no Earned Reps")
+                            case .recovery?, nil:
+                                XCTAssertEqual(value, SessionAssembly.bookendValue(for: exercise), "\(label): \(exercise.id)")
+                            }
+                        }
                     }
-                    XCTAssertTrue(prescription.exercise.equipment.isEmpty, "Zero-Equipment Floor")
                 }
             }
         }
     }
 
-    func testNoExerciseRepeatsAcrossBlocks() async throws {
-        let library = try await library()
-        let workout = assemble(minutes: 30, user: user(), library: library, logs: someHistory())
-        let ids = workout.blocks.flatMap { $0.exercises.map { $0.exercise.id } }
-        XCTAssertEqual(Set(ids).count, ids.count, "an exercise appeared in more than one block")
-    }
-
-    // MARK: - Blend is a strength session wrapped in bookends (US-002/US-M01)
-
-    /// Planned wall-clock of a single materialized block, measured with the engine's own even-round work
-    /// model (`SessionAssembly.blockSeconds(of:)` - a circuit training block is priced over its rounds,
-    /// between-station transitions and between-round rest; a bookend linearly), used to compare how much
-    /// session time each block owns.
-    private func plannedSeconds(_ block: WorkoutBlock) -> Int {
-        SessionAssembly.blockSeconds(of: block)
-    }
-
-    /// US-002/US-M01: a blend's training middle is a single strength block regardless of staleness -
-    /// there is no mobility training block to compare against, whether mobility is the stalest pillar or
-    /// the freshest. The old "size the blocks by whichever pillar is staler" behavior, and the mobility
-    /// accessory it sized, are both gone.
-    func testBlendTrainingMiddleIsStrengthOnlyRegardlessOfStaleness() async throws {
-        let library = try await library()
-
-        // Mobility never worked, strength worked yesterday: under the old engine this made mobility lead.
-        let mobilityStaleLogs = [
-            log([
-                ("push_standard", .strength, .push, 12),
-                ("squat_bodyweight", .strength, .squat, 15),
-            ], daysAgo: 1)
-        ]
-        let mobilityStale = assemble(minutes: 20, user: user(), library: library, logs: mobilityStaleLogs)
-        XCTAssertNil(mobilityStale.blocks.first { $0.category == .mobility }, "no mobility training block, even when mobility is stalest")
-        XCTAssertNotNil(mobilityStale.blocks.first { $0.category == .strength }, "the training middle is a strength block")
-
-        // Strength never worked, mobility worked yesterday: still a strength-only middle.
-        let strengthStaleLogs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 1)]
-        let strengthStale = assemble(minutes: 20, user: user(), library: library, logs: strengthStaleLogs)
-        XCTAssertNil(strengthStale.blocks.first { $0.category == .mobility }, "no mobility training block on a strength-stale blend either")
-        XCTAssertNotNil(strengthStale.blocks.first { $0.category == .strength }, "the training middle is a strength block")
-    }
-
-    /// The US-M01 validation test: for a no-history profile at 20, 30, and 45 minutes, list the blocks
-    /// and confirm no mobility *training* block appears between the warm-up and cooldown, then sum the
-    /// training-block seconds by pillar and confirm the strength share is higher than the archived
-    /// accessory model's ~0.75-0.80 (the freed mobility minutes went to strength, not to stretching).
-    /// 20/30 are blendLight/blendFull (strength folds primal in, so strength is ~100% of training); 45 is
-    /// an extended blend (a dedicated primal minority block), so strength alone still clears the old
-    /// headline share while strength keeps the lead over primal.
-    func testTrainingTimeIsStrengthHeavierThanAccessoryModelAtValidationLengths() async throws {
-        let library = try await library()
-        for minutes in [20, 30, 45] {
-            let workout = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
-            let training = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
-
-            // No mobility training block at any of these lengths (US-M01).
-            XCTAssertFalse(
-                training.contains { $0.category == .mobility },
-                "\(minutes) min must not carry a mobility training block"
-            )
-
-            let strengthSeconds = training
-                .filter { $0.category == .strength }
-                .reduce(0) { $0 + plannedSeconds($1) }
-            let primalSeconds = training
-                .filter { $0.category == .primal }
-                .reduce(0) { $0 + plannedSeconds($1) }
-            let totalTraining = training.reduce(0) { $0 + plannedSeconds($1) }
-            XCTAssertGreaterThan(totalTraining, 0, "\(minutes) min produced no training time")
-
-            let strengthShare = Double(strengthSeconds) / Double(totalTraining)
-            // Higher than the archived accessory model's ~0.75-0.80 headline strength share: with the
-            // mobility middle block gone, strength alone clears 0.80 at every validation length.
-            XCTAssertGreaterThan(
-                strengthShare, 0.80,
-                "\(minutes) min strength training share \(strengthShare) is not above the archived ~0.75-0.80 accessory model"
-            )
-            // Strength always leads any dedicated primal block.
-            XCTAssertGreaterThan(
-                strengthSeconds, primalSeconds,
-                "\(minutes) min: strength must lead any dedicated primal block"
-            )
+    func testNoExerciseRepeatsAcrossBlocks() {
+        for day in TrainingDay.rotation {
+            for minutes in lengths {
+                let ids = assemble(minutes: minutes, logs: someHistory(), day: day).blocks.flatMap { $0.exercises.map(\.exercise.id) }
+                XCTAssertEqual(Set(ids).count, ids.count, "\(day) \(minutes) min: an exercise appeared twice")
+            }
         }
     }
 
-    // MARK: - Extended blend promotes primal to its own block (US-E02)
-
-    /// A few days of mixed history that leaves primal stale: strength/mobility worked recently, the
-    /// last primal session was long ago.
-    private func stalePrimalHistory() -> [WorkoutLog] {
-        [
-            log([
-                ("push_standard", .strength, .push, 12),
-                ("squat_bodyweight", .strength, .squat, 15),
-            ], daysAgo: 2, difficulty: .justRight),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3),
-            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 12),
-        ]
-    }
-
-    /// The validation test: a 50-min session for a user with stale primal history contains a dedicated
-    /// primal block (a `WorkoutBlock` of `pillar == .primal` movements) alongside strength and mobility.
-    func testExtendedSessionProducesADedicatedPrimalBlock() async throws {
-        let library = try await library()
-        let workout = assemble(minutes: 50, user: user(level: .intermediate), library: library, logs: stalePrimalHistory())
-
-        let primalBlock = try XCTUnwrap(
-            workout.blocks.first { $0.category == .primal },
-            "a 50-min session must contain a dedicated primal block"
-        )
-        XCTAssertFalse(primalBlock.exercises.isEmpty, "the primal block must hold at least one movement")
-        for prescription in primalBlock.exercises {
-            XCTAssertEqual(prescription.exercise.pillar, .primal, "the primal block holds only primal movements")
-            XCTAssertEqual(prescription.exercise.movementPattern, .locomotion, "primal is driven by the locomotion pattern")
-            XCTAssertTrue(prescription.exercise.equipment.isEmpty, "Zero-Equipment Floor still holds")
-            XCTAssertGreaterThanOrEqual(prescription.sets, 1, "every prescription needs >=1 set")
-        }
-
-        // The primal block joins strength rather than replacing it - and there is no mobility training
-        // block at all (US-M01): the extended session is Warm-Up -> Strength -> Primal -> Cooldown.
-        XCTAssertTrue(workout.blocks.contains { $0.category == .strength }, "strength block still present")
-        XCTAssertFalse(workout.blocks.contains { $0.category == .mobility }, "no mobility training block (US-M01)")
-
-        // With primal carved out, the strength block must not also fold a primal movement in (no
-        // double-booking the same locomotion exercise across two blocks).
-        let strengthBlock = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
-        XCTAssertFalse(
-            strengthBlock.exercises.contains { $0.exercise.pillar == .primal },
-            "an extended blend sheds primal from the strength block"
-        )
-
-        // The extended session is still well-structured: warm-up opens it, cooldown closes it.
-        XCTAssertEqual(workout.blocks.first?.category, .warmup, "opens with a warm-up")
-        XCTAssertEqual(workout.blocks.last?.category, .cooldown, "closes with a cooldown")
-    }
-
-    /// Short and full blends do not regress: primal is still folded into strength, so no dedicated
-    /// `.primal` block appears even when primal is the stalest pillar.
-    func testShorterSessionsDoNotCarveOutAPrimalBlock() async throws {
-        let library = try await library()
-        // Primal stale, strength/mobility fresh - the shape, not staleness, gates the dedicated block.
-        let logs = [
-            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 1),
-            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 20),
-        ]
-        for minutes in [10, 20, 30] {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: logs)
-            XCTAssertFalse(
-                workout.blocks.contains { $0.category == .primal },
-                "\(minutes) min must not carve out a dedicated primal block"
-            )
+    /// An injury removes the ladders it makes unsafe and keeps the rest: a knee flag takes the squat-side
+    /// ladders off a Legs Day, which still trains its hinge ladders.
+    func testAnInjuryRemovesItsLaddersAndKeepsTheRest() {
+        let knees = user(injuries: ["knees"])
+        let contraindicated = InjuryContraindication.contraindicatedPatterns(for: ["knees"])
+        XCTAssertTrue(contraindicated.contains(.squat))
+        for minutes in [15, 30, 60] {
+            let stations = circuit(assemble(minutes: minutes, user: knees, day: .legs))
+            XCTAssertFalse(stations.contains { contraindicated.contains($0.exercise.movementPattern) }, "\(minutes) min: \(stations.map(\.exercise.id))")
+            XCTAssertTrue(stations.contains { $0.role == .main && $0.exercise.movementPattern == .hinge }, "\(minutes) min")
         }
     }
 
-    /// Extended assembly is deterministic run to run, just like the shorter shapes.
-    func testExtendedAssemblyIsDeterministic() async throws {
-        let library = try await library()
-        let user = user()
-        let logs = stalePrimalHistory()
-        let first = structuralSignature(assemble(minutes: 50, user: user, library: library, logs: logs))
-        for _ in 0..<10 {
-            let next = structuralSignature(assemble(minutes: 50, user: user, library: library, logs: logs))
-            XCTAssertEqual(next, first, "extended assembly is not deterministic")
-        }
-    }
+    // MARK: - Session Policy levers
 
-    // MARK: - Cooldown keeps real static holds in a blend
-
-    func testBlendCooldownReservesMultipleStaticHolds() async throws {
-        let library = try await library()
-        // The pre-fit plan is where block reserves are intact: a blend's cooldown must keep more than a
-        // single leftover stretch, and every movement it draws (active or reserve) must be a static hold.
-        let blocks = SessionAssembly.planBlocks(
-            requestedMinutes: 20,
-            user: user(),
-            library: library,
-            recentLogs: someHistory(),
-            asOf: asOf,
-            calendar: calendar
-        )
-        let cooldown = try XCTUnwrap(blocks.first { $0.category == .cooldown })
-        let cooldownMovements = cooldown.items + cooldown.reserve
-        XCTAssertGreaterThan(
-            cooldownMovements.count, 1,
-            "a blend cooldown should have more than one static stretch available, not be starved to one"
-        )
-        XCTAssertTrue(
-            cooldownMovements.allSatisfy { $0.exercise.isHold },
-            "the cooldown's holds-only static-stretch preference must actually be honored"
-        )
-    }
-
-    // MARK: - Session Policy levers (US-E03)
-
-    /// Passing `SessionPolicy.default` reproduces the unpoliced assembly exactly - wiring the policy
-    /// through the pipeline is a no-op at the neutral levers (no regression).
-    func testDefaultPolicyReproducesUnpolicedOutput() async throws {
-        let library = try await library()
-        let user = user()
+    /// Passing `SessionPolicy.default` reproduces the unpoliced assembly exactly.
+    func testDefaultPolicyReproducesUnpolicedOutput() {
         let logs = someHistory()
-        for minutes in [10, 20, 30, 50] {
-            let unpoliced = assemble(minutes: minutes, user: user, library: library, logs: logs)
-            let defaulted = SessionAssembly.assemble(
-                requestedMinutes: minutes, user: user, library: library,
-                recentLogs: logs, sessionPolicy: .default, asOf: asOf, calendar: calendar
+        for minutes in [10, 20, 30, 60] {
+            let unpoliced = SessionAssembly.assemble(
+                requestedMinutes: minutes, user: user(), library: library, recentLogs: logs,
+                asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar
             )
-            XCTAssertEqual(
-                structuralSignature(defaulted), structuralSignature(unpoliced),
-                "\(minutes) min: passing SessionPolicy.default must match the unpoliced call"
-            )
+            XCTAssertEqual(structuralSignature(assemble(minutes: minutes, logs: logs, policy: .default)), structuralSignature(unpoliced), "\(minutes) min")
         }
     }
 
-    /// A higher `progressionRate` paces Step 6's overload bump end-to-end: the squat lead of this
-    /// single-focus strength session (worked six days ago at capacity 15, below its 3x20 criteria so
-    /// it stays on tier) carries a heavier rep target under a faster program, still within the rails.
-    func testProgressionRatePacesTheOverloadBumpInAssembly() async throws {
-        let library = try await library()
-        // Squat is the stalest strength/primal pattern (worked 6 days ago); every other pattern is
-        // fresh (worked yesterday) and mobility was worked today, so a not-sits-long single-focus
-        // session trains strength and leads with squat_bodyweight.
-        let logs = [
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 0),
-            log([
-                ("push_standard", .strength, .push, 10),
-                ("hinge_glute_bridge", .strength, .hinge, 10),
-                ("core_bird_dog", .strength, .core, 10),
-                ("pull_superman", .strength, .pull, 10),
-                ("primal_bear_crawl", .primal, .locomotion, 10),
-            ], daysAgo: 1),
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 6, difficulty: .justRight),
-        ]
-
-        func squatReps(rate: Double) throws -> Int {
+    /// `progressionRate` paces the climb end-to-end: after one qualifying session at 15, the neutral pace
+    /// climbs Wall Push-Up's Earned Reps to 20, while the slowest pace (0.5) needs a second session first.
+    func testProgressionRatePacesTheClimbInAssembly() throws {
+        let logs = [TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_wall", pattern: .push, value: 15, earned: 15)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 2)
+        )]
+        func earned(rate: Double) throws -> Int? {
             var policy = SessionPolicy.default
             policy.progressionRate = rate
-            // Pin the variety window to 1 so both runs select identically (squat_bodyweight, worked
-            // six days ago, is outside a 1-session no-repeat window and stays the active-chain pick)
-            // - isolating progressionRate as the only difference between the two targets.
-            policy.varietyWindow = 1
-            let workout = SessionAssembly.assemble(
-                requestedMinutes: 10, user: user(), library: library,
-                recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
-            )
-            let squat = try XCTUnwrap(
-                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
-                "squat_bodyweight should lead this single-focus strength session"
-            )
-            return try XCTUnwrap(squat.reps)
+            let workout = assemble(minutes: 30, user: user(level: .beginner), logs: logs, policy: policy, day: .push)
+            return try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_wall" }, "Wall Push-Up is the current rung").earnedReps
         }
-
-        let neutral = try squatReps(rate: 1.0)
-        let fast = try squatReps(rate: 4.0)
-        XCTAssertGreaterThan(fast, neutral, "a higher progressionRate must advance the rep target faster")
-        XCTAssertLessThanOrEqual(fast, AdaptiveOverload.maxReps, "still clamped to the safety rail")
+        XCTAssertEqual(try earned(rate: 1.0), 20)
+        XCTAssertEqual(try earned(rate: SessionPolicy.minProgressionRate), 15)
     }
 
-    // MARK: - Step 0 cold-start override (US-E04)
+    // MARK: - Step 0 cold-start override
 
-    /// A cold-start user: the shared fixture user plus an explicit cold-start state (and optional
-    /// `why.openingBias`), so tests can advance the First-Week day (`sessionsLogged`) and retire
-    /// cold-start (`active == false`).
-    private func coldStartUser(
-        level: FitnessLevel = .beginner,
-        sessionsLogged: Int = 0,
-        active: Bool = true,
-        sitsLong: Bool = false,
-        openingBias: Pillar? = nil,
-        injuries: [String] = []
-    ) -> User {
-        var user = user(level: level, sitsLong: sitsLong, injuries: injuries)
-        user.coldStart = User.ColdStart(sessionsLogged: sessionsLogged, active: active)
-        user.why = User.Why(statement: "", openingBias: openingBias)
-        return user
+    private func coldStartUser(level: FitnessLevel = .beginner, sessionsLogged: Int = 0, active: Bool = true) -> User {
+        var person = user(level: level)
+        person.coldStart = User.ColdStart(sessionsLogged: sessionsLogged, active: active)
+        return person
     }
 
-    /// A `SessionPolicy.default` carrying a cold-start contract with the given levers.
-    private func coldStartPolicy(forceContrastSpread: Bool, cappedMaxDifficulty: Int) -> SessionPolicy {
+    private func coldStartPolicy(cappedMaxDifficulty: Int) -> SessionPolicy {
         var policy = SessionPolicy.default
-        policy.coldStartContract = SessionPolicy.ColdStartContract(
-            forceContrastSpread: forceContrastSpread,
-            cappedMaxDifficulty: cappedMaxDifficulty
-        )
+        policy.coldStartContract = SessionPolicy.ColdStartContract(forceContrastSpread: false, cappedMaxDifficulty: cappedMaxDifficulty)
         return policy
     }
 
-    private func assemble(minutes: Int, user: User, library: [Exercise], logs: [WorkoutLog], policy: SessionPolicy) -> Workout {
-        SessionAssembly.assemble(
-            requestedMinutes: minutes, user: user, library: library,
-            recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
-        )
+    /// An advanced user who cleared Standard Push-Up: their frontier is the next rung.
+    private var clearedStandardPushUp: [WorkoutLog] {
+        [TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 50, earned: 50)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 2)
+        )]
     }
 
     /// The capped pool removes every over-cap movement while Step 0 is active, and is a no-op once
     /// cold-start is retired or the policy carries no contract.
-    func testColdStartCappedPoolRemovesTooHardMovements() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-
-        // Guard: the library actually contains movements the cap should remove.
+    func testColdStartCappedPoolRemovesTooHardMovements() {
+        let policy = coldStartPolicy(cappedMaxDifficulty: 2)
         XCTAssertTrue(library.contains { $0.difficulty > 2 }, "library must have >2-difficulty movements")
 
-        let active = coldStartUser(level: .advanced, sessionsLogged: 0, active: true)
+        let active = coldStartUser(level: .advanced)
         let capped = ColdStartOverride.cappedPool(library, user: active, sessionPolicy: policy)
         XCTAssertFalse(capped.isEmpty, "the cap must never empty the pool")
         XCTAssertTrue(capped.allSatisfy { $0.difficulty <= 2 }, "every capped movement is at or below the cap")
 
-        // Warmed-up user: the cap is a no-op even with the contract still present.
         let warm = coldStartUser(level: .advanced, sessionsLogged: 6, active: false)
-        XCTAssertEqual(
-            ColdStartOverride.cappedPool(library, user: warm, sessionPolicy: policy).count,
-            library.count, "a retired cold-start user's pool is never capped"
-        )
-        // No contract: also a no-op even while active.
-        XCTAssertEqual(
-            ColdStartOverride.cappedPool(library, user: active, sessionPolicy: .default).count,
-            library.count, "no contract means no cap"
-        )
+        XCTAssertEqual(ColdStartOverride.cappedPool(library, user: warm, sessionPolicy: policy).count, library.count)
+        XCTAssertEqual(ColdStartOverride.cappedPool(library, user: active, sessionPolicy: .default).count, library.count)
     }
 
-    /// End-to-end difficulty cap: an advanced user whose history advances push onto a difficulty-3
-    /// movement gets it in the plain engine, but the cold-start cap (contrast off, so the cap is the
-    /// only override) keeps every prescribed movement at or below the cap.
-    func testColdStartSessionRespectsTheDifficultyCap() async throws {
-        let library = try await library()
-        // push_standard cleared long ago -> push is the stalest strength pattern (leads a strength
-        // single-focus) and is advanceable to push_diamond (difficulty 3); every other pattern was
-        // worked yesterday, so push leads.
-        let logs = [
-            log([
-                ("squat_bodyweight", .strength, .squat, 15),
-                ("hinge_glute_bridge", .strength, .hinge, 15),
-                ("core_bird_dog", .strength, .core, 12),
-                ("pull_superman", .strength, .pull, 12),
-                ("mobility_cat_cow", .mobility, .mobility, 10),
-                ("primal_bear_crawl", .primal, .locomotion, 10),
-            ], daysAgo: 1),
-            log([("push_standard", .strength, .push, 12)], daysAgo: 10, difficulty: .justRight),
-        ]
-        let advanced = coldStartUser(level: .advanced, sessionsLogged: 0)
+    /// End-to-end difficulty cap: an advanced user who cleared Standard Push-Up is served Diamond Push-Up
+    /// (difficulty 3) by the plain engine, but the cold-start cap keeps every main station, Core Sprinkle
+    /// and stretch at or below it.
+    func testColdStartSessionRespectsTheDifficultyCap() {
+        let advanced = coldStartUser(level: .advanced)
+        let baseline = assemble(minutes: 30, user: advanced, logs: clearedStandardPushUp, day: .push)
+        XCTAssertTrue(circuit(baseline).contains { $0.exercise.id == "push_diamond" }, "without the cap the frontier is Diamond Push-Up")
 
-        // Baseline (no contract): push advances onto push_diamond (difficulty 3).
-        let baseline = assemble(minutes: 10, user: advanced, library: library, logs: logs, policy: .default)
-        XCTAssertTrue(
-            baseline.blocks.flatMap(\.exercises).contains { $0.exercise.difficulty >= 3 },
-            "without the cap an advanced user advances onto a difficulty-3 movement (guards the test)"
-        )
-
-        // Cold-start cap 2 (contrast off): nothing exceeds difficulty 2.
-        let capped = assemble(
-            minutes: 10, user: advanced, library: library, logs: logs,
-            policy: coldStartPolicy(forceContrastSpread: false, cappedMaxDifficulty: 2)
-        )
-        XCTAssertTrue(
-            capped.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= 2 },
-            "a cold-start session must cap difficulty at the contract's cappedMaxDifficulty"
-        )
-        XCTAssertFalse(
-            capped.blocks.flatMap(\.exercises).contains { $0.exercise.id == "push_diamond" },
-            "the capped session never reaches the over-cap advancement"
-        )
+        let capped = assemble(minutes: 30, user: advanced, logs: clearedStandardPushUp, policy: coldStartPolicy(cappedMaxDifficulty: 2), day: .push)
+        XCTAssertTrue(capped.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= 2 }, "\(capped.blocks.flatMap(\.exercises).map(\.exercise.id))")
+        XCTAssertFalse(circuit(capped).contains { $0.exercise.id == "push_diamond" })
     }
 
-    /// Every cold-start single-focus day leads strength (US-004), so the first week builds strength
-    /// rather than spreading across pillars - even for a desk worker whose bias is mobility.
-    func testConsecutiveColdStartDaysAllLeadStrength() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-
-        for day in 0..<4 {
-            let user = coldStartUser(level: .beginner, sessionsLogged: day, sitsLong: true)
-            let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
-            let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must have a focus pillar")
-            XCTAssertEqual(focus, .strength, "cold-start day \(day) must lead strength")
-        }
-    }
-
-    /// The `why.openingBias` no longer steers the cold-start lead: a mobility-biased user still leads
-    /// strength on every cold-start day (US-004 overrides the lead regardless of the opening bias).
-    func testColdStartLeadsStrengthDespiteMobilityOpeningBias() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-
-        for day in 0..<2 {
-            let user = coldStartUser(level: .beginner, sessionsLogged: day, openingBias: .mobility)
-            XCTAssertEqual(
-                assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar,
-                .strength, "day \(day): a mobility opening bias does not unseat the cold-start strength lead"
-            )
-        }
-    }
-
-    /// The PRD validation (US-004): a beginner's three First-Week sessions all lead strength and never
-    /// exceed the difficulty cap - the lead reverses to strength while the gentleness rail holds.
-    func testColdStartValidationCapsDifficultyAndLeadsStrength() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-
-        for day in 0..<3 {
-            let user = coldStartUser(level: .beginner, sessionsLogged: day)
-            let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
-            for prescription in workout.blocks.flatMap(\.exercises) {
-                XCTAssertLessThanOrEqual(
-                    prescription.exercise.difficulty, 2,
-                    "cold-start day \(day) prescribed \(prescription.exercise.id) above the difficulty-2 cap"
-                )
-            }
-            XCTAssertEqual(try XCTUnwrap(workout.focusPillar), .strength, "cold-start day \(day) must lead strength")
-        }
-    }
-
-    /// A warmed-up user (cold-start retired) is unaffected by Step 0: even a lingering contract in the
-    /// policy is a no-op, so the session matches the plain US-E03 engine exactly.
-    func testWarmedUpUserIsUnaffectedByColdStart() async throws {
-        let library = try await library()
-        let logs = someHistory()
+    /// A warmed-up user (cold-start retired) is unaffected by Step 0: a lingering contract is a no-op.
+    func testWarmedUpUserIsUnaffectedByColdStart() {
         let warm = coldStartUser(level: .intermediate, sessionsLogged: 6, active: false)
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-
-        for minutes in [8, 20, 50] {
-            let withContract = assemble(minutes: minutes, user: warm, library: library, logs: logs, policy: policy)
-            let withoutContract = assemble(minutes: minutes, user: warm, library: library, logs: logs, policy: .default)
+        for minutes in [10, 20, 60] {
             XCTAssertEqual(
-                structuralSignature(withContract), structuralSignature(withoutContract),
-                "\(minutes) min: a retired cold-start user must run exactly the US-E03 pipeline"
+                structuralSignature(assemble(minutes: minutes, user: warm, logs: someHistory(), policy: coldStartPolicy(cappedMaxDifficulty: 2))),
+                structuralSignature(assemble(minutes: minutes, user: warm, logs: someHistory())),
+                "\(minutes) min: a retired cold-start user must run the plain pipeline"
             )
         }
     }
 
-    /// Cold-start assembly is deterministic run to run, on the forced strength-led single-focus day.
-    func testColdStartAssemblyIsDeterministic() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-        let user = coldStartUser(level: .beginner, sessionsLogged: 2) // US-004: every cold-start day leads strength
-        let signature = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
-        XCTAssertEqual(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar, .strength)
-        for _ in 0..<10 {
-            let next = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
-            XCTAssertEqual(next, signature, "cold-start assembly is not deterministic")
-        }
-    }
+    // MARK: - Return override and Re-entry Ramp
 
-    /// US-004: an injured beginner's cold-start day leads **strength**, not the primal day the retired
-    /// First-Week Contrast rotation used to force at `sessionsLogged 2`. The single training block is a
-    /// strength block, and the `ankle` injury (which contraindicates the whole `locomotion` pattern)
-    /// leaves the strength lead untouched - strength never draws from locomotion.
-    func testColdStartInjuredBeginnerLeadsStrength() async throws {
-        let library = try await library()
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-        // Beginner, no desk bias, sessionsLogged 2 - the day the old rotation landed on primal. Under
-        // US-004 it leads strength instead; the ankle injury does not touch that.
-        let user = coldStartUser(level: .beginner, sessionsLogged: 2, injuries: ["ankle"])
+    /// A Return caps the eligible difficulty at the gentle end: the same strong history that serves
+    /// Diamond Push-Up to a present user serves nothing above `returnMaxDifficulty` after a gap.
+    func testReturnCapsDifficultyBelowThePreGapTier() {
+        let present = assemble(minutes: 30, user: user(level: .advanced), logs: clearedStandardPushUp, day: .push)
+        XCTAssertFalse(present.wasReturn)
+        XCTAssertTrue(circuit(present).contains { $0.exercise.id == "push_diamond" })
 
-        let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
-
-        let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must report a focus pillar")
-        XCTAssertEqual(focus, .strength, "a cold-start day leads strength (US-004)")
-
-        // The reported focus is the single training block the session actually built.
-        let trainingBlocks = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
-        XCTAssertEqual(trainingBlocks.count, 1, "a single-focus session has exactly one training block")
-        XCTAssertEqual(
-            SessionAssembly.pillar(of: trainingBlocks[0].category), focus,
-            "focusPillar must equal the actually-built training block's pillar"
-        )
-        XCTAssertFalse(
-            trainingBlocks[0].exercises.contains { $0.exercise.movementPattern == .locomotion },
-            "a strength lead never draws from the locomotion pattern"
-        )
-    }
-
-    // MARK: - Return override and Re-entry Ramp (US-E06)
-
-    /// A strong history that, without a Return, advances push onto push_diamond (difficulty 3). `shift`
-    /// ages every session uniformly: `shift == 0` leaves the most recent session 1 day ago (a present
-    /// user, no Return), while a larger shift pushes the whole history back so the last session crosses
-    /// the Return threshold - the *relative* staleness ranking (and so the pattern selection and
-    /// advancement) is preserved, isolating the Return override as the only behavioral change.
-    private func advancingHistory(shift: Int) -> [WorkoutLog] {
-        [
-            log([
-                ("squat_bodyweight", .strength, .squat, 15),
-                ("hinge_glute_bridge", .strength, .hinge, 15),
-                ("core_bird_dog", .strength, .core, 12),
-                ("pull_superman", .strength, .pull, 12),
-                ("mobility_cat_cow", .mobility, .mobility, 10),
-                ("primal_bear_crawl", .primal, .locomotion, 10),
-            ], daysAgo: 1 + shift),
-            log([("push_standard", .strength, .push, 12)], daysAgo: 10 + shift, difficulty: .justRight),
-        ]
-    }
-
-    /// A Return caps the eligible difficulty at the gentle end, so a strong pre-gap history that would
-    /// otherwise advance onto a hard tier can't make the first session back feel punishing - the Return
-    /// is measurably easier than the pre-gap norm.
-    func testReturnCapsDifficultyBelowThePreGapTier() async throws {
-        let library = try await library()
-
-        // Baseline (present user, most recent session 1 day ago): push advances onto push_diamond (3).
-        let baseline = assemble(minutes: 20, user: user(), library: library, logs: advancingHistory(shift: 0))
-        let baselineMax = baseline.blocks.flatMap(\.exercises).map(\.exercise.difficulty).max() ?? 0
-        XCTAssertGreaterThanOrEqual(baselineMax, 3, "without a Return an advancing history reaches difficulty 3 (guards the test)")
-
-        // The same history aged so the last session is 10 days ago -> a Return, capped at the gentle end.
-        let returnLogs = advancingHistory(shift: 9)
-        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: returnLogs, asOf: asOf, calendar: calendar), "a 10-day gap is a Return")
-
-        let returned = assemble(minutes: 20, user: user(), library: library, logs: returnLogs)
-        XCTAssertTrue(returned.wasReturn, "the engine stamps the Return decision on the Workout")
-        XCTAssertFalse(baseline.wasReturn, "a present user's session is not flagged as a Return")
+        let lapsed = [TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 50, earned: 50)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 10)
+        )]
+        let returned = assemble(minutes: 30, user: user(level: .advanced), logs: lapsed, day: .push)
+        XCTAssertTrue(returned.wasReturn, "a 10-day gap is a Return")
         XCTAssertTrue(
             returned.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= ReturnOverride.returnMaxDifficulty },
-            "a Return caps every movement at or below returnMaxDifficulty"
+            "\(returned.blocks.flatMap(\.exercises).map(\.exercise.id))"
         )
-        XCTAssertFalse(
-            returned.blocks.flatMap(\.exercises).contains { $0.exercise.id == "push_diamond" },
-            "the Return never reaches the over-cap advancement"
+        XCTAssertFalse(circuit(returned).contains { $0.role == .practice }, "a Return offers no Practice Movement")
+    }
+
+    /// The Return session and its Re-entry Ramp hold the *served* number under Earned Reps and walk it
+    /// back up, while Earned Reps themselves stay at the pre-Return capacity: an advanced user last at 30
+    /// Standard Push-Ups (Earned Reps 35 after that session) returns after a gap; each session logged at
+    /// what it served never lowers the next one's Earned Reps, the served number never decreases, and once
+    /// the ramp is over the session is served at or above Earned Reps again.
+    func testReturnAndReentryRampHoldAgainstPreReturnCapacity() throws {
+        let advanced = user(level: .advanced)
+        let preReturn = TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 30, earned: 30)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 20)
         )
-        let returnedMax = returned.blocks.flatMap(\.exercises).map(\.exercise.difficulty).max() ?? 0
-        XCTAssertLessThan(returnedMax, baselineMax, "the Return is easier than the pre-gap norm")
-    }
-
-    /// A Return leads with strength (US-005), kept gentle by the difficulty cap and volume floor rather
-    /// than the pillar. The lead is structural (US-M01: every session builds a leading strength block),
-    /// so the Return and the steady state agree - a Return is just a strength session served gentle.
-    func testReturnLeadsWithStrength() async throws {
-        let library = try await library()
-        // Mobility worked longest ago, strength more recently but still past the Return threshold.
-        let logs = [
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 8),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 15),
-        ]
-        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "an 8-day gap is a Return")
-
-        let workout = assemble(minutes: 8, user: user(), library: library, logs: logs)
-        XCTAssertEqual(workout.focusPillar, .strength, "a Return serves strength, gentle via the cap and floor")
-        // Mobility survives only as the warm-up - no mobility training block on a Return.
-        XCTAssertFalse(workout.blocks.contains { $0.category == .mobility }, "a Return carries no mobility training block")
-    }
-
-    /// The Re-entry Ramp walks Step 6's volume back up over the sessions after a Return: the lead
-    /// exercise's rep target climbs from the gentle floor toward normal with each session completed since
-    /// the Return log, and the readjustment lands here (never in the Return itself).
-    func testReentryRampClimbsRepTargetAcrossSessions() async throws {
-        let library = try await library()
-        // A user back from a gap (the Return was four days ago, so no new Return): squat leads a
-        // single-focus strength session, last worked before the Return at 15 (below its 3x20 criteria,
-        // so it stays on tier) after three "just right" sessions there, so its un-held target climbs to
-        // 20 (ADR-0011).
-        var returnLog = log([
-            ("push_standard", .strength, .push, 10),
-            ("hinge_glute_bridge", .strength, .hinge, 10),
-            ("core_bird_dog", .strength, .core, 10),
-            ("pull_superman", .strength, .pull, 10),
-            ("primal_bear_crawl", .primal, .locomotion, 10),
-        ], daysAgo: 4)
-        returnLog.wasReturn = true
-        let history = [
-            returnLog,
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 6, difficulty: .justRight),
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 8, difficulty: .justRight),
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 10, difficulty: .justRight),
-        ]
-        XCTAssertFalse(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a present user is not returning")
-
-        func squatReps(sessionsSinceReturn: Int) throws -> Int {
-            let since = (0..<sessionsSinceReturn).map { log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3 - $0) }
-            var policy = SessionPolicy.default
-            // Pin the variety window to 1 so every run selects squat_bodyweight identically, isolating
-            // the reentry ramp as the only mover.
-            policy.varietyWindow = 1
-            let workout = assemble(minutes: 10, user: user(), library: library, logs: history + since, policy: policy)
-            let squat = try XCTUnwrap(
-                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
-                "squat_bodyweight should lead this single-focus strength session"
-            )
-            return try XCTUnwrap(squat.reps)
+        var history = [preReturn]
+        func standard() throws -> (workout: Workout, item: PrescribedExercise) {
+            let workout = assemble(minutes: 30, user: advanced, logs: history, day: .push)
+            return (workout, try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_standard" }, "Standard Push-Up stays served"))
         }
 
-        let ramp3 = try squatReps(sessionsSinceReturn: 0) // first session back: most eased (floor)
-        let ramp2 = try squatReps(sessionsSinceReturn: 1)
-        let ramp1 = try squatReps(sessionsSinceReturn: 2)
-        let normal = try squatReps(sessionsSinceReturn: 3) // ramp over: back to normal
+        var served: [Int] = []
+        for (index, daysAgo) in [4, 3, 2, 1].enumerated() {
+            let (workout, item) = try standard()
+            XCTAssertEqual(workout.wasReturn, index == 0, "only the first session back is the Return")
+            XCTAssertEqual(item.earnedReps, 35, "session \(index): Earned Reps stay at the pre-Return capacity")
+            XCTAssertLessThan(item.reps ?? 0, 35, "session \(index): the ramp serves under Earned Reps")
+            served.append(item.reps ?? 0)
+            history.append(logged(workout, at: TrainingDayFixtures.date(daysAgo: daysAgo), wasReturn: index == 0))
+        }
+        XCTAssertEqual(served, served.sorted(), "the ramp never takes the served number down: \(served)")
 
-        // On the grid of five (ADR-0011): the un-held 20 x 0.7/0.8/0.9 rounds down onto the grid, at
-        // least one step below 20.
-        XCTAssertEqual([ramp3, ramp2, ramp1, normal], [10, 15, 15, 20], "the rep target climbs back over the ramp")
-        XCTAssertLessThan(ramp3, normal, "the ramp holds difficulty below normal, then walks it back up")
+        let (after, item) = try standard()
+        XCTAssertFalse(after.wasReturn)
+        XCTAssertEqual(item.earnedReps, 35)
+        XCTAssertGreaterThanOrEqual(item.reps ?? 0, 35, "the ramp is over: served at or above Earned Reps")
     }
 
-    /// The Return and its Re-entry Ramp are each held against the user's last capacity from *before* the
-    /// Return, never against the previous held session's log, so the ramp walks difficulty back up rather
-    /// than compounding each hold onto the last. Traced end to end: a beginner last at 30 squats (sumo is
-    /// out of their reach, so squat_bodyweight stays served) returns after a gap, and the Return session
-    /// and the three ramp sessions after it - each logged at what it prescribed - never decrease.
-    func testReturnAndReentryRampHoldAgainstPreReturnCapacityAndNeverDecrease() async throws {
-        let library = try await library()
-        let beginner = user(level: .beginner)
-        var history = [log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)]
-
-        func squatReps() throws -> Int {
-            var policy = SessionPolicy.default
-            // Every chain counts as fresh, so the squat pattern keeps the chain the user is progressing.
-            policy.varietyWindow = 0
-            let workout = assemble(minutes: 60, user: beginner, library: library, logs: history, policy: policy)
-            let squat = try XCTUnwrap(
-                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
-                "squat_bodyweight should be served in every session of the trace"
-            )
-            return try XCTUnwrap(squat.reps)
-        }
-
-        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a 20-day gap is a Return")
-        let returned = try squatReps()
-        var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
-        returnLog.wasReturn = true
-        history.append(returnLog)
-
-        var targets = [returned]
-        for daysAgo in [2, 1, 0] {
-            XCTAssertFalse(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar))
-            let reps = try squatReps()
-            targets.append(reps)
-            if daysAgo > 0 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
-        }
-
-        // 30 held at 0.7, 0.7, 0.8, 0.9 on the grid, each at least one step below 30.
-        XCTAssertEqual(targets, [20, 20, 20, 25], "each held session is relative to the pre-Return 30")
-        XCTAssertEqual(targets, targets.sorted(), "the ramp never takes the target down from one session to the next")
-    }
-
-    /// A held session never counts as capacity, so a user who lapses twice is held against the capacity
-    /// from before the *first* Return, not against the held number the first Return served. Last at 30
-    /// squats, the user is served 20 on Return 1 and lapses again straight away: Return 2 is 30 held at
-    /// 0.7 again (20, not 20 held down to 10), and its ramp walks back up from 30 as a single lapse does.
-    func testASecondLapseIsHeldAgainstTheCapacityFromBeforeTheFirstReturn() async throws {
-        let library = try await library()
-        let beginner = user(level: .beginner)
-        var history = [log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 40, difficulty: .justRight)]
-
-        func squatReps() throws -> Int {
-            var policy = SessionPolicy.default
-            policy.varietyWindow = 0
-            let workout = assemble(minutes: 60, user: beginner, library: library, logs: history, policy: policy)
-            let squat = try XCTUnwrap(
-                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
-                "squat_bodyweight should be served in every session of the trace"
-            )
-            return try XCTUnwrap(squat.reps)
-        }
-
-        let first = try squatReps()
-        var return1 = log([("squat_bodyweight", .strength, .squat, first)], daysAgo: 30)
-        return1.wasReturn = true
-        history.append(return1)
-
-        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a second lapse")
-        var targets = [first, try squatReps()]
-        var return2 = log([("squat_bodyweight", .strength, .squat, targets[1])], daysAgo: 3)
-        return2.wasReturn = true
-        history.append(return2)
-        for daysAgo in [2, 1, 0] {
-            let reps = try squatReps()
-            targets.append(reps)
-            if daysAgo > 0 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
-        }
-
-        XCTAssertEqual(targets, [20, 20, 20, 20, 25], "both Returns and the ramp are relative to the pre-lapse 30")
-    }
-
-    /// "Too hard" still drops 5 during a Re-entry Ramp: the ramp keeps its pre-Return base, but once a
-    /// ramp session steps a move back the move is never served above that session's number less 5 until
-    /// the normal climb earns it back. A beginner last at 30 squats is served 20 on the Return and 20 on
-    /// the first ramp session, rates that one too hard and taps squat; the next ramp session serves 15,
-    /// and the one after stays at 15 unless the user climbs (here "too easy", one step to 20).
-    func testReentryRampStillStepsBackAMoveRatedTooHard() async throws {
-        let library = try await library()
-        let beginner = user(level: .beginner)
-        let preReturn = log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)
-
-        func squatReps(logs: [WorkoutLog]) throws -> Int {
-            var policy = SessionPolicy.default
-            policy.varietyWindow = 0
-            let workout = assemble(minutes: 60, user: beginner, library: library, logs: logs, policy: policy)
-            let squat = try XCTUnwrap(workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
-            return try XCTUnwrap(squat.reps)
-        }
-
-        let returned = try squatReps(logs: [preReturn])
-        var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
-        returnLog.wasReturn = true
-        let ramp1 = try squatReps(logs: [preReturn, returnLog])
-        var ramp1Log = log([("squat_bodyweight", .strength, .squat, ramp1)], daysAgo: 2, difficulty: .tooHard)
-        ramp1Log.exercises[0].couldNotFinish = true
-        let afterTooHard = [preReturn, returnLog, ramp1Log]
-
-        let ramp2 = try squatReps(logs: afterTooHard)
-        XCTAssertEqual([returned, ramp1], [20, 20])
-        XCTAssertEqual(ramp2, 15, "too hard on a ramp session drops the next one by 5")
-
-        let ramp2JustRight = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .justRight)
-        XCTAssertEqual(try squatReps(logs: afterTooHard + [ramp2JustRight]), 15,
-                       "the ramp's own climb does not lift a stepped-back move without a qualifying climb")
-        let ramp2TooEasy = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .tooEasy)
-        XCTAssertEqual(try squatReps(logs: afterTooHard + [ramp2TooEasy]), 20,
-                       "a qualifying climb earns one step back")
-    }
-
-    /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
-    /// capped, strength-led sessions, so a "Return" during the First-Week window defers to the
-    /// cold-start strength lead. Both now lead strength (US-004/US-005), so the guard is that the
-    /// session is a cold-start session, not a Return.
-    func testReturnSuppressedDuringColdStart() async throws {
-        let library = try await library()
-        // A cold-start user (day 0 leads strength under US-004) whose lone prior session was 10 days
-        // ago - the raw gap would read as a Return.
-        let coldUser = coldStartUser(level: .beginner, sessionsLogged: 0, active: true)
-        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-        let logs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 10)]
-        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "the raw gap is a Return")
-
-        let workout = assemble(minutes: 8, user: coldUser, library: library, logs: logs, policy: policy)
-        XCTAssertEqual(
-            workout.focusPillar, .strength,
-            "cold start owns the first sessions: its strength lead applies, not the Return path"
+    /// A held session never counts as capacity, so a user who lapses twice is held against the Earned
+    /// Reps from before the *first* Return: the second Return serves what the first did.
+    func testASecondLapseIsHeldAgainstTheCapacityFromBeforeTheFirstReturn() throws {
+        let advanced = user(level: .advanced)
+        let preReturn = TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 30, earned: 30)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 40)
         )
-        XCTAssertFalse(workout.wasReturn, "a cold-start session is not flagged as a Return (the two are mutually exclusive)")
+        let firstReturn = assemble(minutes: 30, user: advanced, logs: [preReturn], day: .push)
+        XCTAssertTrue(firstReturn.wasReturn)
+        let first = try XCTUnwrap(circuit(firstReturn).first { $0.exercise.id == "push_standard" })
+
+        let history = [preReturn, logged(firstReturn, at: TrainingDayFixtures.date(daysAgo: 30), wasReturn: true)]
+        let secondReturn = assemble(minutes: 30, user: advanced, logs: history, day: .push)
+        XCTAssertTrue(secondReturn.wasReturn, "a second lapse")
+        let second = try XCTUnwrap(circuit(secondReturn).first { $0.exercise.id == "push_standard" })
+        XCTAssertEqual(second.earnedReps, first.earnedReps, "both Returns read the pre-lapse Earned Reps")
+        XCTAssertEqual(second.reps, first.reps, "and serve the same held number")
     }
 
-    /// A Return session is deterministic run to run, like every other engine path.
-    func testReturnAssemblyIsDeterministic() async throws {
-        let library = try await library()
-        let logs = advancingHistory(shift: 9)
-        let signature = structuralSignature(assemble(minutes: 20, user: user(), library: library, logs: logs))
-        for _ in 0..<10 {
-            let next = structuralSignature(assemble(minutes: 20, user: user(), library: library, logs: logs))
-            XCTAssertEqual(next, signature, "Return assembly is not deterministic")
+    /// "Too hard" still steps a move back during a Re-entry Ramp: a ramp session rated too hard with the
+    /// move marked "couldn't finish" takes a step off its Earned Reps, and the next ramp session serves no
+    /// more than the last; a later "too easy" earns the step back.
+    func testReentryRampStillStepsBackAMoveRatedTooHard() throws {
+        let advanced = user(level: .advanced)
+        let preReturn = TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 30, earned: 30)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 20)
+        )
+        func standard(_ logs: [WorkoutLog]) throws -> (Workout, PrescribedExercise) {
+            let workout = assemble(minutes: 30, user: advanced, logs: logs, day: .push)
+            return (workout, try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_standard" }))
         }
+        let (returnSession, _) = try standard([preReturn])
+        let afterReturn = [preReturn, logged(returnSession, at: TrainingDayFixtures.date(daysAgo: 3), wasReturn: true)]
+        let (ramp1, ramp1Item) = try standard(afterReturn)
+        XCTAssertEqual(ramp1Item.earnedReps, 35)
+
+        var tooHard = logged(ramp1, at: TrainingDayFixtures.date(daysAgo: 2), difficulty: .tooHard)
+        let index = try XCTUnwrap(tooHard.exercises.firstIndex { $0.exerciseId == "push_standard" })
+        tooHard.exercises[index].couldNotFinish = true
+        let (ramp2, ramp2Item) = try standard(afterReturn + [tooHard])
+        XCTAssertEqual(ramp2Item.earnedReps, 30, "too hard takes a step off Earned Reps")
+        XCTAssertLessThanOrEqual(ramp2Item.reps ?? 0, ramp1Item.reps ?? 0)
+
+        let tooEasy = logged(ramp2, at: TrainingDayFixtures.date(daysAgo: 1), difficulty: .tooEasy)
+        let (_, ramp3Item) = try standard(afterReturn + [tooHard, tooEasy])
+        XCTAssertEqual(ramp3Item.earnedReps, 35, "too easy earns the step back")
+    }
+
+    /// The Return override is suppressed while cold-start is active: a cold-start session is never
+    /// flagged as a Return, even when the raw gap reads as one.
+    func testReturnSuppressedDuringColdStart() {
+        let logs = [TrainingDayFixtures.trainingLog(.push, completedAt: TrainingDayFixtures.date(daysAgo: 10))]
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar))
+        let workout = assemble(minutes: 10, user: coldStartUser(), logs: logs, policy: coldStartPolicy(cappedMaxDifficulty: 2))
+        XCTAssertFalse(workout.wasReturn, "cold start owns the first sessions, not the Return path")
+        XCTAssertEqual(workout.focusPillar, .strength)
     }
 
     // MARK: - Determinism (content, not ids)
 
-    func testAssemblyIsDeterministic() async throws {
-        let library = try await library()
-        let user = user()
-        let logs = someHistory()
-        let first = assemble(minutes: 20, user: user, library: library, logs: logs)
-        let signature = structuralSignature(first)
-        for _ in 0..<20 {
-            let next = assemble(minutes: 20, user: user, library: library, logs: logs)
-            XCTAssertEqual(structuralSignature(next), signature, "assembly is not deterministic")
+    /// Steady-state, cold-start and Return assembly each generate byte-identically on repeat.
+    func testAssemblyIsDeterministicInEveryRegime() {
+        let lapsed = [TrainingDayFixtures.trainingLog(.push, completedAt: TrainingDayFixtures.date(daysAgo: 10))]
+        let regimes: [(String, User, [WorkoutLog], SessionPolicy)] = [
+            ("steady", user(), someHistory(), .default),
+            ("cold-start", coldStartUser(sessionsLogged: 2), [], coldStartPolicy(cappedMaxDifficulty: 2)),
+            ("return", user(), lapsed, .default),
+        ]
+        for (name, person, logs, policy) in regimes {
+            for minutes in [8, 20, 60] {
+                let first = structuralSignature(assemble(minutes: minutes, user: person, logs: logs, policy: policy))
+                for _ in 0..<5 {
+                    XCTAssertEqual(structuralSignature(assemble(minutes: minutes, user: person, logs: logs, policy: policy)), first, "\(name) \(minutes) min")
+                }
+            }
         }
-    }
-
-    /// A run-to-run-stable description of a workout's content (the ids vary by design, so this
-    /// captures structure, ordering, and targets while ignoring `UUID`s).
-    private func structuralSignature(_ workout: Workout) -> String {
-        workout.blocks.map { block in
-            let items = block.exercises.map { p in
-                "\(p.exercise.id):\(p.sets):\(p.reps.map(String.init) ?? "-"):\(p.durationSeconds.map(String.init) ?? "-"):\(p.restSeconds)"
-            }.joined(separator: ",")
-            return "\(block.category.rawValue)[\(items)]"
-        }.joined(separator: "|")
     }
 
     // MARK: - PRD validation test (intermediate user, some history, 20 minutes)
 
-    func testPRDValidationTwentyMinuteSession() async throws {
-        let library = try await library()
-        let user = user(level: .intermediate)
-
+    func testPRDValidationTwentyMinuteSession() {
+        let person = user(level: .intermediate)
+        let logs = someHistory()
         let start = DispatchTime.now()
-        let workout = assemble(minutes: 20, user: user, library: library, logs: someHistory())
+        let workout = assemble(minutes: 20, user: person, logs: logs)
         let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
 
-        XCTAssertEqual(workout.blocks.first?.category, .warmup, "opens with a warm-up")
-        XCTAssertEqual(workout.blocks.last?.category, .cooldown, "closes with a cooldown")
-
-        let planned = SessionAssembly.plannedSeconds(of: workout)
-        XCTAssertGreaterThanOrEqual(planned, 19 * 60, "20-min session should total at least 19 min")
-        XCTAssertLessThanOrEqual(planned, 21 * 60, "20-min session should total at most 21 min")
+        XCTAssertEqual(workout.trainingDay, .legs, "Push and Pull are done, so the Rotation serves Legs")
+        XCTAssertEqual(workout.blocks.map(\.title), ["Warm-Up", "Legs Day", "Cooldown"])
+        assertFillsOrRunsHonestlyShort(workout, minutes: 20, user: person, logs: logs, "20 min")
         XCTAssertLessThan(elapsedMs, 100, "assembly took \(elapsedMs)ms, over the 100ms budget")
     }
 
-    // MARK: - Evidence transcript (US-CC03/US-CC04, ADR-0010/ADR-0011)
+    // MARK: - Evidence transcript
 
-    /// Renders a human-readable transcript of the even-round circuit sessions the engine generates for
-    /// every acceptance length crossed with every fitness level, printed between EVIDENCE markers so a
-    /// reviewer can read the actual "Round N of M" structure, the rests, each rep-based set's stretch,
-    /// and how close the planned wall-clock lands to the request. Asserts the ADR-0010/ADR-0011
-    /// verification claims across all levels and two histories (a steady user and a fresh one): every
-    /// training block internally uniform, every rest at most 15 seconds, every rep target a multiple of
-    /// five from ten, every training hold a five-second step from ten, every stretch within its rail
-    /// and only on rep-based training sets, and the planned time within `toleranceSeconds` (±60s). The
-    /// largest per-set stretch is reported.
-    func testEvidenceEvenRoundCircuitTranscriptAcrossLevelsAndLengths() async throws {
-        let library = try await library()
-        var lines: [String] = []
-        lines.append("EVEN-ROUND CIRCUIT SESSIONS (US-CC03, ADR-0010/ADR-0011) - engine generation transcript")
-        lines.append("transitionSeconds=\(SessionAssembly.transitionSeconds)s  roundRest=\(SessionAssembly.roundRestSeconds)s  maxRest=\(SessionAssembly.maxRestSeconds)s  maxStretch/set=\(SessionAssembly.maxStretchSecondsPerSet)s  maxRounds=\(SessionAssembly.maxTrainingSets)  tolerance=\(SessionAssembly.toleranceSeconds)s")
-        lines.append("")
-
-        var worstDeviation = 0
-        var largestStretch = 0
-        for (historyName, logs) in [("steady", stalePrimalSteadyHistory()), ("fresh", [WorkoutLog]())] {
-            for level in [FitnessLevel.beginner, .intermediate, .advanced] {
-                lines.append("================ HISTORY: \(historyName)  FITNESS LEVEL: \(level) ================")
-                for minutes in circuitDurations {
-                    let workout = assemble(minutes: minutes, user: user(level: level), library: library, logs: logs)
-                    let planned = SessionAssembly.plannedSeconds(of: workout)
-                    let deviation = planned - minutes * 60
-                    worstDeviation = max(worstDeviation, abs(deviation))
-                    let plannedStr = String(format: "%d:%02d", planned / 60, planned % 60)
-                    lines.append(String(format: "  [%2d min] planned %@ (%+ds vs target)", minutes, plannedStr, deviation))
-                    for block in workout.blocks where !block.exercises.isEmpty {
-                        let circuit = SessionAssembly.isCircuit(block.category)
-                        let rounds = block.exercises.first?.sets ?? 0
-                        let rest = block.exercises.first?.restSeconds ?? 0
-                        if circuit {
-                            lines.append("      \(block.title) [CIRCUIT] - \(rounds) rounds, between-round rest \(rest)s, between-station transition \(SessionAssembly.transitionSeconds)s")
-                        } else {
-                            lines.append("      \(block.title) [linear bookend] - \(block.exercises.count) movement(s), one set each")
-                        }
-                        for ex in block.exercises {
-                            let tgt = ex.reps.map { "\($0) reps" } ?? ex.durationSeconds.map { "\($0)s hold" } ?? "?"
-                            let stretch = ex.stretchSeconds ?? 0
-                            largestStretch = max(largestStretch, stretch)
-                            let window = SessionAssembly.workSecondsPerSet(of: ex)
-                            lines.append("          • \(ex.exercise.displayName): \(ex.sets)×\(tgt), window \(window)s (+\(stretch)s stretch)")
-                            XCTAssertLessThanOrEqual(ex.restSeconds, SessionAssembly.maxRestSeconds, "\(minutes)min/\(level) rest over the cap")
-                            XCTAssertLessThanOrEqual(stretch, SessionAssembly.maxStretchSecondsPerSet, "\(minutes)min/\(level) stretch over the rail")
-                            if stretch > 0 {
-                                XCTAssertTrue(circuit && !ex.exercise.isHold, "\(minutes)min/\(level) stretched a hold or a bookend")
-                            }
-                            if circuit {
-                                let value = try XCTUnwrap(ex.exercise.isHold ? ex.durationSeconds : ex.reps)
-                                XCTAssertEqual(value % 5, 0, "\(minutes)min/\(level) \(ex.exercise.id) off the grid: \(value)")
-                                XCTAssertGreaterThanOrEqual(value, 10, "\(minutes)min/\(level) \(ex.exercise.id) under the floor")
-                            }
-                        }
-                        if circuit {
-                            XCTAssertEqual(Set(block.exercises.map(\.sets)).count, 1, "\(minutes)min/\(level) \(block.category) uneven rounds")
-                            XCTAssertEqual(Set(block.exercises.map(\.restSeconds)).count, 1, "\(minutes)min/\(level) \(block.category) non-uniform rest")
-                        }
-                    }
-                    XCTAssertLessThanOrEqual(abs(deviation), SessionAssembly.toleranceSeconds, "\(minutes)min/\(level)/\(historyName) planned \(planned)s outside ±60s")
-                }
+    /// Prints a human-readable transcript (between EVIDENCE markers) of the Training Day sessions the
+    /// engine generates for every length, level and day, for a fresh and a seasoned history: each
+    /// station's role, sets, served number and Earned Reps, the round rest and pause, and how the planned
+    /// wall-clock lands against the request. Asserts the transcript's claims: four sets per station, every
+    /// number on the grid of five, rests inside their rails, no stretched work window, and every session
+    /// within the tolerance or honestly short.
+    func testEvidenceTrainingDayTranscriptAcrossLevelsDaysAndLengths() throws {
+        var lines = ["TRAINING DAY SESSIONS (ADR-0012/ADR-0013) - engine generation transcript"]
+        lines.append("transition=\(SessionAssembly.transitionSeconds)s  baseRoundRest=\(SessionAssembly.baseRoundRestSeconds)s  maxRest=\(SessionAssembly.maxRestSeconds)s  tolerance=\(SessionAssembly.toleranceSeconds)s")
+        var worstShortfall = 0
+        for (name, logs) in [("seasoned", someHistory()), ("fresh", [WorkoutLog]())] {
+            for level in FitnessLevel.allCases {
+                let person = user(level: level)
                 lines.append("")
+                lines.append("================ HISTORY: \(name)  LEVEL: \(level) ================")
+                for day in TrainingDay.rotation {
+                    for minutes in lengths {
+                        let workout = assemble(minutes: minutes, user: person, logs: logs, day: day)
+                        let planned = SessionAssembly.plannedSeconds(of: workout)
+                        let gap = planned - minutes * 60
+                        worstShortfall = min(worstShortfall, gap)
+                        lines.append(String(format: "  [%@ %2d min] planned %d:%02d (%+ds)", day.rawValue, minutes, planned / 60, planned % 60, gap))
+                        for block in workout.blocks {
+                            let isCircuit = SessionAssembly.isCircuit(block.category)
+                            if isCircuit {
+                                lines.append("      \(block.title) - round rest \(block.exercises.first?.restSeconds ?? 0)s, pause \(block.transitionSeconds ?? SessionAssembly.transitionSeconds)s")
+                            } else {
+                                lines.append("      \(block.title) - \(block.exercises.count) stretch(es), one set each")
+                            }
+                            for item in block.exercises {
+                                let value = try XCTUnwrap(item.reps ?? item.durationSeconds)
+                                let earned = (item.earnedReps ?? item.earnedDurationSeconds).map { " (earned \($0))" } ?? ""
+                                let role = item.role.map { "\($0)" } ?? "stretch"
+                                lines.append("          - \(item.exercise.displayName) [\(role)]: \(item.sets) x \(value)\(item.exercise.isHold ? "s" : "")\(earned)")
+                                XCTAssertEqual(value % RepGrammar.step, 0, "\(name) \(level) \(day) \(minutes) min: \(item.exercise.id) off the grid")
+                                XCTAssertNil(item.stretchSeconds, "\(item.exercise.id) carries a stretched work window")
+                                XCTAssertLessThanOrEqual(item.restSeconds, SessionAssembly.maxRestSeconds)
+                                if isCircuit { XCTAssertEqual(item.sets, RepGrammar.setsPerStation) }
+                            }
+                        }
+                        assertFillsOrRunsHonestlyShort(workout, minutes: minutes, user: person, logs: logs, "\(name) \(level) \(day) \(minutes) min")
+                    }
+                }
             }
         }
-        lines.append("WORST ABSOLUTE DEVIATION ACROSS ALL HISTORIES × LEVELS × LENGTHS: \(worstDeviation)s")
-        lines.append("LARGEST PER-SET STRETCH: \(largestStretch)s")
-
-        let transcript = lines.joined(separator: "\n")
-        print("\n===EVIDENCE-BEGIN===\n\(transcript)\n===EVIDENCE-END===\n")
+        lines.append("")
+        lines.append("LARGEST SHORTFALL ACROSS ALL HISTORIES x LEVELS x DAYS x LENGTHS: \(worstShortfall)s")
+        print("\n===EVIDENCE-BEGIN===\n\(lines.joined(separator: "\n"))\n===EVIDENCE-END===\n")
     }
 }

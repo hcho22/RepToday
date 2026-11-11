@@ -30,12 +30,32 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
         sessionPolicy: SessionPolicy,
         variation: SessionVariation
     ) async throws -> Workout {
+        try await generateWorkout(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            recentLogs: recentLogs,
+            history: recentLogs,
+            sessionPolicy: sessionPolicy,
+            variation: variation,
+            trainingDay: nil
+        )
+    }
+
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout {
         // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`.
         //
-        // `sessionPolicy` is threaded through the assembler (US-E03): its `pillarWeighting`,
-        // `varietyWindow`, and `progressionRate` levers reach Steps 2/5/6. With `SessionPolicy.default`
-        // (every lever neutral) that is a no-op, so output is identical to pre-policy behavior.
+        // `sessionPolicy` is threaded through the assembler: its `progressionRate` paces the climb of
+        // Earned Reps, its `varietyWindow` orders the bookend stretches, and its cold-start contract
+        // drives Step 0. `trainingDay` nil lets the Rotation decide; the Rotation replays `history`.
         let library = try await exerciseService.exercises()
         return SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
@@ -44,8 +64,20 @@ final class OnDeviceWorkoutEngine: WorkoutEngineProtocol {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             variation: variation,
+            trainingDay: trainingDay,
+            history: history,
             asOf: now()
         )
+    }
+
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.trainingPlan(user: user, library: library, recentLogs: recentLogs, history: history, asOf: asOf)
+    }
+
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.recoveryWorkout(user: user, library: library, recentLogs: recentLogs, asOf: now())
     }
 
     func swapExercise(

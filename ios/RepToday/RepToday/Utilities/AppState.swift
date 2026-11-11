@@ -142,7 +142,7 @@ final class AppState {
     }
 
     /// One-shot flag for the one-time note that the foundations are now Push, Pull, Legs, Core
-    /// (ADR-0006): `true` once the user has been shown it, or once they onboarded on a build that
+    /// (ADR-0006), each line cleared by four clean sets at the top of the user's range (ADR-0013): `true` once the user has been shown it, or once they onboarded on a build that
     /// already had the new foundations (see `isOnboarded`), so it is shown at most once and never to a
     /// brand-new user. Defaults to unseen for an install that predates the change - absent means "not
     /// yet seen", which is exactly what `bool(forKey:)` answers for a never-written key. It gates
@@ -588,7 +588,9 @@ final class AppState {
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
-        static let hasSeenFoundationsUpdateNote = "AppState.hasSeenFoundationsUpdateNote"
+        // Re-keyed for M1's harder clearing bar (ADR-0013), so an install that already saw the
+        // ADR-0006 note sees the recalculated standing once more.
+        static let hasSeenFoundationsUpdateNote = "AppState.hasSeenFoundationsUpdateNote.trainingDays"
         static let hasSeenClassicsUpdateNote = "AppState.hasSeenClassicsUpdateNote"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"

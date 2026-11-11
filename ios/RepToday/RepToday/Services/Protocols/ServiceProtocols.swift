@@ -45,6 +45,28 @@ protocol WorkoutEngineProtocol {
         variation: SessionVariation
     ) async throws -> Workout
 
+    /// Assembles a complete session for `trainingDay` (ADR-0012); `nil` lets the Rotation decide. Today
+    /// passes the Rest Day's "Train anyway" group here. `history` is the full log history the Rotation
+    /// replays (a Cycle reaches back past any bounded window); every other step reads `recentLogs`.
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout
+
+    /// Today's place in the Rotation for `user` (ADR-0012): a Training Day, or a Rest Day after a
+    /// completed Cycle, replayed over the full log `history`. Days the user cannot train at all are
+    /// passed over.
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan
+
+    /// The Rest Day's optional Recovery flow (US-TD05): a short, mobility-only session that neither
+    /// advances the Rotation nor counts as a session.
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout
+
     /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
     /// when no safe, equivalent, in-budget movement exists - never an unsafe or off-pattern pick.
     ///
@@ -60,6 +82,37 @@ protocol WorkoutEngineProtocol {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome
+}
+
+extension WorkoutEngineProtocol {
+    /// A test double that predates Training Days ignores the requested day.
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        history: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation,
+        trainingDay: TrainingDay?
+    ) async throws -> Workout {
+        try await generateWorkout(
+            requestedMinutes: requestedMinutes,
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            variation: variation
+        )
+    }
+
+    /// A test double that predates Training Days follows the Rotation over every group.
+    func trainingPlan(user: User, recentLogs: [WorkoutLog], history: [WorkoutLog], asOf: Date) async throws -> TrainingPlan {
+        TrainingRotation.plan(logs: history, asOf: asOf)
+    }
+
+    /// A test double that predates the Recovery flow has none to offer.
+    func generateRecoveryWorkout(user: User, recentLogs: [WorkoutLog]) async throws -> Workout {
+        Workout(id: UUID(), createdAt: Date(timeIntervalSince1970: 0), shape: .singleFocus, requestedMinutes: 5, blocks: [])
+    }
 }
 
 /// Reads, re-programs, and detects triggers for the per-user Session Policy - the single seam

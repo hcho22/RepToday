@@ -11,14 +11,15 @@ import Foundation
 ///   actually worked (read back from `recentLogs`); a user with no history in the chain enters at
 ///   its gentlest eligible tier the cold-start Start Seed band did not withhold (the chain entry,
 ///   `progressionOrder` 0, when nothing was withheld).
-/// - **Advancement** - when the frontier tier's `advancementCriteria` are met in the logs, the
+/// - **Advancement** - when the frontier tier is cleared in the logs (`RepGrammar.isAdvancementMet`:
+///   four clean sets at the top of the user's range, at earned reps, US-TD03), the
 ///   *next* tier is offered instead (and only the next - advancement inside a chain the user is
 ///   already on is always exactly one step). Advancement is honored only when the next tier is
 ///   itself in the eligible pool, so a phase-gated or over-cap skill (e.g. the one-arm push-up) is
 ///   never offered to a user who cannot yet receive it.
-/// - **Step down at the floor (ADR-0011)** - "too hard" (or a skip) on a tier already at the
-///   10-rep / 10-second floor cannot take the number lower, so the tier one rung down the chain is
-///   offered instead - served at the floor by Step 6 (`stepDownDate(onto:library:recentLogs:)`) - and
+/// - **Step down at the floor (ADR-0011)** - "too hard" (or a skip) on a tier already at the bottom
+///   of its earned range cannot take the number lower, so the tier one rung down the chain is
+///   offered instead - served at the bottom of the range by Step 6 (`stepDownDate(onto:library:recentLogs:level:)`) - and
 ///   the user climbs back only when a *later* session clears that lower tier's criteria again. A
 ///   session that steps a move back - a skip, or "too hard" on a move marked
 ///   "couldn't finish" (or on every move when none was marked) - never counts toward its advancement
@@ -69,96 +70,6 @@ import Foundation
 /// hidden clock or library lookup, so it stays deterministic and unit-testable, mirroring
 /// `MovementPatternFocus` and `ExercisePoolFilter`.
 
-// MARK: - AdvancementCriteria
-
-/// The structured form of an exercise's free-text `advancementCriteria` (e.g. `"3x15 clean reps"`,
-/// `"3x30s hold"`, `"hold 45s per side"`, `"12 reps per side"`), so the engine can decide from the
-/// logs whether the user has cleared a tier.
-///
-/// The criteria carry no machine-readable schema in the library, so this parses the two numbers
-/// that matter: how many qualifying **sets** are required and the per-set **target** (reps for a
-/// rep-based movement, seconds for a hold). A `"{sets}x{target}"` token is read when present
-/// (`"3x15..."` -> 3 sets of 15); otherwise the first standalone number is the target for a single
-/// set (`"hold 45s"` -> 1 set of 45). Whether the target counts reps or seconds is decided by the
-/// exercise's `isHold` flag at comparison time, not by the text, so a trailing `s` in `"30s"` needs
-/// no special handling.
-///
-/// - Note: This is a deliberately small parser for the controlled vocabulary the bundled library
-///   uses today. It is forgiving (an unparseable string yields `nil`, treated as "never
-///   advanceable" by callers) rather than strict, because the library's wording is content, not a
-///   contract; a future structured criteria field would retire it.
-struct AdvancementCriteria: Equatable {
-    /// How many sets must meet `target` for the tier to be cleared (1 when the text has no
-    /// `"{sets}x..."` prefix).
-    let sets: Int
-    /// The per-set threshold: reps for a rep-based movement, seconds of hold for a hold.
-    let target: Int
-
-    /// The structured form directly (the failable `init(parsing:)` suppresses the synthesized
-    /// memberwise initializer).
-    init(sets: Int, target: Int) {
-        self.sets = sets
-        self.target = target
-    }
-
-    /// Parses the two numbers that drive advancement, or `nil` when the text carries no number at
-    /// all (so the tier can never be cleared from logs and the user simply stays on it).
-    init?(parsing raw: String) {
-        guard let parsed = Self.parse(raw) else { return nil }
-        self.sets = parsed.sets
-        self.target = parsed.target
-    }
-
-    /// Whether a single logged performance of the exercise clears this tier: at least `sets` of its
-    /// `completedSets` reached `target` (reps for a rep-based movement, `durationSeconds` for a
-    /// hold). A set missing the relevant value contributes 0 and simply does not count.
-    func isMet(by logged: LoggedExercise, isHold: Bool) -> Bool {
-        let qualifying = logged.completedSets.filter { set in
-            let value = isHold ? (set.durationSeconds ?? 0) : (set.reps ?? 0)
-            return value >= target
-        }
-        return qualifying.count >= sets
-    }
-
-    /// Scans for a `"{sets}x{target}"` token (preferred, even when a standalone number appears
-    /// first), falling back to the first standalone number as a single-set target. Returns `nil`
-    /// when the text has no digits.
-    private static func parse(_ raw: String) -> (sets: Int, target: Int)? {
-        let chars = Array(raw.lowercased())
-        var firstStandalone: Int?
-        var index = 0
-        while index < chars.count {
-            guard chars[index].isNumber else {
-                index += 1
-                continue
-            }
-            // Read the digit run starting here.
-            var end = index
-            while end < chars.count, chars[end].isNumber { end += 1 }
-            let first = Int(String(chars[index..<end]))!
-
-            // A "{first} x {second}" token wins outright, wherever it sits in the string.
-            var cursor = end
-            while cursor < chars.count, chars[cursor] == " " { cursor += 1 }
-            if cursor < chars.count, chars[cursor] == "x" {
-                cursor += 1
-                while cursor < chars.count, chars[cursor] == " " { cursor += 1 }
-                if cursor < chars.count, chars[cursor].isNumber {
-                    var secondEnd = cursor
-                    while secondEnd < chars.count, chars[secondEnd].isNumber { secondEnd += 1 }
-                    let second = Int(String(chars[cursor..<secondEnd]))!
-                    return (sets: first, target: second)
-                }
-            }
-
-            // Otherwise remember the first standalone number and keep scanning for an "NxM".
-            if firstStandalone == nil { firstStandalone = first }
-            index = end
-        }
-        return firstStandalone.map { (sets: 1, target: $0) }
-    }
-}
-
 // MARK: - ChainSelection
 
 /// The outcome of resolving one chain (or one pattern) to a single exercise: the chosen movement,
@@ -202,7 +113,7 @@ enum ProgressionChainSelection {
     ///   eligible - is a step back at the floor (`AdaptiveOverload.floorStepBackDate`), the tier below it
     ///   becomes the current tier, and the same check repeats on that tier for outcomes after the step
     ///   down (ADR-0011).
-    /// - When the current tier's `advancementCriteria` are met in the logs (after the last step down,
+    /// - When the current tier is cleared in the logs (`RepGrammar.hasCleared`; after the last step down,
     ///   if there was one) and its next tier exists, the desired tier is that next tier; otherwise it
     ///   is the current tier itself. With no step down the current tier is the frontier.
     /// - The desired tier is then clamped to what is eligible: the highest eligible tier no higher
@@ -227,6 +138,7 @@ enum ProgressionChainSelection {
         _ chain: [Exercise],
         eligibleIds: Set<String>,
         recentLogs: [WorkoutLog],
+        level: FitnessLevel,
         withheldByStartSeed: Set<String> = []
     ) -> ChainSelection? {
         let sorted = chain.sorted { $0.progressionOrder < $1.progressionOrder }
@@ -235,8 +147,11 @@ enum ProgressionChainSelection {
 
         guard let frontier = frontierTier(in: sorted, recentLogs: recentLogs) else {
             // No history in this chain: enter at the gentlest eligible tier the band did not
-            // withhold, falling back to the gentlest tier the chain offers when it withheld them all.
-            let entry = eligible.first { !withheldByStartSeed.contains($0.id) } ?? lowestEligible
+            // withhold. The band withholds only tiers below its floor, so when it withheld every tier
+            // the chain offers, the hardest of them is the one closest to the level the user trained
+            // at - a whole ladder below the band (a Training Day serves every ladder of its group)
+            // must not drop an advanced user to its entry rung after the handoff.
+            let entry = eligible.first { !withheldByStartSeed.contains($0.id) } ?? eligible.last ?? lowestEligible
             return ChainSelection(
                 exercise: entry,
                 chainId: entry.progressionChainId,
@@ -249,10 +164,10 @@ enum ProgressionChainSelection {
         // eligible set - so "too hard" at the floor still steps down when the frontier itself is a rung
         // they no longer get. With no step down, advancement is read from the frontier as before.
         let served = eligible.last { $0.progressionOrder <= frontier.progressionOrder } ?? lowestEligible
-        let current = steppedDownTier(from: served, in: sorted, recentLogs: recentLogs)
+        let current = steppedDownTier(from: served, in: sorted, recentLogs: recentLogs, level: level)
         let desiredOrder = current.since.map { cutoff in
-            advancedOrder(from: current.tier, in: sorted, recentLogs: recentLogs.filter { $0.completedAt > cutoff })
-        } ?? advancedOrder(from: frontier, in: sorted, recentLogs: recentLogs)
+            advancedOrder(from: current.tier, in: sorted, recentLogs: recentLogs.filter { $0.completedAt > cutoff }, level: level)
+        } ?? advancedOrder(from: frontier, in: sorted, recentLogs: recentLogs, level: level)
         // Clamp the desired tier to the eligible set: greatest eligible order <= desired, else the
         // lowest eligible tier. Both are guaranteed to exist (eligible is non-empty).
         let chosen = eligible.last { $0.progressionOrder <= desiredOrder } ?? lowestEligible
@@ -274,6 +189,7 @@ enum ProgressionChainSelection {
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
+        level: FitnessLevel,
         varietyWindow: Int = recentSessionWindow,
         withheldByStartSeed: Set<String> = []
     ) -> ChainSelection? {
@@ -282,6 +198,7 @@ enum ProgressionChainSelection {
             library: library,
             pool: pool,
             recentLogs: recentLogs,
+            level: level,
             varietyWindow: varietyWindow,
             withheldByStartSeed: withheldByStartSeed
         ).first
@@ -290,9 +207,8 @@ enum ProgressionChainSelection {
     /// Ranks **every** chain available for `pattern`, best first, in the same preference order
     /// `select` singles a winner out of - freshness, then the chain the user is actively
     /// progressing, then the gentler option, deterministically. `select` is exactly `.first` of
-    /// this; US-RC01's wide-circuit accessories are every result *after* the first, each an honest
-    /// frontier of its own chain (`selectInChain`'s existing earned-progression and Start-Seed-band
-    /// rules apply per chain, so an accessory is bound by them exactly like a primary).
+    /// this; every result after the first is an honest frontier of its own chain (`selectInChain`'s
+    /// earned-progression and Start-Seed-band rules apply per chain).
     ///
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each
@@ -324,6 +240,7 @@ enum ProgressionChainSelection {
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
+        level: FitnessLevel,
         varietyWindow: Int = recentSessionWindow,
         withheldByStartSeed: Set<String> = [],
         offered: Set<String> = []
@@ -341,6 +258,7 @@ enum ProgressionChainSelection {
                     members,
                     eligibleIds: eligibleIds,
                     recentLogs: recentLogs,
+                    level: level,
                     withheldByStartSeed: withheldByStartSeed
                 )
             }
@@ -349,12 +267,12 @@ enum ProgressionChainSelection {
         let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
-        // Every chain's candidate is ranked, not filtered out - US-RC01 needs every one of them as a
-        // possible accessory, not just the single winner `select` (`.first`) reads off the front. Both
+        // Every chain's candidate is ranked, not filtered out, so a caller reading past `.first` sees every
+        // chain's frontier, not just the single winner `select` reads off the front. Both
         // "never on offer" and "not fresh" are preferences, expressed as leading sort keys rather than
         // pre-filters-with-fallback: a withheld or recently-used candidate sorts *behind* an in-band,
         // fresh one, but is never dropped, so a chain the user happens to be actively working (and is
-        // therefore "not fresh") still has an honest shot at being ranked - just lower - as an accessory.
+        // therefore "not fresh") still has an honest shot at being ranked - just lower.
         // This reproduces `select`'s old filter-with-fallback exactly at `.first` (when a dimension
         // cannot differentiate - e.g. every candidate is equally withheld - sorting on it is a no-op,
         // the same as the old fallback-to-the-whole-scope behavior), while no longer silently discarding
@@ -400,13 +318,13 @@ enum ProgressionChainSelection {
     /// serves the rung at the floor from it, climbing only on the sessions after it
     /// (`AdaptiveOverload.target(steppedDownSince:)`, ADR-0011), so an old clear of the easier rung
     /// cannot send the user straight back up to the move they just found too hard.
-    static func stepDownDate(onto exercise: Exercise, library: [Exercise], recentLogs: [WorkoutLog]) -> Date? {
+    static func stepDownDate(onto exercise: Exercise, library: [Exercise], recentLogs: [WorkoutLog], level: FitnessLevel) -> Date? {
         guard let above = library
             .filter({ $0.progressionChainId == exercise.progressionChainId })
             .filter({ $0.progressionOrder > exercise.progressionOrder })
             .min(by: { $0.progressionOrder < $1.progressionOrder })
         else { return nil }
-        return AdaptiveOverload.floorStepBackDate(for: above, recentLogs: recentLogs)
+        return AdaptiveOverload.floorStepBackDate(for: above, level: level, recentLogs: recentLogs)
     }
 
     /// The tier the user is currently on, starting from the rung they are `served`: while that tier's
@@ -417,11 +335,12 @@ enum ProgressionChainSelection {
     private static func steppedDownTier(
         from served: Exercise,
         in sorted: [Exercise],
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        level: FitnessLevel
     ) -> (tier: Exercise, since: Date?) {
         var tier = served
         var since: Date?
-        while let stepBack = AdaptiveOverload.floorStepBackDate(for: tier, recentLogs: recentLogs),
+        while let stepBack = AdaptiveOverload.floorStepBackDate(for: tier, level: level, recentLogs: recentLogs),
               since.map({ stepBack > $0 }) ?? true,
               let lower = sorted.last(where: { $0.progressionOrder < tier.progressionOrder }) {
             tier = lower
@@ -435,10 +354,11 @@ enum ProgressionChainSelection {
     private static func advancedOrder(
         from frontier: Exercise,
         in sorted: [Exercise],
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        level: FitnessLevel
     ) -> Int {
         guard
-            criteriaMet(for: frontier, recentLogs: recentLogs),
+            RepGrammar.hasCleared(frontier, in: recentLogs, level: level),
             let nextId = frontier.progressionId,
             let next = sorted.first(where: { $0.id == nextId })
         else {
@@ -447,25 +367,11 @@ enum ProgressionChainSelection {
         return next.progressionOrder
     }
 
-    /// Whether the user has cleared `exercise`'s advancement criteria in any single past
-    /// performance. Unparseable criteria are never "met", so the user stays on the tier.
-    private static func criteriaMet(for exercise: Exercise, recentLogs: [WorkoutLog]) -> Bool {
-        guard let criteria = AdvancementCriteria(parsing: exercise.advancementCriteria) else {
-            return false
-        }
-        return recentLogs.contains { log in
-            log.exercises.contains { logged in
-                logged.exerciseId == exercise.id
-                    && log.countsTowardAdvancement(logged)
-                    && criteria.isMet(by: logged, isHold: exercise.isHold)
-            }
-        }
-    }
-
-    /// Ids of every exercise worked (non-skipped) anywhere in `recentLogs`.
+    /// Ids the user has worked toward progression (US-TD02): a skipped station or a Practice Movement
+    /// never sets a frontier, so practicing the next rung never puts the user on it.
     private static func workedExerciseIds(recentLogs: [WorkoutLog]) -> Set<String> {
         recentLogs.reduce(into: Set<String>()) { ids, log in
-            for logged in log.exercises where !logged.skipped {
+            for logged in log.exercises where logged.countsForProgression {
                 ids.insert(logged.exerciseId)
             }
         }

@@ -14,51 +14,33 @@ import XCTest
 /// These tests run over the *real* bundled `Exercises.json` and mirror `MidTierStrengthSkillTests`:
 /// the catalog still loads/validates, the touched chain is a clean doubly-linked ladder, and the
 /// two new skills are reachable by a Strength-Phase user and not by a discipline user (US-SP01
-/// already lifted the effective difficulty cap; this story only gives hinge a skill to reach).
+/// already lifted the effective difficulty cap; this story only gives hinge a skill to reach). A rung
+/// clears the way the rep grammar says (US-TD03): four sets at the top of the user's range, at earned reps.
 final class HingeStrengthSkillTests: XCTestCase {
 
-    // The hinge_bridge chain's new phase-gated tail: the discipline frontier, the US-SP03 mid-tier
-    // bridge, and the difficulty-5 summit, with the clearing value that advances each rung.
+    // The hinge_bridge chain's phase-gated tail: the discipline frontier, the US-SP03 mid-tier bridge,
+    // and the difficulty-5 summit.
     private let chainId = "hinge_bridge"
-    private let frontier = (id: "hinge_long_lever_bridge", difficulty: 4, clear: 15)  // "3x15 slow reps per side"
-    private let bridge = (id: "hinge_nordic_assisted", difficulty: 4, clear: 15)       // "3x15 clean reps"
+    private let frontier = (id: "hinge_long_lever_bridge", difficulty: 4)
+    private let bridge = (id: "hinge_nordic_assisted", difficulty: 4)
     private let summit = (id: "hinge_nordic", difficulty: 5)
 
     private func library() async throws -> [Exercise] {
         try await MockExerciseService().exercises()
     }
 
-    /// A log in which `exerciseId` was worked (non-skipped) with three rep-based sets each meeting
-    /// `value`, enough to clear a `"3x{value}..."` tier.
-    private func clearingLog(_ exerciseId: String, value: Int) -> WorkoutLog {
-        let sets = (0..<3).map { _ in CompletedSet(reps: value, durationSeconds: nil) }
-        return WorkoutLog(
-            id: UUID(), workoutId: UUID(),
-            completedAt: Date(timeIntervalSince1970: 1_760_000_000),
-            requestedMinutes: 20, durationMinutes: 20, shape: .singleFocus, focusPillar: .strength,
-            perceivedDifficulty: nil,
-            exercises: [LoggedExercise(
-                id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                movementPattern: .hinge, completedSets: sets, skipped: false
-            )]
+    /// A Training Day log whose main station clears `exercise` for a user at `level`: four sets at the
+    /// top of the level's range, prescribed at earned reps that had reached it.
+    private func clearingLog(_ exercise: Exercise, level: FitnessLevel, daysAgo: Int = 1) -> WorkoutLog {
+        let top = RepGrammar.earnedRange(for: exercise, level: level).upperBound
+        return TrainingDayFixtures.log(
+            [TrainingDayFixtures.station(exercise.id, pattern: .hinge, value: top, earned: top, isHold: exercise.isHold)],
+            completedAt: TrainingDayFixtures.date(daysAgo: daysAgo)
         )
     }
 
-    private func user(level: FitnessLevel, phase: Phase) -> User {
-        User(
-            id: "u1", displayName: "Test", createdAt: Date(timeIntervalSince1970: 1_700_000_000),
-            profile: UserProfile(
-                age: 35, sex: .other, heightCm: 175, weightKg: 75,
-                fitnessLevel: level, primaryGoal: .buildStrength, sitsLong: false,
-                injuries: [], typicalAvailableMinutes: 20
-            ),
-            phase: phase,
-            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
-            consistency: Consistency(
-                weeklyGoal: 3, score: 100, workoutsThisWeek: 3,
-                longestChain: 8, totalWorkoutsCompleted: 40, totalMinutesExercised: 600
-            )
-        )
+    private func exercise(_ id: String, in library: [Exercise]) throws -> Exercise {
+        try XCTUnwrap(library.first { $0.id == id }, "\(id) must exist in the catalog")
     }
 
     // MARK: - Catalog loads / validates with the new hinge skills
@@ -117,7 +99,8 @@ final class HingeStrengthSkillTests: XCTestCase {
     /// this earned user (US-SP01's lifted cap composing with the new catalog).
     func testStrengthUserClimbsTheHingeLadderOneRungAtATime() async throws {
         let library = try await library()
-        let user = user(level: .advanced, phase: .strength)
+        let level = FitnessLevel.advanced
+        let user = TrainingDayFixtures.user(level: level, phase: .strength)
         let eligibleIds = Set(ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: []).map(\.id))
         let members = library.filter { $0.progressionChainId == chainId }
 
@@ -129,7 +112,8 @@ final class HingeStrengthSkillTests: XCTestCase {
         let fromFrontier = try XCTUnwrap(
             ProgressionChainSelection.selectInChain(
                 members, eligibleIds: eligibleIds,
-                recentLogs: [clearingLog(frontier.id, value: frontier.clear)]
+                recentLogs: [clearingLog(try exercise(frontier.id, in: library), level: level)],
+                level: level
             ),
             "\(chainId) must resolve a tier"
         )
@@ -142,7 +126,8 @@ final class HingeStrengthSkillTests: XCTestCase {
         let fromBridge = try XCTUnwrap(
             ProgressionChainSelection.selectInChain(
                 members, eligibleIds: eligibleIds,
-                recentLogs: [clearingLog(bridge.id, value: bridge.clear)]
+                recentLogs: [clearingLog(try exercise(bridge.id, in: library), level: level)],
+                level: level
             )
         )
         XCTAssertEqual(fromBridge.exercise.id, summit.id,
@@ -150,42 +135,61 @@ final class HingeStrengthSkillTests: XCTestCase {
         XCTAssertEqual(fromBridge.exercise.difficulty, summit.difficulty)
     }
 
-    /// The freshly-advanced bridge opens at the ten-rep floor (ADR-0011), below its "3x15 clean reps"
-    /// criterion, so it can never clear on first exposure: three "just right" sessions at 10 climb it to
-    /// 15, and only a fourth session at 15 clears it - a newly reached move takes at least four sessions.
-    /// A session at 15 the user marks "couldn't finish" never clears it either.
+    /// The freshly-reached bridge opens at the bottom of the user's range, so it can never clear on
+    /// first exposure: each finished session climbs Earned Reps one step, and only a session served at
+    /// the top of the range clears it - four sessions for an intermediate (15, 20, 25, 30), eight for an
+    /// advanced user whose range runs to 50. A session at the top the user marks "couldn't finish"
+    /// never clears it.
     func testFreshHingeBridgeTakesAtLeastFourSessionsToClear() async throws {
         let library = try await library()
-        let bridgeEx = try XCTUnwrap(library.first { $0.id == bridge.id })
+        let bridgeEx = try exercise(bridge.id, in: library)
         let members = library.filter { $0.progressionChainId == chainId }
         let eligibleIds = Set(members.map(\.id))
-        func session(_ reps: Int, daysAgo: Int, marked: Bool = false) -> WorkoutLog {
-            var log = clearingLog(bridge.id, value: reps)
-            log.completedAt = Date(timeIntervalSince1970: 1_760_000_000 - Double(daysAgo) * 86_400)
-            if marked {
-                log.perceivedDifficulty = .tooHard
-                log.exercises[0].couldNotFinish = true
+
+        for (level, expectedSessions) in [(FitnessLevel.intermediate, 4), (.advanced, 8)] {
+            let range = RepGrammar.earnedRange(for: bridgeEx, level: level)
+            XCTAssertEqual(AdaptiveOverload.target(for: bridgeEx, level: level, recentLogs: []).reps, range.lowerBound,
+                           "\(level): the bridge opens at the bottom of the range")
+
+            // The user cleared the frontier, which put them on the bridge.
+            var logs = [clearingLog(try exercise(frontier.id, in: library), level: level, daysAgo: 30)]
+            var served: [Int] = []
+            func selected() throws -> String {
+                try XCTUnwrap(ProgressionChainSelection.selectInChain(
+                    members, eligibleIds: eligibleIds, recentLogs: logs, level: level
+                )).exercise.id
             }
-            return log
+            func session(_ target: OverloadTarget, couldNotFinish: Bool = false) -> WorkoutLog {
+                TrainingDayFixtures.log(
+                    [TrainingDayFixtures.station(bridge.id, pattern: .hinge, value: target.value, earned: target.earned,
+                                                 couldNotFinish: couldNotFinish ? true : nil)],
+                    completedAt: TrainingDayFixtures.date(daysAgo: 29 - served.count),
+                    difficulty: couldNotFinish ? .tooHard : .justRight
+                )
+            }
+
+            while try selected() == bridge.id, served.count < 20 {
+                let target = AdaptiveOverload.target(for: bridgeEx, level: level, recentLogs: logs)
+                if target.value == range.upperBound {
+                    XCTAssertEqual(try selected(), bridge.id)
+                    let marked = logs + [session(target, couldNotFinish: true)]
+                    XCTAssertEqual(
+                        try XCTUnwrap(ProgressionChainSelection.selectInChain(
+                            members, eligibleIds: eligibleIds, recentLogs: marked, level: level
+                        )).exercise.id,
+                        bridge.id,
+                        "\(level): a session at the top marked couldn't finish never clears it"
+                    )
+                }
+                logs.append(session(target))
+                served.append(target.value)
+            }
+
+            XCTAssertEqual(try selected(), summit.id, "\(level): the finished session at the top clears the bridge")
+            XCTAssertEqual(served.count, expectedSessions, "\(level): served \(served)")
+            XCTAssertEqual(served, Array(stride(from: range.lowerBound, through: range.upperBound, by: RepGrammar.step)))
+            XCTAssertGreaterThanOrEqual(served.count, 4, "a newly reached move takes at least four sessions")
         }
-        func selected(_ logs: [WorkoutLog]) throws -> String {
-            try XCTUnwrap(ProgressionChainSelection.selectInChain(members, eligibleIds: eligibleIds, recentLogs: logs)).exercise.id
-        }
-
-        XCTAssertEqual(AdaptiveOverload.target(for: bridgeEx, recentLogs: []).reps, AdaptiveOverload.minReps,
-                       "the bridge opens at the ten-rep floor")
-        XCTAssertLessThan(AdaptiveOverload.minReps, bridge.clear, "below its fifteen-rep criterion")
-
-        let threeAtTen = [session(10, daysAgo: 1), session(10, daysAgo: 2), session(10, daysAgo: 3)]
-        XCTAssertEqual(try selected(Array(threeAtTen.prefix(1))), bridge.id, "one session at ten does not clear it")
-        XCTAssertEqual(try selected(threeAtTen), bridge.id, "three sessions at ten do not clear it")
-        XCTAssertEqual(AdaptiveOverload.target(for: bridgeEx, recentLogs: threeAtTen).reps, 15,
-                       "but they climb it to fifteen")
-
-        XCTAssertEqual(try selected([session(15, daysAgo: 0, marked: true)] + threeAtTen), bridge.id,
-                       "a fourth session marked couldn't finish never clears it")
-        XCTAssertEqual(try selected([session(15, daysAgo: 0)] + threeAtTen), summit.id,
-                       "a fourth, finished session at fifteen clears it")
     }
 
     /// The mirror: a **discipline**-phase user at the same frontier can reach neither new hinge skill
@@ -194,7 +198,8 @@ final class HingeStrengthSkillTests: XCTestCase {
     /// of the story's Validation Test.
     func testDisciplineUserNeverReachesTheHingeStrengthSkills() async throws {
         let library = try await library()
-        let disciplineUser = user(level: .advanced, phase: .discipline)
+        let level = FitnessLevel.advanced
+        let disciplineUser = TrainingDayFixtures.user(level: level, phase: .discipline)
         let eligibleIds = Set(ExercisePoolFilter.eligiblePool(from: library, user: disciplineUser, recentLogs: []).map(\.id))
 
         XCTAssertFalse(eligibleIds.contains(bridge.id), "the phase-gated \(bridge.id) must be hidden from a discipline user")
@@ -204,7 +209,8 @@ final class HingeStrengthSkillTests: XCTestCase {
         let chosen = try XCTUnwrap(
             ProgressionChainSelection.selectInChain(
                 members, eligibleIds: eligibleIds,
-                recentLogs: [clearingLog(frontier.id, value: frontier.clear)]
+                recentLogs: [clearingLog(try exercise(frontier.id, in: library), level: level)],
+                level: level
             )
         )
         XCTAssertEqual(chosen.exercise.id, frontier.id,

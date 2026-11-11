@@ -11,11 +11,12 @@ The training families a session draws from - `strength`, `mobility`, `primal` (`
 **Strength is the primary pillar of every session.**
 Single-focus, blend, cold-start, and Return sessions all lead with strength; mobility is **supporting** - the structural warm-up and the cooldown bookends only, never a training block and never the lead.
 This is the strength-primary decision that superseded the earlier co-primary framing (see [ADR-0001](docs/adr/0001-strength-primary-sessions.md)); it is captain-accepted, and the term "co-primary" is retired for describing current behavior.
-Since **US-M01** the strength lead is *structural*: the engine builds every session as Warm-Up -> Strength (-> Primal at 41-60 min) -> Cooldown, with no strength-vs-mobility split machinery. Since **US-M03** the `sitsLong` (desk-worker signal) *biases* bookend selection toward posture/hip openers - never a sizing lever, so it can never reintroduce a mobility middle block (`SessionAssembly.postureHipLean`; see AGENTS.md section 2).
+Since **US-M01** the strength lead is *structural*, and since M1 every session is a **Training Day**: Warm-Up -> one strength circuit for one group -> Cooldown, with no strength-vs-mobility split machinery. Since **US-M03** the `sitsLong` (desk-worker signal) *biases* bookend selection toward posture/hip openers - never a sizing lever, so it can never reintroduce a mobility middle block (`SessionAssembly.postureHipLean`; see AGENTS.md section 2).
 Since **US-M02** the bookends are *pattern-matched*: each mobility movement carries a `complements: [MovementPattern]` tag (`Exercises.json`), and the warm-up and cooldown **lead** with a stretch complementing the day's lead strength pattern, then fill with the existing staleness / no-repeat ordering - a preference, never a filter (`SessionAssembly.leadingComplement`); the general pool is the fallback so a bookend is never starved.
 
-`primal` (bear crawl, crab walk, ground-to-standing) is a first-class pillar: it earns its own dedicated block in extended (41-60 min) sessions and folds into the strength family in shorter blends (US-E02).
-The engine mechanics live in `Services/Engine/SessionAssembly.swift` (the block builder); `AGENTS.md` section 2 ("Pillar balance") is the working description.
+`primal` is **retired** as a training family ([ADR-0014](docs/adr/0014-retire-primal-pillar.md), M1): crawls need floor space a home or hotel room does not have.
+Every locomotion movement carries `audience: retired` and stays in the catalog only so old logs and paused sessions still resolve; Bear Hold stays on the core ladder.
+The engine mechanics live in `Services/Engine/SessionAssembly.swift` (the Training Day slot plan).
 
 ## Movement Practice (retired)
 
@@ -37,37 +38,29 @@ Self-pacing is preserved by in-flow escape hatches (chiefly **+ More time**), ne
 ## Rest
 
 A countdown between efforts that the user recovers through: the **between-station transition** inside a round (the "Next: <exercise>" beat), the **between-round rest**, the transition between blocks, and a warm-up or cooldown move's between-set rest.
-**Every rest is at most 15 seconds** ([ADR-0010](docs/adr/0010-short-rests-stretched-work-windows.md)); the per-side "Switch sides" beat is 5 seconds, and **+15s** stays an optional way to ask for more.
-The spare seconds at the end of a stretched work window are part of the set, not a rest, so the cap does not bind them.
-The owning code is `SessionAssembly.maxRestSeconds`, and the player clamps every rest it opens to it.
+Both gaps start at 15 seconds ([ADR-0010](docs/adr/0010-short-rests-stretched-work-windows.md)) and grow only when reps alone cannot fill a session ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md)): the rest after a round up to 60 seconds on a session of 30 minutes or less, and on a 45 or 60 minute session the pause between movements up to 60 seconds and the rest after a round up to the level cap (beginner 2:00, intermediate 1:30, advanced 1:00).
+The per-side "Switch sides" beat is 5 seconds, and **+15s** stays an optional way to ask for more.
+The owning code is `SessionAssembly.fit`, `SessionAssembly.roundRestCap` and `WorkoutBlock.transitionSeconds`; the player clamps every rest it opens to `SessionAssembly.maxRestSeconds`.
 
-## Stretched work window
+## Stretched work window (retired)
 
-The countdown on a rep-based strength or primal set, lengthened past the generous pace the reps need so the session lands on the length the user chose.
-The user finishes the reps and rests until the window ends; the set still records what it asked for.
-It is the timing fit's fine lever ([ADR-0010](docs/adr/0010-short-rests-stretched-work-windows.md), replacing ADR-0003's tunable between-round rest): the fit picks whole rounds and stations first, preferring the shape that leaves the smallest stretch, then spreads the remaining seconds evenly across the session's rep-based training sets.
-A window never shrinks below the generous pace, and timed holds and the warm-up and cooldown keep their prescribed lengths.
-The owning code is `SessionAssembly.fit`/`stretchWorkWindows` and `PrescribedExercise.stretchSeconds`.
+A rep-based set's countdown lengthened past the pace its reps need so a session landed on its length ([ADR-0010](docs/adr/0010-short-rests-stretched-work-windows.md)).
+Retired by [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md): **Padding** and then rest fill a session instead.
+`PrescribedExercise.stretchSeconds` stays decodable so a session saved before M1 still plays its windows.
 
 ## Round numbers
 
-Every rep target is a multiple of five from 10 to 50 (10, 15, 20, ...), and every hold a five-second step from 10 seconds up to the hold ceiling; a per-side move follows the rule per side, and a user who cannot do ten does what they can.
-**The climb** replaces Adaptive Overload's percentage steps (amending the Asymmetric Ramp, US-E05): three sessions in a row at the same number rated "just right" (or unrated) add 5, "too easy" adds 5 at once, and "too hard" or a skip takes 5 off - or, already at 10, steps the move one rung down its progression chain.
+Every rep and hold number is a multiple of five ([ADR-0011](docs/adr/0011-round-numbers-and-the-climb.md)); a per-side move follows the rule per side.
+Since M1 the numbers live in **Earned Reps** ranges (reps 15-30, advanced 15-50; per side 5-15; holds 20-60 seconds, advanced 90), and a short session may serve down to 10 reps (5 per side) - the one owner is `Services/Engine/RepGrammar.swift`.
+**The climb** ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md)'s reconciliation, replacing ADR-0011's three-session climb): Earned Reps climb 5 after each session not rated too hard whose prescription reached them, "too easy" adds 5 at once, and "too hard" or a skip takes 5 off - or, already at the bottom of the range, steps the move one rung down its progression chain.
 After "too hard" the completion screen lists the session's strength and primal moves for the user to tap any they **couldn't finish**: only those step back and that session never counts toward their advancement, the untapped ones hold, and with none tapped every move steps back and the session counts toward no move's advancement.
-A number logged before the grid is read rounded down onto it, never below 10, and logs are never rewritten.
-Every rep advancement criterion is above the first number a move is served at - none is at or below 10 reps a set, and a cold-start Start Seed never lifts a first number past one step below the criterion - so a newly reached move takes at least four "just right" sessions at the neutral pace to clear: three to climb from 10 to 15, then one at 15.
-The decision, including how the Session Policy pace, the Re-entry Ramp and the Start Seed map onto five-steps, is [ADR-0011](docs/adr/0011-round-numbers-and-the-climb.md); the owning code is `Services/Engine/AdaptiveOverload.swift`.
+A number logged before the grid is read rounded down onto it, and logs are never rewritten.
+The owning code is `Services/Engine/AdaptiveOverload.swift`.
 
-## Wide Circuit
+## Wide Circuit (retired)
 
-How a **longer** session is filled: by going **wider** (more distinct movements) rather than **deeper** (more rounds of the same movement).
-Every training-block exercise is capped at **2-4 rounds** (`SessionAssembly.minTrainingSets = 2`, `maxTrainingSets = 4`; was `1...8`), so no movement is ever prescribed more than four times.
-Once every active station sits at the 4-round cap, the timing fit fills the rest of a long session by promoting an **accessory** - the frontier tier of a strength pattern's *further* progression chain (push's vertical chain alongside its horizontal, squat's lunge alongside squat, etc.) - drawn from the block reserve **depth-first** (all stations reach the cap before any accessory is promoted, so short and medium sessions stay one-movement-per-pattern and only long sessions go wide).
-Each accessory is an honest frontier of its own chain and is progressed, variety-windowed, and dosed by Adaptive Overload exactly like a primary station (no separate accessory path); it joins the block at the block's uniform round count, so the circuit stays even (ADR-0003).
-The accepted **depth mismatch** (a maxed primary can be harder than its shallower accessory chain reaches) is bounded by the user's **staple movements** - zero tiers for a beginner, at most one for an intermediate or advanced user - and an untouched chain is never seeded above the tier the user has earned.
-This is an engine-only change; the continuous-circuit player renders the reshaped block (more stations, fewer rounds) unchanged.
-The decision is recorded as [ADR-0004](docs/adr/0004-round-cap-wide-circuit.md) (which supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence); its PRD is `.claude/agent/tasks/prd-round-cap-wide-circuits.md` (`US-RC##`).
-The owning code is `Services/Engine/SessionAssembly.swift` (round rails, reserve generation, depth-first fit, `blockSeconds`) and `Services/Engine/ProgressionChainSelection.swift` (the per-pattern multi-chain frontier via `selectAll`/`selectInChain`).
+How a long session used to be filled: by going wider, promoting further-chain accessories once every station sat at a 2-4 round cap ([ADR-0004](docs/adr/0004-round-cap-wide-circuit.md)).
+Retired by [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md): a Training Day serves a fixed number of movements for its length, every station runs 4 rounds, and **Padding** and rest fill the time.
 
 ## Different workout
 
@@ -91,6 +84,8 @@ It supersedes the **Effective Difficulty Cap** (US-SP01), which gated the pool b
 Pull is the one exception to "familiar only": it keeps its current equipment-free movements.
 The decision is recorded as [ADR-0007](docs/adr/0007-staple-movements-for-beginner-and-intermediate.md).
 
+**The one exception ([ADR-0015](docs/adr/0015-practice-movement-bypasses-staple-gate.md)):** a **Practice Movement** may sit above the user's staple level; injury exclusions, Strength-Phase locks and withdrawals still apply.
+
 ## Foundation
 
 What the user clears to earn the Strength Phase.
@@ -113,6 +108,8 @@ Each foundation's counting ladder:
 The Strength Phase is earned when all four foundations are cleared and the Consistency Score has been sustained above 80 for about eight weeks; an earned Strength Phase is never revoked, so a change to the foundations can only change what a Discipline user still has to clear.
 Pull's ladder ends at Single-Arm Supine Floor Row with no locked Strength-Phase rung, because a Pull top rung needs equipment and the zero-equipment rule stands until the planned Phase 2 equipment work.
 The rationale, presentation, Coach behavior and existing-user recalculation are recorded in [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md).
+
+Since M1 a line is cleared by four clean sets at the top of the user's range on the entry rung, at earned reps, in a session not rated too hard ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md), `RepGrammar.isAdvancementMet`), so a Discipline user may need to re-clear a foundation after the update.
 
 ## Back injury area
 
@@ -145,9 +142,87 @@ Live since 2026-10-21: the spec, which tracks what has landed, is `.claude/agent
 The change is a closed `CoachPolicyProposal` (no safety field is expressible), clamped to the engine's rails before it is accepted, tagged `updatedBy == .llm`, noted honestly (`PolicyNote.coachTemplated`), applied on the next open, and reversible.
 The decision is recorded as [ADR-0005](docs/adr/0005-two-writer-policy-safety.md); the owning code is `SessionPolicy`, `CoachSessionPolicyService`, `CoachPolicyProposal`, and the closed proposal producers `CoachIntentMapper` (free-text tuning, US-AC07) and `CoachAnalyticsInsight` (a strength-journey stall offer, US-AN02).
 
+**Planned note ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md), 2026-11-10):** a Coach **Custom Workout** is a separate, user-accepted artifact, not a policy write, so this structure is unchanged by it.
+
 ## discipline-first
 
 The product's positioning: the promise is **daily consistency** - showing up - independent of whether a given day's work is strength or mobility.
 Discipline-first is a framing about the user's behavior and identity ("you're someone who moves"), not a claim about the session's pillar mix.
 It coexists with the strength-primary engine: the engine leads with strength while the positioning stays discipline-first, and every user starts in the **Discipline Phase** and earns the **Strength Phase** through sustained consistency plus demonstrated competence (`Services/Consistency/`, `PhaseEvaluator`; `AGENTS.md` "Consistency & Phase").
 No gamification (no XP, levels, badges, or a streak to break); a miss dents but never zeroes the Consistency Score.
+
+## Training Day
+
+A session dedicated to one group: a **Push Day** (push), a **Pull Day** (pull), or a **Legs Day** (squat and hinge).
+A Training Day never mixes groups; its only extras are the **Core Sprinkle** and the warm-up and cooldown bookends.
+Its main slots by length are 1 (5-20 min), 2 (30), 3 (45) and 4 (60); a Push or Pull Day has two ladders, so its third and fourth slots are **Practice Movements**, and a Legs Day uses the squat, lunge, bridge and hip ladders.
+Every main and core station runs 4 rounds.
+Decided in [ADR-0012](docs/adr/0012-push-pull-legs-rotation-with-rest-day.md) and [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md); the owning code is `Services/Engine/SessionAssembly.swift` and `Models/TrainingDay.swift`.
+
+## Rotation / Cycle
+
+Training Days always run Push -> Pull -> Legs and advance only when a session is completed, so a missed day never skips a group.
+One pass through the three is a **Cycle**.
+A log's Training Day is read off its stations' roles (`WorkoutLog.trainingDay`), so logs written before M1 carry none and existing users start at Push.
+The owning code is `Services/Engine/TrainingRotation.swift`.
+
+## Rest Day
+
+The planned day off after every completed Cycle.
+Any day without a session after Legs counts as the rest; a user may "train anyway", which forfeits it.
+Today shows a Rest Day card with an optional mobility-only **Recovery** flow, which neither advances the Rotation nor counts as a session (`WorkoutLog.isRecovery`).
+A Rest Day never lowers the Consistency Score.
+
+## Core Sprinkle
+
+The one core movement added to every Training Day (two when Abs is a **Focus Area**), rotating across core ladders from Cycle to Cycle.
+
+## Practice Movement
+
+The next harder rung of a ladder, prescribed at low reps beside the current rung on longer sessions.
+It runs at 4 x 10 (per side 4 x 5, holds 15 seconds), previews progression but never advances it (`LoggedExercise.countsForProgression`), and may sit above the user's staple level ([ADR-0015](docs/adr/0015-practice-movement-bypasses-staple-gate.md)).
+With no harder rung the slot takes the rung below at volume reps; with neither, the session has one fewer movement.
+
+## Variation (planned)
+
+A same-difficulty alternative to a rung (Standard -> Wide or One-legged push-up) that joins longer sessions as an extra movement once its Trainer art exists.
+It unlocks with its parent rung and never advances the ladder.
+
+## Earned Reps / Rep Ramp
+
+The per-movement rep count the user has earned through rated sessions, always a multiple of 5, recorded on every prescription and log (`earnedReps`, `earnedDurationSeconds`) so Padding and a short session's cut never move it.
+Moving up a rung requires four clean sets at the top of the level's range at earned reps ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md)).
+
+## Padding
+
+Reps prescribed above Earned Reps only to fill a longer session.
+Padded reps count as done but never move the Rep Ramp or a rung.
+
+## Outside Activity (planned)
+
+A workout done outside Rep Today (a run, a swim), logged by hand or confirmed from Apple Health.
+It counts as showing up, and the group it worked gets at least a day off before its next Training Day.
+
+## Custom Workout (planned)
+
+A workout written by the **Coach** that the user reviews, edits and accepts before playing.
+It counts like an Outside Activity and never advances progression ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)).
+
+## Focus Area (planned)
+
+A body part the user wants to improve: Chest, Shoulders, Arms, Back, Abs, Legs, or Glutes.
+It changes emphasis within Training Days, never the Rotation.
+
+## Welcome Page (planned)
+
+The tap-through page shown on every cold launch before Today: a greeting, today's Training Day or Rest Day, and the Cycle.
+
+## Account (planned)
+
+The user's required sign-in identity; their data lives on the device first and syncs to Rep Today's server ([ADR-0016](docs/adr/0016-clerk-accounts-convex-local-first.md)).
+
+## Coach
+
+The premium AI conversation partner, distinct from the **Trainer**.
+Today it is a stateless chat that may only nudge preference levers (see Two-Writer Policy Safety).
+**Planned change ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md), 2026-11-10, not yet implemented):** the Coach becomes an agent with its own tab that remembers the user, acts through confirmed tools, writes **Custom Workouts**, gives general diet guidance to adults only, and sets reminders.

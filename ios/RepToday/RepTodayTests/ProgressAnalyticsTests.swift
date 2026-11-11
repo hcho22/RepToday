@@ -370,6 +370,28 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertEqual(bests.bestHold?.displayName, "Forearm Plank")
     }
 
+    /// A Recovery flow is not a session: it adds its minutes moved but no session to any count - the
+    /// totals, the best week, the longest session, the weekly volume or the difficulty mix.
+    func testARecoveryFlowCountsAsNoSession() {
+        var recovery = TrainingDayFixtures.recoveryLog(completedAt: date(weeksAgo: 0, dayOffset: 2))
+        recovery.durationMinutes = 40
+        recovery.perceivedDifficulty = .tooHard
+        let logs = [
+            log(weeksAgo: 0, dayOffset: 0, minutes: 12, rating: .justRight, [logged("push_b", .strength, .push, reps: [12])]),
+            log(weeksAgo: 0, dayOffset: 1, minutes: 15, rating: .justRight, [logged("pull_a", .strength, .pull, reps: [10])]),
+            recovery,
+        ]
+        let progress = analytics(logs)
+
+        XCTAssertEqual(progress.personalBests.totalSessions, 2)
+        XCTAssertEqual(progress.personalBests.mostSessionsInAWeek, 2)
+        XCTAssertEqual(progress.personalBests.longestSessionMinutes, 15)
+        XCTAssertEqual(progress.personalBests.totalMinutesMoved, 12 + 15 + 40)
+        XCTAssertEqual(progress.deep.weeklyVolume.last?.sessionCount, 2)
+        XCTAssertEqual(progress.deep.difficultyMix.tooHard, 0)
+        XCTAssertEqual(progress.deep.difficultyMix.ratedCount, 2)
+    }
+
     /// With no rep or hold history the named bests are nil rather than zero.
     func testPersonalBestsNilWithoutTypedHistory() {
         let bests = analytics([]).personalBests

@@ -55,21 +55,21 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
         )
     }
 
-    /// A worked (or skipped) logged exercise with `sets` sets of `reps` reps.
+    /// A worked (or skipped) Training Day main station with `sets` sets of `reps` reps, recording Earned
+    /// Reps of `reps`.
     private func logged(
         _ exerciseId: String,
         reps: Int,
-        sets: Int,
+        sets: Int = 4,
         skipped: Bool = false
     ) -> LoggedExercise {
-        LoggedExercise(
-            id: UUID(),
-            exerciseId: exerciseId,
-            pillar: .strength,
-            movementPattern: .push,
-            completedSets: Array(repeating: CompletedSet(reps: reps, durationSeconds: nil), count: sets),
-            skipped: skipped
-        )
+        TrainingDayFixtures.station(exerciseId, pattern: .push, value: reps, earned: reps, sets: sets, skipped: skipped)
+    }
+
+    /// The Training Day bar on the entry tier of `pushChain()` for the intermediate sample user: four
+    /// sets at the top of the 15-30 range, at Earned Reps of 30.
+    private func clears() -> [LoggedExercise] {
+        [logged("push_knee", reps: 30)]
     }
 
     /// A push-chain library: a beginner entry tier whose next tier exists but is gated behind the
@@ -82,16 +82,14 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
                 difficulty: 1,
                 order: 0,
                 progressionId: "push_one_arm",
-                phase: .discipline,
-                criteria: "3x12"
+                phase: .discipline
             ),
             exercise(
                 id: "push_one_arm",
                 difficulty: 5,
                 order: 1,
                 progressionId: nil,
-                phase: .strength,
-                criteria: "3x8"
+                phase: .strength
             ),
         ]
     }
@@ -101,8 +99,7 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
         difficulty: Int,
         order: Int,
         progressionId: String?,
-        phase: Phase,
-        criteria: String
+        phase: Phase
     ) -> Exercise {
         Exercise(
             id: id,
@@ -122,14 +119,14 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
             progressionOrder: order,
             regressionId: nil,
             progressionId: progressionId,
-            advancementCriteria: criteria,
+            advancementCriteria: "4 clean sets at the top of your rep range",
             apartmentFriendly: true
         )
     }
 
-    /// A single-tier mobility chain (no next tier) with easily-met hold criteria, mirroring the
-    /// library's deep-squat-hold / pigeon / cat-cow shape: a healthy user clearing it every session
-    /// has a frontier that can never rise, so it must NOT read as a Physical Stall.
+    /// A single-tier mobility chain (no next tier), mirroring the library's deep-squat-hold / pigeon /
+    /// cat-cow shape: a healthy user holding it at the top of the hold range every session has a frontier
+    /// that can never rise, so it must NOT read as a Physical Stall.
     private func mobilityHoldChain() -> [Exercise] {
         [
             Exercise(
@@ -150,36 +147,32 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
                 progressionOrder: 0,
                 regressionId: nil,
                 progressionId: nil,
-                advancementCriteria: "hold 60s",
+                advancementCriteria: "4 clean sets at the top of your rep range",
                 apartmentFriendly: true
             )
         ]
     }
 
-    /// A worked (or skipped) hold logged exercise with `sets` sets of `seconds` seconds.
-    private func loggedHold(
-        _ exerciseId: String,
-        seconds: Int,
-        sets: Int,
-        skipped: Bool = false
-    ) -> LoggedExercise {
-        LoggedExercise(
-            id: UUID(),
-            exerciseId: exerciseId,
-            pillar: .mobility,
-            movementPattern: .mobility,
-            completedSets: Array(repeating: CompletedSet(reps: nil, durationSeconds: seconds), count: sets),
-            skipped: skipped
-        )
+    /// A hold station with four sets of `seconds` seconds, recording them as earned.
+    private func loggedHold(_ exerciseId: String, seconds: Int) -> LoggedExercise {
+        TrainingDayFixtures.station(exerciseId, pattern: .mobility, pillar: .mobility, value: seconds, earned: seconds, isHold: true)
+    }
+
+    /// The sample user (intermediate) at `level`.
+    private func user(level: FitnessLevel) -> User {
+        var user = MockPersistence.sampleUser
+        user.profile.fitnessLevel = level
+        return user
     }
 
     private func kinds(
+        user: User = MockPersistence.sampleUser,
         recentLogs: [WorkoutLog],
         library: [Exercise] = [],
         asOf: Date
     ) -> [ReprogramTrigger.Kind] {
         ReprogramTriggerDetection.dueTriggers(
-            user: MockPersistence.sampleUser,
+            user: user,
             recentLogs: recentLogs,
             library: library,
             asOf: asOf,
@@ -233,45 +226,78 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
 
     // MARK: - Physical Stall
 
-    /// Clearing the frontier tier's criteria across two same-week sessions, with no eligible next
-    /// tier to advance onto, fires Physical Stall alone.
+    /// Clearing the frontier tier at the Training Day bar across two same-week sessions, with no
+    /// eligible next tier to advance onto, fires Physical Stall alone.
     func testPhysicalStallFiresIndependently() {
-        let clears = [logged("push_knee", reps: 12, sets: 3)] // meets "3x12"
         let logs = [
-            log(on: dayInWeek(2), exercises: clears),
-            log(on: dayInWeek(3), exercises: clears),
+            log(on: dayInWeek(2), exercises: clears()),
+            log(on: dayInWeek(3), exercises: clears()),
         ]
         XCTAssertEqual(kinds(recentLogs: logs, library: pushChain(), asOf: dayInWeek(4)), [.physicalStall])
     }
 
-    /// Clearing the criteria only once is not "repeatedly": no stall.
+    /// Clearing the bar only once is not "repeatedly": no stall.
     func testSingleClearIsNotAStall() {
         let logs = [
-            log(on: dayInWeek(2), exercises: [logged("push_knee", reps: 12, sets: 3)]),
-            log(on: dayInWeek(3), exercises: [logged("push_knee", reps: 8, sets: 3)]), // below "3x12"
+            log(on: dayInWeek(2), exercises: clears()),
+            log(on: dayInWeek(3), exercises: [logged("push_knee", reps: 25)]), // a step under the top
         ]
         XCTAssertFalse(kinds(recentLogs: logs, library: pushChain(), asOf: dayInWeek(4)).contains(.physicalStall))
+    }
+
+    /// Three-set sessions written before Training Days never clear a rung, however often they repeat:
+    /// the bar is four sets at the top of the user's range.
+    func testThreeSetLegacyClearsAreNotAStall() {
+        let legacy = [TrainingDayFixtures.station("push_knee", pattern: .push, role: nil, value: 12, sets: 3)]
+        let logs = [
+            log(on: dayInWeek(2), exercises: legacy),
+            log(on: dayInWeek(3), exercises: legacy),
+        ]
+        XCTAssertFalse(kinds(recentLogs: logs, library: pushChain(), asOf: dayInWeek(4)).contains(.physicalStall))
+    }
+
+    /// The bar is read at the user's own level: 30 reps is the top of an intermediate range but mid-range
+    /// for an advanced user, whose range runs to 50.
+    func testPhysicalStallReadsTheUsersLevel() {
+        let atThirty = [
+            log(on: dayInWeek(2), exercises: clears()),
+            log(on: dayInWeek(3), exercises: clears()),
+        ]
+        XCTAssertFalse(
+            kinds(user: user(level: .advanced), recentLogs: atThirty, library: pushChain(), asOf: dayInWeek(4))
+                .contains(.physicalStall)
+        )
+        let atFifty = [
+            log(on: dayInWeek(2), exercises: [logged("push_knee", reps: 50)]),
+            log(on: dayInWeek(3), exercises: [logged("push_knee", reps: 50)]),
+        ]
+        XCTAssertEqual(
+            kinds(user: user(level: .advanced), recentLogs: atFifty, library: pushChain(), asOf: dayInWeek(4)),
+            [.physicalStall]
+        )
     }
 
     /// A skipped clearing session does not count toward a stall.
     func testSkippedWorkIsNotAStall() {
         let logs = [
-            log(on: dayInWeek(2), exercises: [logged("push_knee", reps: 12, sets: 3, skipped: true)]),
-            log(on: dayInWeek(3), exercises: [logged("push_knee", reps: 12, sets: 3, skipped: true)]),
+            log(on: dayInWeek(2), exercises: [logged("push_knee", reps: 30, skipped: true)]),
+            log(on: dayInWeek(3), exercises: [logged("push_knee", reps: 30, skipped: true)]),
         ]
         XCTAssertFalse(kinds(recentLogs: logs, library: pushChain(), asOf: dayInWeek(4)).contains(.physicalStall))
     }
 
     /// A single-tier chain (no next tier to advance to) cleared every session is NOT a stall - a
     /// healthy user doing routine mobility to target must never be handed "add challenge". This is the
-    /// regression for the real-library false positive: 12 single-tier mobility chains with easily-met
-    /// criteria would otherwise all read as plateaus.
+    /// regression for the real-library false positive: the single-tier mobility chains held at the top
+    /// of the range would otherwise all read as plateaus.
     func testRepeatedlyClearedSingleTierChainIsNotStall() {
-        let clears = [loggedHold("deep_squat_hold", seconds: 60, sets: 1)] // meets "hold 60s"
+        let held = [loggedHold("deep_squat_hold", seconds: 60)]
         let logs = [
-            log(on: dayInWeek(2), exercises: clears),
-            log(on: dayInWeek(3), exercises: clears),
+            log(on: dayInWeek(2), exercises: held),
+            log(on: dayInWeek(3), exercises: held),
         ]
+        XCTAssertTrue(RepGrammar.hasCleared(mobilityHoldChain()[0], in: logs, level: .intermediate),
+                      "the fixture clears the bar")
         XCTAssertFalse(
             kinds(recentLogs: logs, library: mobilityHoldChain(), asOf: dayInWeek(4)).contains(.physicalStall),
             "a maxed single-tier chain has nothing to advance to and is not a plateau"
@@ -281,8 +307,7 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
     // MARK: - Disengagement
 
     /// Completing a shrinking share of what was requested (20 asked / 20, 12, 5 done -> ratios
-    /// 1.0, 0.6, 0.25), same week, fires Disengagement alone (below the parseable criteria, so no
-    /// stall confounds it).
+    /// 1.0, 0.6, 0.25), same week, fires Disengagement alone (no stations, so no stall confounds it).
     func testDisengagementFiresOnFallingCompletion() {
         let logs = [
             log(on: dayInWeek(1), requestedMinutes: 20, durationMinutes: 20),
@@ -341,16 +366,19 @@ final class ReprogramTriggerDetectionTests: XCTestCase {
 
     // MARK: - Trigger Precedence
 
-    /// A history that is simultaneously stalled (frontier criteria cleared repeatedly) and
+    /// A history that is simultaneously stalled (the frontier cleared at the bar repeatedly) and
     /// disengaging (completing a falling share of the requested time): Disengagement wins and Physical
     /// Stall is suppressed (PRD validation).
     func testDisengagementSuppressesPhysicalStall() {
-        let clears = [logged("push_knee", reps: 12, sets: 3)] // meets "3x12" in every session
         let logs = [
-            log(on: dayInWeek(1), requestedMinutes: 20, durationMinutes: 20, exercises: clears),
-            log(on: dayInWeek(2), requestedMinutes: 20, durationMinutes: 12, exercises: clears),
-            log(on: dayInWeek(3), requestedMinutes: 20, durationMinutes: 5, exercises: clears),
+            log(on: dayInWeek(1), requestedMinutes: 20, durationMinutes: 20, exercises: clears()),
+            log(on: dayInWeek(2), requestedMinutes: 20, durationMinutes: 12, exercises: clears()),
+            log(on: dayInWeek(3), requestedMinutes: 20, durationMinutes: 5, exercises: clears()),
         ]
+        XCTAssertTrue(
+            PlateauDiagnosis.isPhysicallyStalled(recentLogs: logs, library: pushChain(), level: .intermediate),
+            "the history clears the bar in every session"
+        )
         let result = kinds(recentLogs: logs, library: pushChain(), asOf: dayInWeek(4))
         XCTAssertTrue(result.contains(.disengagement), "disengagement is due")
         XCTAssertFalse(result.contains(.physicalStall), "physical stall is suppressed under disengagement")

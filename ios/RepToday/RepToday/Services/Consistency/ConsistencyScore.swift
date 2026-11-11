@@ -49,7 +49,8 @@ enum ConsistencyScore {
     /// The forgiving Consistency Score as of `asOf`, computed purely from completed `logs`.
     ///
     /// `logs` are the user's completed sessions (any log is a show-up - logs are only written on
-    /// completion). `weeklyGoal` defaults to `defaultWeeklyGoal` and is clamped to at least 1 so
+    /// completion - except a Rest Day's Recovery flow, which is not a session and is left out, US-TD05).
+    /// `weeklyGoal` defaults to `defaultWeeklyGoal` and is clamped to at least 1 so
     /// adherence is always well-defined. An empty history yields a zeroed `Consistency` (score 0,
     /// chain 0) - a fresh user has simply not started yet, which is neither punished nor celebrated.
     static func evaluate(
@@ -58,6 +59,7 @@ enum ConsistencyScore {
         asOf: Date,
         calendar: Calendar = .current
     ) -> Consistency {
+        let logs = logs.filter { !$0.isRecovery }
         let goal = max(1, weeklyGoal)
         let totalWorkouts = logs.count
         let totalMinutes = logs.reduce(0) { $0 + $1.durationMinutes }

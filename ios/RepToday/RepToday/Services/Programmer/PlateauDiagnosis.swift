@@ -47,9 +47,9 @@ enum PlateauDiagnosis {
     /// present, `disengagement` wins and `physicalStall` is suppressed, so a diagnosis can never
     /// hand more challenge to a user who is pulling away. Pure and deterministic over
     /// `(recentLogs, library)`.
-    static func diagnose(recentLogs: [WorkoutLog], library: [Exercise]) -> Plateau? {
+    static func diagnose(recentLogs: [WorkoutLog], library: [Exercise], level: FitnessLevel = .beginner) -> Plateau? {
         if isDisengaging(recentLogs: recentLogs) { return .disengagement }
-        if isPhysicallyStalled(recentLogs: recentLogs, library: library) { return .physicalStall }
+        if isPhysicallyStalled(recentLogs: recentLogs, library: library, level: level) { return .physicalStall }
         return nil
     }
 
@@ -147,14 +147,15 @@ enum PlateauDiagnosis {
     ///   genuinely stuck behind a gate and warrants more challenge within the tier, not a fresh
     ///   skill they cannot yet receive.
     ///
-    /// Unparseable criteria are never "met", so such a tier never reads as a stall.
-    static func isPhysicallyStalled(recentLogs: [WorkoutLog], library: [Exercise]) -> Bool {
+    /// A tier clears only on the advancement bar (`RepGrammar.isAdvancementMet`) at the user's level.
+    static func isPhysicallyStalled(recentLogs: [WorkoutLog], library: [Exercise], level: FitnessLevel = .beginner) -> Bool {
         let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        // The frontier exercise per chain: the highest-order tier the user has worked (non-skipped).
+        // The frontier exercise per chain: the highest-order tier the user has worked toward progression
+        // (not skipped, not a Practice Movement - US-TD02).
         var frontierByChain: [String: Exercise] = [:]
         for log in recentLogs {
-            for logged in log.exercises where !logged.skipped {
+            for logged in log.exercises where logged.countsForProgression {
                 guard let exercise = byId[logged.exerciseId] else { continue }
                 if let current = frontierByChain[exercise.progressionChainId],
                    current.progressionOrder >= exercise.progressionOrder { continue }
@@ -166,16 +167,7 @@ enum PlateauDiagnosis {
             // Only a frontier with a real (but unreached, therefore gated) next tier can stall; a
             // single-tier or top-of-chain movement has nowhere to advance and is never a plateau.
             guard frontier.progressionId != nil else { return false }
-            guard let criteria = AdvancementCriteria(parsing: frontier.advancementCriteria) else {
-                return false
-            }
-            let clearedSessions = recentLogs.filter { log in
-                log.exercises.contains { logged in
-                    logged.exerciseId == frontier.id
-                        && log.countsTowardAdvancement(logged)
-                        && criteria.isMet(by: logged, isHold: frontier.isHold)
-                }
-            }.count
+            let clearedSessions = RepGrammar.clearingSessionCount(frontier, in: recentLogs, level: level)
             return clearedSessions >= stallClearedSessions
         }
     }

@@ -147,13 +147,16 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
 
         // 4. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
         //    The policy read falls back to the neutral default until the Programmer has ever written
-        //    one, exactly as `currentPolicy(for:)` does.
+        //    one, exactly as `currentPolicy(for:)` does. A Recovery flow is not a session
+        //    (`WorkoutLog.isRecovery`), so it advances nothing.
         let currentPolicy = try await policyStore.policy(for: latest.id) ?? .default
-        let handoff = ColdStartHandoff.afterCompletedSession(
-            user: latest,
-            sessionPolicy: currentPolicy,
-            recentLogs: allLogs
-        )
+        let handoff = log.isRecovery
+            ? ColdStartHandoff.Outcome(user: latest, sessionPolicy: currentPolicy)
+            : ColdStartHandoff.afterCompletedSession(
+                user: latest,
+                sessionPolicy: currentPolicy,
+                recentLogs: allLogs
+            )
 
         // 5. Refresh the forgiving Consistency Score onto the user aggregate.
         var updatedUser = handoff.user

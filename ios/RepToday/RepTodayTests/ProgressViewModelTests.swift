@@ -214,7 +214,7 @@ final class ProgressViewModelTests: XCTestCase {
     /// A Discipline user who still has the climb card is eligible for the one-time note; whether it
     /// was already shown is `AppState`'s flag, not this.
     func testDisciplineUserIsEligibleForTheFoundationsNote() async {
-        let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)])
+        let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)])
 
         await vm.load()
 
@@ -225,7 +225,7 @@ final class ProgressViewModelTests: XCTestCase {
     /// Skipped work does not exclude a Discipline user; a Strength user has no climb card to host the
     /// note.
     func testSkippedWorkIsEligibleButStrengthUsersAreNotEligibleForTheFoundationsNote() async {
-        var skipped = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)
+        var skipped = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)
         skipped.exercises[0].skipped = true
         let skippedVM = makeViewModel(user: onboardedUser(), logs: [skipped])
         await skippedVM.load()
@@ -235,7 +235,7 @@ final class ProgressViewModelTests: XCTestCase {
         strengthUser.phase = .strength
         let strengthVM = makeViewModel(
             user: strengthUser,
-            logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)]
+            logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)]
         )
         await strengthVM.load()
         XCTAssertFalse(strengthVM.showsClimbCard)
@@ -244,19 +244,20 @@ final class ProgressViewModelTests: XCTestCase {
 
     // MARK: - US-SP04: phase-progress ("the visible climb")
 
-    /// A log clearing the entry tier of `exerciseId` in the real catalog - three sets each meeting
-    /// `value`.
-    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
-        let sets = (0..<3).map { _ in
-            CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil)
-        }
+    /// A log clearing the entry tier of `exerciseId` in the real catalog for the onboarded user's level:
+    /// four sets at the top of the range (reps, or seconds for a hold), at earned reps that had reached it.
+    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool) -> WorkoutLog {
+        let top = RepGrammar.earnedRange(for: isHold ? .hold : .reps, level: onboardedUser().profile.fitnessLevel).upperBound
+        let set = CompletedSet(reps: isHold ? nil : top, durationSeconds: isHold ? top : nil)
         return WorkoutLog(
             id: UUID(), workoutId: UUID(), completedAt: date(weeksAgo: 0, dayOffset: 1),
             requestedMinutes: 20, durationMinutes: 20, wasReturn: false,
-            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil,
+            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
             exercises: [
                 LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
-                               movementPattern: pattern, completedSets: sets, skipped: false)
+                               movementPattern: pattern, completedSets: Array(repeating: set, count: RepGrammar.setsPerStation),
+                               skipped: false, role: .main,
+                               earnedReps: isHold ? nil : top, earnedDurationSeconds: isHold ? top : nil)
             ]
         )
     }
@@ -267,9 +268,9 @@ final class ProgressViewModelTests: XCTestCase {
     /// agrees with the gate that Strength is not yet earned.
     func testLoadPopulatesPhaseProgressMatchingTheGate() async {
         var logs = (0..<5).flatMap { week(weeksAgo: $0, count: 3) }
-        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15))
-        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12))
-        logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true, value: 45))
+        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false))
+        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false))
+        logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true))
         let vm = makeViewModel(user: onboardedUser(), logs: logs)
 
         await vm.load()
@@ -356,8 +357,8 @@ final class ProgressTabSnapshotTests: XCTestCase {
         calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!
     }
 
-    /// A varied, realistic six-week history: all three pillars, the four foundational patterns, a
-    /// rep best and a hold best, and a spread of perceived-difficulty ratings so every US-M02 card
+    /// A varied, realistic six-week history: strength and mobility (the primal pillar is retired), the
+    /// four foundational patterns, a rep best and a hold best, and a spread of perceived-difficulty ratings so every US-M02 card
     /// (including the premium difficulty mix) has real content to render.
     private func sampleLogs() -> [WorkoutLog] {
         struct Spec {
@@ -370,7 +371,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
             Spec(exerciseId: "hinge_glute_bridge", pillar: .strength, pattern: .hinge, reps: 18, seconds: nil, difficulty: .justRight),
             Spec(exerciseId: "core_forearm_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 55, difficulty: .tooHard),
             Spec(exerciseId: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 12, seconds: nil, difficulty: .justRight),
-            Spec(exerciseId: "primal_bear_crawl", pillar: .primal, pattern: .locomotion, reps: 10, seconds: nil, difficulty: .justRight),
+            Spec(exerciseId: "lunge_reverse", pillar: .strength, pattern: .squat, reps: 10, seconds: nil, difficulty: .justRight),
         ]
         return (0..<18).map { offset in
             let spec = specs[offset % specs.count]

@@ -31,7 +31,7 @@ final class ExerciseServiceTests: XCTestCase {
         progressionOrder: Int = 0,
         regressionId: String? = nil,
         progressionId: String? = nil,
-        advancementCriteria: String = "3x12 clean reps",
+        advancementCriteria: String = "4 clean sets at the top of your rep range",
         apartmentFriendly: Bool = true
     ) -> Exercise {
         Exercise(
@@ -71,7 +71,11 @@ final class ExerciseServiceTests: XCTestCase {
     func testRealLibraryLoadsAndCaches() async throws {
         let service = try MockExerciseService()
         let all = try await service.exercises()
-        XCTAssertEqual(all.count, 72, "service should load the offered library: the bundled 76 minus the 4 movements withdrawn until version 2")
+        XCTAssertEqual(
+            all.count, 68,
+            "the offered library is the bundled 76 minus the 7 retired primal movements and Prone Y-T-W Raises (version 2)"
+        )
+        XCTAssertFalse(all.contains(where: MovementAccess.isWithdrawn), "no withdrawn movement is ever served")
     }
 
     func testExerciseByIdResolves() async throws {
@@ -89,6 +93,18 @@ final class ExerciseServiceTests: XCTestCase {
         let mobility = try await service.exercises(for: Pillar.mobility)
         XCTAssertEqual(mobility.count, 26)
         XCTAssertTrue(mobility.allSatisfy { $0.pillar == .mobility })
+    }
+
+    /// The primal pillar is retired (ADR-0014): its movements stay in the file so history resolves, but the
+    /// service offers none of them.
+    func testRetiredPrimalPillarOffersNothing() async throws {
+        let service = try MockExerciseService()
+        let primal = try await service.exercises(for: Pillar.primal)
+        XCTAssertTrue(primal.isEmpty)
+        let locomotion = try await service.exercises(for: .locomotion)
+        XCTAssertTrue(locomotion.isEmpty)
+        let bearCrawl = try await service.exercise(id: "primal_bear_crawl")
+        XCTAssertNil(bearCrawl)
     }
 
     func testExercisesByMovementPattern() async throws {
@@ -109,7 +125,7 @@ final class ExerciseServiceTests: XCTestCase {
             "hinge_nordic_assisted", "hinge_nordic",
         ])
         let discipline = try await service.exercises(for: Phase.discipline)
-        XCTAssertEqual(discipline.count, 64, "68 discipline movements minus the 4 withdrawn until version 2")
+        XCTAssertEqual(discipline.count, 60, "68 discipline movements minus the 8 withdrawn (7 retired, 1 version 2)")
     }
 
     func testExercisesByDifficultyRange() async throws {
@@ -132,6 +148,16 @@ final class ExerciseServiceTests: XCTestCase {
         let service = try MockExerciseService()
         // push_one_arm sits at the top of its chain - no progression beyond it.
         let next = try await service.nextInChain(after: "push_one_arm")
+        XCTAssertNil(next)
+    }
+
+    /// Reverse Snow Angel is the live top of the postural chain: the rung above it, Prone Y-T-W Raises, is
+    /// withdrawn until version 2, so nothing is offered past it.
+    func testNextInChainReturnsNilBelowAWithdrawnTail() async throws {
+        let service = try MockExerciseService()
+        let angel = try await service.exercise(id: "pull_reverse_snow_angel")
+        XCTAssertEqual(angel?.progressionId, "pull_ytw", "the file keeps the link to the withdrawn tail")
+        let next = try await service.nextInChain(after: "pull_reverse_snow_angel")
         XCTAssertNil(next)
     }
 
@@ -235,26 +261,62 @@ final class ExerciseServiceTests: XCTestCase {
         }
     }
 
-    func testOfferedMovementLinkingIntoAWithdrawnOneThrows() {
+    /// A withdrawn tail at the top of a live chain loads - for either withdrawal, version 2 or retired -
+    /// and is never served, so the live rungs stay one contiguous ladder.
+    func testWithdrawnTailAtTheTopOfALiveChainLoadsButIsNeverServed() async throws {
+        for audience in [MovementAudience.version2, .retired] {
+            let library = [
+                makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "b"),
+                makeExercise(id: "b", progressionChainId: "c", progressionOrder: 1, regressionId: "a", progressionId: "w1"),
+                makeExercise(id: "w1", audience: audience, progressionChainId: "c", progressionOrder: 2, regressionId: "b", progressionId: "w2"),
+                makeExercise(id: "w2", audience: audience, progressionChainId: "c", progressionOrder: 3, regressionId: "w1"),
+            ]
+            let service = try MockExerciseService(library: library)
+            let offered = try await service.exercises().map(\.id)
+            XCTAssertEqual(offered, ["a", "b"], "\(audience)")
+            let found = try await service.exercise(id: "w1")
+            XCTAssertNil(found, "\(audience)")
+            let next = try await service.nextInChain(after: "b")
+            XCTAssertNil(next, "\(audience): nothing is offered past the live top")
+        }
+    }
+
+    /// A withdrawn rung with a live rung above it would leave a hole in a live ladder, so it fails load.
+    func testWithdrawnRungBelowALiveOneThrows() {
         let library = [
-            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "b"),
-            makeExercise(id: "b", audience: .version2, progressionChainId: "c", progressionOrder: 1, regressionId: "a"),
+            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "w"),
+            makeExercise(id: "w", audience: .version2, progressionChainId: "c", progressionOrder: 1, regressionId: "a", progressionId: "top"),
+            makeExercise(id: "top", progressionChainId: "c", progressionOrder: 2, regressionId: "w"),
         ]
         XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
-            XCTAssertEqual(error as? ExerciseLibraryError, .withdrawnMovementInLiveChain(exerciseId: "a", withdrawnId: "b"))
+            XCTAssertEqual(error as? ExerciseLibraryError, .withdrawnMovementInLiveChain(exerciseId: "a", withdrawnId: "w"))
+        }
+    }
+
+    /// A withdrawn entry rung under a live one throws too: a live movement never regresses onto a
+    /// withdrawn one.
+    func testLiveRungAboveAWithdrawnEntryThrows() {
+        let library = [
+            makeExercise(id: "w", audience: .retired, progressionChainId: "c", progressionOrder: 0, progressionId: "a"),
+            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 1, regressionId: "w"),
+        ]
+        XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
+            XCTAssertEqual(error as? ExerciseLibraryError, .withdrawnMovementInLiveChain(exerciseId: "a", withdrawnId: "w"))
         }
     }
 
     func testWholeWithdrawnChainLoadsButIsNeverServed() async throws {
-        let library = validChain() + [
-            makeExercise(id: "w1", audience: .version2, progressionChainId: "w", progressionOrder: 0, progressionId: "w2"),
-            makeExercise(id: "w2", audience: .version2, progressionChainId: "w", progressionOrder: 1, regressionId: "w1"),
-        ]
-        let service = try MockExerciseService(library: library)
-        let offered = try await service.exercises().map(\.id)
-        XCTAssertEqual(offered, ["a", "b"])
-        let found = try await service.exercise(id: "w1")
-        XCTAssertNil(found)
+        for audience in [MovementAudience.version2, .retired] {
+            let library = validChain() + [
+                makeExercise(id: "w1", audience: audience, progressionChainId: "w", progressionOrder: 0, progressionId: "w2"),
+                makeExercise(id: "w2", audience: audience, progressionChainId: "w", progressionOrder: 1, regressionId: "w1"),
+            ]
+            let service = try MockExerciseService(library: library)
+            let offered = try await service.exercises().map(\.id)
+            XCTAssertEqual(offered, ["a", "b"], "\(audience)")
+            let found = try await service.exercise(id: "w1")
+            XCTAssertNil(found, "\(audience)")
+        }
     }
 
     func testDescriptiveErrorNamesExerciseAndRule() {

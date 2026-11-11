@@ -77,7 +77,8 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
 
     /// The re-program triggers due as of `asOf`, in precedence order (US-F01). Adapts the
     /// library-taking `ReprogramTriggerDetection.dueTriggers` to the protocol's library-free
-    /// signature by supplying the validated catalog from the exercise service.
+    /// signature by supplying the validated catalog from the exercise service. A Recovery flow is not
+    /// a session (`WorkoutLog.isRecovery`), so neither this nor `reprogram` reads one.
     func dueTriggers(
         user: User,
         recentLogs: [WorkoutLog],
@@ -86,7 +87,7 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
         let library = try await exerciseService.exercises()
         return ReprogramTriggerDetection.dueTriggers(
             user: user,
-            recentLogs: recentLogs,
+            recentLogs: recentLogs.filter { !$0.isRecovery },
             library: library,
             asOf: asOf
         )
@@ -115,9 +116,10 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
     ) async throws -> SessionPolicy {
         let current = try await currentPolicy(for: user)
         let library = try await exerciseService.exercises()
+        let recentLogs = recentLogs.filter { !$0.isRecovery }
 
         // 1. Move the optimization levers for this trigger (precedence-safe re-diagnosis inside).
-        var next = leveled(current, for: trigger, recentLogs: recentLogs, library: library)
+        var next = leveled(current, for: trigger, recentLogs: recentLogs, library: library, level: user.profile.fitnessLevel)
 
         // 2. Fold Default Duration learning over only the newly-completed sessions, so the EWMA
         //    never double-counts a session across re-programs.
@@ -167,14 +169,15 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
         _ policy: SessionPolicy,
         for trigger: ReprogramTrigger,
         recentLogs: [WorkoutLog],
-        library: [Exercise]
+        library: [Exercise],
+        level: FitnessLevel
     ) -> SessionPolicy {
         switch trigger.kind {
         case .physicalStall, .disengagement:
             // Re-diagnose rather than trust the trigger's kind: `diagnose` resolves Trigger
             // Precedence at the source, so a stalled-then-disengaging user eases (never accelerates),
             // and a history that has since recovered moves no lever at all.
-            guard let plateau = PlateauDiagnosis.diagnose(recentLogs: recentLogs, library: library) else {
+            guard let plateau = PlateauDiagnosis.diagnose(recentLogs: recentLogs, library: library, level: level) else {
                 return policy
             }
             return PlateauDiagnosis.reweighted(policy, for: plateau)

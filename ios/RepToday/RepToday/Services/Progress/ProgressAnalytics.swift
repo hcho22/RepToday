@@ -56,8 +56,11 @@ struct ProgressAnalytics: Equatable {
     ) -> ProgressAnalytics {
         let exercisesById = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let worked = workedInstances(in: logs)
+        // Where the user stands on a ladder reads only work that counts toward progression (US-TD02): a
+        // Practice Movement previews the next rung but never puts the user on it.
+        let progressed = worked.filter { $0.logged.countsForProgression }
         let access = Access(level: level, phase: phase)
-        let chainPositions = makeChainPositions(worked: worked, exercisesById: exercisesById, access: access)
+        let chainPositions = makeChainPositions(worked: progressed, exercisesById: exercisesById, access: access)
 
         return ProgressAnalytics(
             pillarBalance: makePillarBalance(worked: worked),
@@ -69,7 +72,7 @@ struct ProgressAnalytics: Equatable {
                 weeklyVolume: makeWeeklyVolume(logs: logs, worked: worked, asOf: asOf, calendar: calendar),
                 difficultyMix: makeDifficultyMix(logs: logs),
                 strengthJourney: makeStrengthJourney(
-                    worked: worked,
+                    worked: progressed,
                     exercisesById: exercisesById,
                     chainPositions: chainPositions,
                     access: access,
@@ -300,7 +303,8 @@ struct ProgressAnalytics: Equatable {
         exercisesById: [String: Exercise],
         calendar: Calendar
     ) -> PersonalBests {
-        let sessionsByWeek = logs.reduce(into: [Date: Int]()) { counts, log in
+        let sessions = logs.filter { !$0.isRecovery }
+        let sessionsByWeek = sessions.reduce(into: [Date: Int]()) { counts, log in
             counts[ConsistencyScore.startOfWeek(log.completedAt, calendar), default: 0] += 1
         }
 
@@ -320,9 +324,9 @@ struct ProgressAnalytics: Equatable {
         }
 
         return PersonalBests(
-            totalSessions: logs.count,
+            totalSessions: sessions.count,
             totalMinutesMoved: logs.reduce(0) { $0 + $1.durationMinutes },
-            longestSessionMinutes: logs.map(\.durationMinutes).max() ?? 0,
+            longestSessionMinutes: sessions.map(\.durationMinutes).max() ?? 0,
             mostSessionsInAWeek: sessionsByWeek.values.max() ?? 0,
             bestReps: bestReps,
             bestHold: bestHold
@@ -381,7 +385,7 @@ struct ProgressAnalytics: Equatable {
             setsByWeek[weeksAgo, default: 0] += instance.logged.completedSets.filter { ($0.reps ?? 0) > 0 || ($0.durationSeconds ?? 0) > 0 }.count
         }
         var sessionsByWeek: [Int: Int] = [:]
-        for log in logs {
+        for log in logs where !log.isRecovery {
             let weeksAgo = ConsistencyScore.weeksAgo(log.completedAt, from: asOf, calendar)
             guard weeksAgo >= 0 else { continue }
             sessionsByWeek[weeksAgo, default: 0] += 1
@@ -401,7 +405,7 @@ struct ProgressAnalytics: Equatable {
 
     private static func makeDifficultyMix(logs: [WorkoutLog]) -> DifficultyMix {
         var counts: [PerceivedDifficulty: Int] = [:]
-        for log in logs {
+        for log in logs where !log.isRecovery {
             guard let rating = log.perceivedDifficulty else { continue }
             counts[rating, default: 0] += 1
         }

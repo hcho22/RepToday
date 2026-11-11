@@ -29,8 +29,9 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     /// A chain is not a clean doubly-linked ladder: `exerciseId`'s `progressionId`/`regressionId` does
     /// not point at the adjacent `progressionOrder` in the same chain, or the neighbour does not link back.
     case chainNotDoublyLinked(exerciseId: String, linkedId: String)
-    /// A movement offered to users links into one withdrawn until version 2, so withdrawing it would
-    /// leave a hole in a live ladder. A withdrawn movement must sit in a chain wholly withdrawn.
+    /// A movement offered to users links into a withdrawn one somewhere other than a withdrawn top of its
+    /// chain, so withdrawing it would leave a hole in a live ladder. A withdrawn movement sits in a chain
+    /// wholly withdrawn or in the withdrawn tail above a live ladder (US-TD01).
     case withdrawnMovementInLiveChain(exerciseId: String, withdrawnId: String)
 
     var errorDescription: String? {
@@ -54,7 +55,7 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
         case .chainNotDoublyLinked(let id, let linkedId):
             return "Exercise '\(id)' and '\(linkedId)' are not adjacent, mutually linked rungs of one progression chain."
         case .withdrawnMovementInLiveChain(let id, let withdrawnId):
-            return "Exercise '\(id)' is offered to users but links to '\(withdrawnId)', which is withdrawn until version 2."
+            return "Exercise '\(id)' is offered to users but links to '\(withdrawnId)', which is withdrawn and not at the top of its chain."
         }
     }
 }
@@ -70,13 +71,13 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
 /// violation (`init(library:)` is the validating core that the data/bundle inits funnel
 /// through), making a malformed library a loud startup failure rather than a silent one.
 ///
-/// The file also carries the movements **withdrawn until version 2** (`audience == .version2`,
-/// ADR-0007). They are validated with everything else so they stay recoverable in the file, but the
+/// The file also carries **withdrawn** movements - held back until version 2 (`audience == .version2`,
+/// ADR-0007) or retired with the primal family (`.retired`, ADR-0014). They are validated with everything else so they stay recoverable in the file, but the
 /// service never serves them: `exercises()` and every query below read the *offered* library only.
 /// That is what keeps them out of every session, swap, progress surface and Coach context by
 /// construction - nothing downstream has to remember to filter them.
 final class MockExerciseService: ExerciseServiceProtocol {
-    /// The movements offered to users (everything except the version-2 withdrawals).
+    /// The movements offered to users (everything except the withdrawn ones).
     private let library: [Exercise]
     /// `id -> Exercise` over the offered library, for O(1) id lookups and chain-link resolution.
     private let byId: [String: Exercise]
@@ -222,11 +223,20 @@ final class MockExerciseService: ExerciseServiceProtocol {
             }
         }
 
-        // A withdrawn movement sits in a chain withdrawn whole: no offered movement may link into one.
+        // A withdrawn movement sits only at the top of a chain (US-TD01): an offered movement may point up
+        // at a withdrawn rung only when every rung above it is withdrawn too, and never back down at one.
+        // So a chain is either withdrawn whole, or a live ladder with a withdrawn tail kept for version 2
+        // (`pull_reverse_snow_angel` -> `pull_ytw`), and the live rungs stay one contiguous ladder.
         for exercise in library.sorted(by: { $0.id < $1.id }) where !MovementAccess.isWithdrawn(exercise) {
-            for linkedId in [exercise.regressionId, exercise.progressionId].compactMap({ $0 }) {
-                if let linked = byId[linkedId], MovementAccess.isWithdrawn(linked) {
-                    throw ExerciseLibraryError.withdrawnMovementInLiveChain(exerciseId: exercise.id, withdrawnId: linkedId)
+            if let previousId = exercise.regressionId, let previous = byId[previousId], MovementAccess.isWithdrawn(previous) {
+                throw ExerciseLibraryError.withdrawnMovementInLiveChain(exerciseId: exercise.id, withdrawnId: previousId)
+            }
+            if let nextId = exercise.progressionId, let next = byId[nextId], MovementAccess.isWithdrawn(next) {
+                let above = library.filter {
+                    $0.progressionChainId == exercise.progressionChainId && $0.progressionOrder > exercise.progressionOrder
+                }
+                guard above.allSatisfy(MovementAccess.isWithdrawn) else {
+                    throw ExerciseLibraryError.withdrawnMovementInLiveChain(exerciseId: exercise.id, withdrawnId: nextId)
                 }
             }
         }

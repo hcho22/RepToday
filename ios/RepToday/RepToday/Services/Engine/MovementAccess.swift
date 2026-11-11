@@ -7,18 +7,18 @@ import Foundation
 /// intermediate user is offered **staple movements** only - the ones most people already know by name
 /// (push-ups, squats, planks, bridges) - and an advanced user keeps the full variety. Earning the
 /// Strength Phase lifts the restriction for everyone: every movement opens at once. A movement marked
-/// `.version2` is withdrawn for every user in every phase until version 2.
+/// `.version2` (until version 2) or `.retired` (ADR-0014) is withdrawn for every user in every phase.
 ///
 /// Three rules, applied in this order, and nothing else decides eligibility by movement:
-/// 1. **Version 2** - `audience == .version2` is never available.
+/// 1. **Withdrawn** - a `.version2` or `.retired` movement is never available (`isWithdrawn`).
 /// 2. **Phase gate** - a `phase == .strength` skill is available only once the user has earned the
 ///    Strength Phase (the long-standing US-H02 rule, now one clause of this owner).
 /// 3. **Staples** - in the Discipline Phase a movement is available iff the user's level is at or above
 ///    the movement's `audience`; in the Strength Phase every remaining movement is.
 ///
 /// Every consumer routes through here instead of re-deriving the rule: the eligible pool
-/// (`ExercisePoolFilter`, which feeds progression-chain selection, the wide-circuit reserve, the
-/// primal block, the bookend stretches and in-session swap), the Start Seed's withheld set, and the
+/// (`ExercisePoolFilter`, which feeds progression-chain selection, the Training Day slot plan, the
+/// bookend stretches and in-session swap), the Start Seed's withheld set, and the
 /// read-only Progress surfaces (chain positions, the progression map's locked marking, the strength
 /// journey, and through them the Coach's context bundle). Pure and clock-free like the rest of the
 /// engine.
@@ -27,7 +27,7 @@ enum MovementAccess {
     /// Whether `exercise` may be offered to a user at `level` who has earned `phase`.
     static func isAvailable(_ exercise: Exercise, level: FitnessLevel, phase: Phase) -> Bool {
         let audience = exercise.audience ?? .beginner
-        guard audience != .version2 else { return false }
+        guard !isWithdrawn(exercise) else { return false }
         guard isPhaseEarned(exercise, phase: phase) else { return false }
         guard isRestrictedToStaples(level: level, phase: phase) else { return true }
         guard let minimum = audience.minimumLevel else { return false }
@@ -60,9 +60,10 @@ enum MovementAccess {
         library.filter { isAvailable($0, level: level, phase: phase) }
     }
 
-    /// Whether `exercise` is withdrawn from the app for everyone until version 2.
+    /// Whether `exercise` is withdrawn from the app for everyone: held back until version 2, or retired
+    /// with its training family (ADR-0014). The catalog keeps both so history still resolves.
     static func isWithdrawn(_ exercise: Exercise) -> Bool {
-        exercise.audience == .version2
+        exercise.audience == .version2 || exercise.audience == .retired
     }
 
     /// The highest-order rung of a chain this user may get at or below `order`, or - when every

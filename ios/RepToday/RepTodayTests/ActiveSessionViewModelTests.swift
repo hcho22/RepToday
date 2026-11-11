@@ -69,12 +69,20 @@ final class ActiveSessionViewModelTests: XCTestCase {
         return copy
     }
 
+    /// Fixture stations rest `SessionAssembly.baseRoundRestSeconds` (15s), the round rest before a fit
+    /// grows it.
     private func repPrescription(_ id: String, sets: Int, reps: Int) -> PrescribedExercise {
-        PrescribedExercise(id: UUID(), exercise: repExercise(id: id), sets: sets, reps: reps, durationSeconds: nil, restSeconds: 30)
+        PrescribedExercise(
+            id: UUID(), exercise: repExercise(id: id), sets: sets, reps: reps, durationSeconds: nil,
+            restSeconds: SessionAssembly.baseRoundRestSeconds
+        )
     }
 
     private func holdPrescription(_ id: String, sets: Int, seconds: Int) -> PrescribedExercise {
-        PrescribedExercise(id: UUID(), exercise: holdExercise(id: id), sets: sets, reps: nil, durationSeconds: seconds, restSeconds: 30)
+        PrescribedExercise(
+            id: UUID(), exercise: holdExercise(id: id), sets: sets, reps: nil, durationSeconds: seconds,
+            restSeconds: SessionAssembly.baseRoundRestSeconds
+        )
     }
 
     /// A two-block session: a one-exercise warm-up, then a two-exercise strength block.
@@ -435,8 +443,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
     }
 
     /// The rotation crosses two distinct rest gaps (US-CC04): a between-station transition inside a
-    /// round, and the between-round rest at a round boundary - both at most 15 seconds, told apart by
-    /// their cue. Both flow through the US-K02 rest overlay so the session stays hands-free.
+    /// round, and the between-round rest at a round boundary the engine sized (here 45 seconds, under
+    /// `SessionAssembly.maxRestSeconds`) - told apart by their cue. Both flow through the US-K02 rest
+    /// overlay so the session stays hands-free.
     func testCircuitCrossesTransitionBetweenStationsAndRoundRestBetweenRounds() {
         let strength = WorkoutBlock(
             id: UUID(), title: "Strength", category: .strength,
@@ -462,7 +471,71 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeSet()
         XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
         XCTAssertEqual(vm.currentRound, 2)
-        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.maxRestSeconds, "between rounds is the round rest, capped at 15s (ADR-0010)")
+        XCTAssertEqual(vm.restTotalSeconds, 45, "between rounds is the round rest the engine sized")
+    }
+
+    /// A two-station, two-round circuit whose stations rest `roundRest` after a round and whose block
+    /// carries `transitionSeconds` (the pause a long session's fit may grow, ADR-0013).
+    private func twoStationCircuit(roundRest: Int, transitionSeconds: Int?) -> Workout {
+        var strength = WorkoutBlock(
+            id: UUID(), title: "Push Day", category: .strength,
+            exercises: [
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "push_up"), sets: 2, reps: 15, durationSeconds: nil, restSeconds: roundRest),
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "pike", pattern: .push), sets: 2, reps: 15, durationSeconds: nil, restSeconds: roundRest)
+            ]
+        )
+        strength.transitionSeconds = transitionSeconds
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 45, wasReturn: false, blocks: [strength]
+        )
+    }
+
+    /// The pause between two stations of a round is the block's own `transitionSeconds`: a 45 or 60
+    /// minute session's fit may grow it, and the player opens exactly that pause, still as a transition
+    /// beat - and the round rest after it is unaffected.
+    func testBetweenStationPauseIsReadFromTheBlocksTransitionSeconds() {
+        let vm = makeViewModel(twoStationCircuit(roundRest: 90, transitionSeconds: 45), clock: { self.start })
+
+        vm.completeSet() // push_up round 1 -> pike round 1
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "pike")
+        XCTAssertEqual(vm.restTotalSeconds, 45, "the block's grown pause between stations")
+        XCTAssertTrue(vm.isTransitionBeat, "a grown pause is still the between-station beat")
+        vm.skipRest()
+
+        vm.completeSet() // pike round 1 -> push_up round 2
+        XCTAssertEqual(vm.currentRound, 2)
+        XCTAssertEqual(vm.restTotalSeconds, 90, "the round rest is the stations' own")
+        XCTAssertFalse(vm.isTransitionBeat)
+    }
+
+    /// A block with no `transitionSeconds` (every session of 30 minutes or less, and every session saved
+    /// before the pause could grow) pauses the standard `SessionAssembly.transitionSeconds` between
+    /// stations.
+    func testBetweenStationPauseDefaultsToTheStandardBeat() {
+        let vm = makeViewModel(twoStationCircuit(roundRest: 30, transitionSeconds: nil), clock: { self.start })
+
+        vm.completeSet()
+        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.transitionSeconds)
+        XCTAssertTrue(vm.isTransitionBeat)
+    }
+
+    /// The longest round rest a Training Day prescribes - the beginner cap on a 45 or 60 minute session,
+    /// two minutes - plays in full, and no rest the player opens runs past `SessionAssembly.maxRestSeconds`.
+    func testRoundRestPlaysUpToTheBeginnerCapAndNoFurther() {
+        XCTAssertEqual(SessionAssembly.maxRestSeconds, SessionAssembly.roundRestCap(for: .beginner, requestedMinutes: 60))
+
+        let capped = makeViewModel(twoStationCircuit(roundRest: SessionAssembly.maxRestSeconds, transitionSeconds: nil), clock: { self.start })
+        capped.completeSet()
+        capped.skipRest()
+        capped.completeSet() // into round 2
+        XCTAssertEqual(capped.restTotalSeconds, 120, "a two-minute round rest plays in full")
+
+        let over = makeViewModel(twoStationCircuit(roundRest: 180, transitionSeconds: nil), clock: { self.start })
+        over.completeSet()
+        over.skipRest()
+        over.completeSet()
+        XCTAssertEqual(over.restTotalSeconds, SessionAssembly.maxRestSeconds, "no rest opens longer than the cap")
     }
 
     /// The overlay can tell a between-station **transition beat** apart from a between-round rest so it
@@ -525,13 +598,13 @@ final class ActiveSessionViewModelTests: XCTestCase {
     // MARK: - Rest timer (US-K02)
 
     /// Completing a set opens a rest for the just-completed prescription's `restSeconds`, capped at
-    /// `SessionAssembly.maxRestSeconds` (ADR-0010), counting down against the injected clock. The
-    /// fixture prescribes 30s, so the cap is what the user gets.
+    /// `SessionAssembly.maxRestSeconds` (ADR-0013), counting down against the injected clock. The
+    /// fixture prescribes 15s, well under the cap, so that is what the user gets.
     func testCompleteSetStartsRest() {
         var clock = start
         let vm = makeViewModel(clock: { clock })
 
-        vm.completeSet() // cat_cow done -> push_up; its 30s rest opens at the 15s cap
+        vm.completeSet() // cat_cow done -> push_up; its 15s rest opens
         XCTAssertTrue(vm.isResting)
         XCTAssertEqual(vm.restTotalSeconds, 15)
         XCTAssertEqual(vm.restRemaining(asOf: clock), 15)
@@ -589,11 +662,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
     func testExtendRestAddsTime() {
         var clock = start
         let vm = makeViewModel(clock: { clock })
-        vm.completeSet() // 15s rest (the cap), deadline at t+15
+        vm.completeSet() // 15s rest, deadline at t+15
 
         clock = start.addingTimeInterval(10) // 5s remaining
         vm.extendRest(by: 15)
-        XCTAssertEqual(vm.restTotalSeconds, 30, "+15s is an optional extra beyond the cap")
+        XCTAssertEqual(vm.restTotalSeconds, 30, "+15s is an optional extra on top of the prescribed rest")
         XCTAssertEqual(vm.restRemaining(asOf: clock), 20)
     }
 
@@ -1635,17 +1708,19 @@ final class ActiveSessionViewModelTests: XCTestCase {
     }
 
     /// End-to-end through the real deterministic engine and bundled library (the PRD validation at the
-    /// player level): swapping a real movement yields a same-pillar, same-pattern peer that preserves
-    /// the slot's set count and rest, never the same movement.
+    /// player level): swapping a real movement yields a same-pillar, same-pattern peer that keeps the
+    /// station's four rounds, rest and role, never the same movement.
     func testSwapEndToEndYieldsSamePillarPatternPeer() async throws {
         let exerciseService = try MockExerciseService()
         let library = try await exerciseService.exercises()
         let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        // At the movement's own default, the target Step 6 gives a user with no history of it - so the
-        // slot's budget is the one the assembler would really have sized this session with.
+        // At the bottom of the user's range, the target Step 6 gives a user with no history of it - so
+        // the slot's budget is the one the assembler would really have sized this session with.
+        let opening = RepGrammar.earnedRange(for: target, level: makeUser().profile.fitnessLevel).lowerBound
         let slot = PrescribedExercise(
-            id: UUID(), exercise: target, sets: 3, reps: try XCTUnwrap(target.defaultReps),
-            durationSeconds: nil, restSeconds: SessionAssembly.roundRestSeconds
+            id: UUID(), exercise: target, sets: RepGrammar.setsPerStation, reps: opening,
+            durationSeconds: nil, restSeconds: SessionAssembly.baseRoundRestSeconds,
+            role: .main, earnedReps: opening
         )
         let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])
         let workout = Workout(
@@ -1661,8 +1736,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNotEqual(swapped.exercise.id, "push_standard", "a swap returns a different movement")
         XCTAssertEqual(swapped.exercise.pillar, .strength, "same pillar")
         XCTAssertEqual(swapped.exercise.movementPattern, .push, "same movement pattern")
-        XCTAssertEqual(swapped.sets, slot.sets, "a default-sized slot is in budget at its own set count")
+        XCTAssertEqual(swapped.sets, slot.sets, "the station keeps its four rounds")
         XCTAssertEqual(swapped.restSeconds, slot.restSeconds, "rest preserved")
+        XCTAssertEqual(swapped.role, .main, "the station keeps its role")
         XCTAssertTrue(swapped.reps != nil || swapped.durationSeconds != nil, "a fresh capacity-relative target")
         XCTAssertFalse(vm.noSwapAlternative)
     }
@@ -1756,7 +1832,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let store = InMemoryActiveSessionStore()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
-        original.completeSet() // opens a 15s rest (the cap), deadline start+15
+        original.completeSet() // opens a 15s rest, deadline start+15
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -2757,7 +2833,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// hold, a bilateral training hold and rep stations, and a cooldown stretch - plays from start to
     /// finish with **zero taps**, driven only by the countdowns reaching zero; part-way through, the player
     /// is torn down and resumed from its snapshot, and the resumed player carries on hands-free too. Every
-    /// rest along the way is at most 15 seconds.
+    /// rest along the way stays under `SessionAssembly.maxRestSeconds`.
     func testWholeSessionWithTrainingHoldsPlaysWithZeroTapsAcrossAResume() async throws {
         let warmup = WorkoutBlock(
             id: UUID(), title: "Warm-up", category: .warmup,
@@ -2826,7 +2902,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isComplete, "the whole session finished with no tap")
         XCTAssertTrue(resumed, "the session was resumed part-way through")
         XCTAssertTrue(sawTrainingHold, "training holds ran on their own")
-        XCTAssertLessThanOrEqual(longestRest, SessionAssembly.maxRestSeconds, "every rest is at most 15 seconds")
+        XCTAssertLessThanOrEqual(longestRest, SessionAssembly.maxRestSeconds, "no rest runs past the cap")
         let pushUp = strength.exercises[0]
         XCTAssertEqual(pushUpWindow, SessionAssembly.paceSecondsPerSet(of: pushUp) + 6,
                        "the stretched window counts down the pace plus the stretch")
@@ -3490,7 +3566,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         var clock = start
         let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
-        vm.completeSet() // 15s rest opens (the cap)
+        vm.completeSet() // 15s rest opens
         XCTAssertTrue(vm.isResting)
         XCTAssertTrue(vm.canUserPause)
 

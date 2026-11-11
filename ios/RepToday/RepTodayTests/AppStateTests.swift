@@ -122,7 +122,7 @@ final class AppStateTests: XCTestCase {
         original.markFoundationsUpdateNoteSeen()
 
         XCTAssertFalse(original.shouldShowFoundationsUpdateNote, "once seen it must not be shown again")
-        XCTAssertTrue(defaults.bool(forKey: "AppState.hasSeenFoundationsUpdateNote"), "the flag persists")
+        XCTAssertTrue(defaults.bool(forKey: "AppState.hasSeenFoundationsUpdateNote.trainingDays"), "the flag persists")
         let reloaded = AppState(userDefaults: defaults)
         XCTAssertFalse(reloaded.shouldShowFoundationsUpdateNote, "the note never reappears on a later session")
     }

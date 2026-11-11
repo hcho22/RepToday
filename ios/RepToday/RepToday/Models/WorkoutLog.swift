@@ -56,9 +56,33 @@ struct LoggedExercise: Codable, Equatable, Identifiable {
     /// One flag per move, never per set: a set still records prescribed = performed (US-CC09).
     /// Optional so older logs decode unchanged and older app versions ignore it.
     var couldNotFinish: Bool? = nil
+    /// The station's role, copied from its prescription (US-TD02). `nil` on a bookend stretch and on
+    /// every log written before Training Days. Optional so older logs decode unchanged.
+    var role: StationRole? = nil
+    /// Earned Reps when the station was prescribed (US-TD02), copied from the prescription, so
+    /// progression reads what was earned rather than padded or shortened reps. `nil` on older logs,
+    /// which recorded earned = performed.
+    var earnedReps: Int? = nil
+    /// The hold-seconds counterpart of `earnedReps`.
+    var earnedDurationSeconds: Int? = nil
 }
 
 extension LoggedExercise {
+    /// The one predicate for what counts toward progression (US-TD02): not skipped and not a Practice
+    /// Movement. Chain frontiers, Earned Reps, plateau diagnosis, the Progress surfaces and Foundation
+    /// clearing all read it, so a Practice station never moves a rung or the Rep Ramp.
+    var countsForProgression: Bool {
+        !skipped && role != .practice
+    }
+
+    /// The earned per-set value this station recorded: its Earned Reps (or hold seconds) when the log
+    /// carries them, else - on a log written before Training Days, where earned = performed - the
+    /// smallest completed set. `nil` when nothing was completed.
+    func earnedValue(isHold: Bool) -> Int? {
+        if let earned = isHold ? earnedDurationSeconds : earnedReps { return earned }
+        return completedSets.compactMap { isHold ? $0.durationSeconds : $0.reps }.filter { $0 > 0 }.min()
+    }
+
     /// Whether the user actually performed this exercise: not skipped, and at least one set
     /// carrying real work (`reps > 0` or `durationSeconds > 0`). The one shared definition of
     /// "performed" behind the Progress tab's worked instances and the Coach context's recent
@@ -80,14 +104,29 @@ extension WorkoutLog {
         return logged.couldNotFinish == true || !exercises.contains { $0.couldNotFinish == true }
     }
 
-    /// Whether `logged` may count toward clearing a tier's advancement criteria (and a Foundation line,
-    /// and so the earned Strength Phase). In a session the "couldn't finish" follow-up answered (any move
-    /// carries a mark), only when the session does not step it back: a move stepped back still recorded
-    /// the target it asked for (prescribed = performed), so its sets would otherwise read as met. A log
-    /// the follow-up never reached - every log written before it existed - counts every move it did not
-    /// skip, exactly as it always has, so a tier or Foundation line it cleared stays cleared.
+    /// Whether `logged` may count toward clearing a rung (and a Foundation line, and so the earned
+    /// Strength Phase): never a Practice station or a skip; in a session the "couldn't finish" follow-up
+    /// answered (any move carries a mark), only when the session does not step it back, since a move
+    /// stepped back still recorded the target it asked for (prescribed = performed). The advancement bar
+    /// itself (`RepGrammar.isAdvancementMet`) also rejects any session rated too hard (decision 15).
     func countsTowardAdvancement(_ logged: LoggedExercise) -> Bool {
-        exercises.contains { $0.couldNotFinish != nil } ? !stepsBack(logged) : !logged.skipped
+        guard logged.countsForProgression else { return false }
+        return exercises.contains { $0.couldNotFinish != nil } ? !stepsBack(logged) : !logged.skipped
+    }
+
+    /// The Training Day this log trained (ADR-0012), read off its main and Practice stations: the one
+    /// group whose patterns they all belong to. `nil` for a Recovery flow and for every log written
+    /// before Training Days (whose stations carry no role), so existing users start at Push.
+    var trainingDay: TrainingDay? {
+        let worked = exercises.filter { $0.role == .main || $0.role == .practice }
+        guard !worked.isEmpty else { return nil }
+        return TrainingDay.allCases.first { day in worked.allSatisfy { day.patterns.contains($0.movementPattern) } }
+    }
+
+    /// Whether this log records a Recovery flow (US-TD05): every station a recovery stretch. A
+    /// Recovery flow neither advances the Rotation nor counts as a session for the Consistency Score.
+    var isRecovery: Bool {
+        !exercises.isEmpty && exercises.allSatisfy { $0.role == .recovery }
     }
 }
 

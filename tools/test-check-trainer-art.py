@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for the build-time Trainer art gap report (US-TP05, `check-trainer-art.py`)."""
 
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -67,10 +68,13 @@ class TrainerArtGapReportTests(unittest.TestCase):
             lines,
         )
 
-    def test_version2_movements_are_never_reported(self):
+    def test_withdrawn_movements_are_never_reported(self):
+        withheld = [entry['id'] for entry in json.loads(CATALOG.read_text()) if entry.get('audience') in ('version2', 'retired')]
+        self.assertIn('pull_ytw', withheld)
+        self.assertIn('primal_bear_crawl', withheld)
         for line in run(CATALOG, self.assets).stdout.splitlines():
-            for withheld in ('primal_gorilla_walk', 'primal_lizard_crawl', 'primal_underswitch', 'pull_ytw'):
-                self.assertNotIn(withheld, line)
+            for exercise_id in withheld:
+                self.assertNotIn(exercise_id, line)
 
     def test_unreadable_inputs_fail_the_build(self):
         missing = Path(self.directory.name) / 'missing.json'
