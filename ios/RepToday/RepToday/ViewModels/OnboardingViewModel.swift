@@ -1,4 +1,3 @@
-import AuthenticationServices
 import Foundation
 import Observation
 
@@ -7,6 +6,11 @@ import Observation
 /// Onboarding is minimal by design (the detailed flow is deferred to Phase 2): it collects the
 /// handful of answers the deterministic engine needs, then ends by handing the app a fully-seeded
 /// user so the Ready Screen (Epic J) can generate the first session with no picker to clear.
+///
+/// The last step, "Save your plan" (M3, US-AU02, decision 23), asks the user to sign in to their Rep
+/// Today account; onboarding cannot finish without it. Once they have signed in,
+/// `completeSignIn(as:)` either brings back the plan the account already holds - someone signing in on
+/// a new phone - or creates the new user through `finish()`.
 ///
 /// On `finish()` the view model:
 /// 1. builds the `User` aggregate from the collected answers - seeding `duration` from the one
@@ -34,8 +38,26 @@ final class OnboardingViewModel {
         case why
         case lifestyle
         case duration
+        /// Sign in so the plan is saved to the account (US-AU02). Required to finish.
+        case saveYourPlan
 
         var id: Int { rawValue }
+    }
+
+    /// How a signed-in onboarding ended.
+    enum Completion: Equatable {
+        /// A new plan was created from the answers.
+        case created
+        /// The account already held a plan, and it was brought back to this phone.
+        case restored
+    }
+
+    /// Why onboarding could not finish after signing in. Nothing was saved; the user can try again.
+    enum CompletionError: Error, Equatable {
+        /// The account could not be reached to check for a plan it already holds.
+        case accountUnreachable
+        /// Saving the new plan on the phone failed.
+        case saveFailed
     }
 
     // MARK: - Flow state
@@ -49,16 +71,6 @@ final class OnboardingViewModel {
 
     /// A user-facing message set only when the final save/seed fails; `nil` in the happy path.
     private(set) var errorMessage: String?
-
-    // MARK: - Identity (US-N01)
-
-    /// The Sign in with Apple identifier once the user has signed in, else `nil`. When present it
-    /// keys the saved user record; when absent, `finish()` falls back to a locally-generated stable
-    /// identifier, so sign-in is never a gate to the first session.
-    private(set) var signedInIdentifier: String?
-
-    /// True while the (optional, non-gating) Sign in with Apple sheet is in flight.
-    private(set) var isSigningIn = false
 
     // MARK: - Collected answers
 
@@ -113,18 +125,17 @@ final class OnboardingViewModel {
 
     private let userService: any UserServiceProtocol
     private let sessionPolicyService: any SessionPolicyServiceProtocol
-    /// Sign in with Apple identity (US-N01). Optional so tests and previews that do not exercise
-    /// sign-in construct the view model without it; when absent, identity falls back to
-    /// `userIdentifier` below.
-    private let authService: (any AuthServiceProtocol)?
-    /// Anonymous product telemetry sink (US-T08). Optional exactly like `authService`, so previews
+    /// Brings back the plan an account already holds (`SyncEngine.restoreFromAccount`), or `nil` when
+    /// this build has no account backend, in which case every sign-in creates a new plan.
+    private let accountRestorer: (any AccountRestoring)?
+    /// Anonymous product telemetry sink (US-T08). Optional, so previews
     /// and tests that do not exercise the funnel construct the view model unchanged; when absent the
     /// two onboarding-funnel emissions are simply skipped. Emissions go through it **unconditionally**
     /// - consent (US-T06) is enforced inside the sink, so this view model never re-checks the opt-out
     /// flag (a second gate could disagree with the first).
     private let analytics: (any AnalyticsServiceProtocol)?
-    /// The local fallback identity source, used only when the user has not signed in with Apple, so
-    /// the offline-first core loop always has a stable key without requiring an iCloud account.
+    /// Keys a new user record. A local random id: the account owns the data on the server, so the
+    /// record key never has to change when the user signs in on another phone.
     private let userIdentifier: () -> String
     /// Injected clock, so `createdAt` stays testable and the view model has no hidden wall-clock read.
     /// It also anchors the onboarding-funnel `elapsed_seconds` (US-T08), so that measurement is
@@ -134,14 +145,14 @@ final class OnboardingViewModel {
     init(
         userService: any UserServiceProtocol,
         sessionPolicyService: any SessionPolicyServiceProtocol,
-        authService: (any AuthServiceProtocol)? = nil,
+        accountRestorer: (any AccountRestoring)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
         userIdentifier: @escaping () -> String = { UUID().uuidString },
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
         self.sessionPolicyService = sessionPolicyService
-        self.authService = authService
+        self.accountRestorer = accountRestorer
         self.analytics = analytics
         self.userIdentifier = userIdentifier
         self.now = now
@@ -177,59 +188,23 @@ final class OnboardingViewModel {
         Int(now().timeIntervalSince1970 * 1000)
     }
 
-    // MARK: - Sign in with Apple (US-N01)
-
-    /// Whether a sign-in affordance should be offered - only when an auth service is wired and the
-    /// user has not already signed in during this flow.
-    var canSignInWithApple: Bool { authService != nil && signedInIdentifier == nil }
-
-    /// Runs the optional Sign in with Apple ceremony and, on success, records the stable identifier
-    /// so `finish()` keys the user record by it. Any failure (offline, canceled, missing entitlement)
-    /// is intentionally swallowed: sign-in must never gate the first session, so the flow silently
-    /// falls back to a locally-generated identifier.
-    func signInWithApple() async {
-        guard let authService, !isSigningIn else { return }
-        isSigningIn = true
-        defer { isSigningIn = false }
-        signedInIdentifier = try? await authService.signInWithApple()
-    }
-
-    /// Handles the official `SignInWithAppleButton`'s completion. A thin extraction shim: it pulls the
-    /// stable identifier off a successful Apple ID credential and hands it to `completeSignIn`. Any
-    /// failure (canceled, offline, missing entitlement) or a non-Apple-ID credential is intentionally
-    /// swallowed - sign-in must never gate the first session.
-    @MainActor
-    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
-        guard
-            case .success(let authorization) = result,
-            let credential = authorization.credential as? ASAuthorizationAppleIDCredential
-        else { return }
-        let identifier = credential.user
-        Task { await completeSignIn(identifier: identifier) }
-    }
-
-    /// Records an externally-obtained Sign in with Apple identifier (from the button's completion) so
-    /// `finish()` keys the user by it, persisting it best-effort through the auth service. The persist
-    /// failure is swallowed for the same non-gating reason as `signInWithApple()`.
-    func completeSignIn(identifier: String) async {
-        try? await authService?.completeSignIn(identifier: identifier)
-        signedInIdentifier = identifier
-    }
-
     // MARK: - Navigation
 
     var isFirstStep: Bool { step == Step.allCases.first }
     var isLastStep: Bool { step == Step.allCases.last }
 
     /// Whether the current step's required inputs are satisfied. The duration step is always ready
-    /// (a value is preselected), so `finish()` is never gated behind an unanswered picker - the
-    /// Ready Screen the flow ends on must not open onto a blocked Start (US-J01).
+    /// (a value is preselected), so the flow is never gated behind an unanswered picker - the Ready
+    /// Screen the flow ends on must not open onto a blocked Start (US-J01). "Save your plan" advances
+    /// only by signing in, so it has no Continue.
     var canAdvance: Bool {
         switch step {
         case .welcome, .fitnessLevel, .focusAreas, .why, .lifestyle, .duration:
             return true
         case .basics:
             return !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .saveYourPlan:
+            return false
         }
     }
 
@@ -245,6 +220,30 @@ final class OnboardingViewModel {
 
     // MARK: - Finish
 
+    /// Finishes onboarding for the account the user just signed in to (US-AU02). An account that
+    /// already holds a plan - the same person on a new phone - gets it back, history and all, and the
+    /// answers given here are not used; otherwise the answers become the new plan (`finish()`).
+    ///
+    /// The account is checked before anything is written, so a returning user's plan can never be
+    /// overwritten by a fresh one. If the account cannot be reached, nothing is saved and the user can
+    /// try again.
+    func completeSignIn(as identity: AccountIdentity) async throws -> Completion {
+        if let accountRestorer {
+            let restoredTypes: Set<SyncRecordType>
+            do {
+                restoredTypes = try await accountRestorer.restoreFromAccount()
+            } catch {
+                throw CompletionError.accountUnreachable
+            }
+            if restoredTypes.contains(.profile), (try? await userService.currentUser()) != nil {
+                recordOnboardingCompleted()
+                return .restored
+            }
+        }
+        guard await finish() else { throw CompletionError.saveFailed }
+        return .created
+    }
+
     /// Build, save, and seed the freshly-onboarded user, returning `true` on success so the caller
     /// can route to the Ready Screen. On failure it sets `errorMessage`, returns `false`, and leaves
     /// the flow in place so the user can retry.
@@ -255,26 +254,14 @@ final class OnboardingViewModel {
         errorMessage = nil
         defer { isFinishing = false }
 
-        let user = buildUser(identifier: await resolvedIdentifier())
+        let user = buildUser(identifier: userIdentifier())
         do {
             try await userService.save(user)
             // Seed the cold-start policy after the user is saved, so a warmed-up engine never reads
             // a contract for a user that failed to persist. The engine's Step 0 needs both.
             _ = try await sessionPolicyService.seedInitialPolicy(for: user)
-            // US-T08: `onboarding_completed` fires only here, on the success branch that also triggers
-            // `onComplete` - never on the failure branch below. `elapsed_seconds` is whole seconds from
-            // the `onboarding_started` instant to now, off the injected clock, clamped at 0 defensively.
-            // Hand off through the sink after the durable product work; it never awaits network
-            // delivery, so telemetry cannot gate the save/seed. If no start instant was recorded, elapsed
-            // is treated as 0 rather than fabricating a start.
-            let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
-            analytics?.record(
-                AnalyticsEvent(
-                    name: .onboardingCompleted,
-                    timestampMs: timestampMs(),
-                    properties: ["elapsed_seconds": .int(elapsedSeconds)]
-                )
-            )
+            // US-T08: `onboarding_completed` fires only on success - never on the failure branch below.
+            recordOnboardingCompleted()
             return true
         } catch {
             errorMessage = "We couldn't finish setting up. Please try again."
@@ -282,21 +269,22 @@ final class OnboardingViewModel {
         }
     }
 
-    /// The identity that keys the saved user record: the Sign in with Apple identifier (whether it
-    /// arrived via `signInWithApple()` this session or was persisted from a prior sign-in), else the
-    /// local fallback. A best-effort local read of the auth store - it never calls Apple - so it
-    /// resolves instantly and offline and never blocks `finish()`.
-    private func resolvedIdentifier() async -> String {
-        if let signedInIdentifier { return signedInIdentifier }
-        if let authService, let existing = try? await authService.currentUserIdentifier() {
-            return existing
-        }
-        return userIdentifier()
+    /// `onboarding_completed` (US-T08), for a created or a restored plan. `elapsed_seconds` is whole
+    /// seconds from the `onboarding_started` instant to now, off the injected clock, clamped at 0. It is
+    /// handed to the sink after the durable work; the sink never awaits delivery, so telemetry cannot
+    /// gate finishing. With no start instant recorded, elapsed is 0 rather than a fabricated start.
+    private func recordOnboardingCompleted() {
+        let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
+        analytics?.record(
+            AnalyticsEvent(
+                name: .onboardingCompleted,
+                timestampMs: timestampMs(),
+                properties: ["elapsed_seconds": .int(elapsedSeconds)]
+            )
+        )
     }
 
-    /// Assemble the `User` aggregate from the collected answers, keyed by `userIdentifier()` (the
-    /// local fallback). `finish()` uses `buildUser(identifier:)` with the resolved Sign in with Apple
-    /// identity; this convenience keeps the synchronous, identity-agnostic build available.
+    /// Assemble the `User` aggregate from the collected answers, keyed by `userIdentifier()`.
     func buildUser() -> User {
         buildUser(identifier: userIdentifier())
     }
@@ -310,7 +298,7 @@ final class OnboardingViewModel {
             age: age,
             sex: sex,
             // The imperial -> metric boundary (US-O04): the UI collects feet/inches and pounds, the
-            // persisted profile is metric, and everything downstream - CloudKit, the HealthKit
+            // persisted profile is metric, and everything downstream - the account, the HealthKit
             // energy estimate - only ever sees cm/kg.
             heightCm: heightCm,
             weightKg: weightKg,

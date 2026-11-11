@@ -2,18 +2,18 @@ import SwiftUI
 
 /// App entry point.
 ///
-/// US-A01 wired the minimal app shell; US-A04 attached the CoreData stack. US-N02 makes that
-/// stack the CloudKit-backed production stack and wires the production `ServiceContainer`
-/// (`live(...)`) over it, so the user, their history, and the in-force policy persist
-/// across relaunch and sync across devices. The stack still works fully offline and with no
-/// iCloud account - sync is additive and never gates the core loop. The `ServiceContainer` and
-/// `AppState` (US-A05) are injected here as the top-level app dependencies.
+/// US-A01 wired the minimal app shell; US-A04 attached the CoreData stack, and the production
+/// `ServiceContainer` (`live(...)`) runs over it, so the user, their history, and the in-force policy
+/// persist across relaunch. Since accounts (M3, ADR-0016) that data syncs to the user's Rep Today
+/// account through `AccountSyncCoordinator`, which this entry point owns; the stack works fully
+/// offline, and sync never gates the core loop. The `ServiceContainer`, `AppState` (US-A05) and the
+/// sync coordinator are injected here as the top-level app dependencies.
 @main
 struct RepTodayApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    /// The app-wide CloudKit-enabled CoreData stack, instantiated at launch so the store loads
-    /// immediately. It degrades to local-only when CloudKit is unavailable, so it never requires
-    /// an iCloud account for the core loop to work.
+    /// The app-wide CoreData stack, instantiated at launch so the store loads immediately. It mirrors
+    /// iCloud only for a pre-account user's one-time import, and degrades to local-only whenever
+    /// CloudKit is unavailable, so the core loop never needs an iCloud account.
     private let persistenceController = PersistenceController.shared
     private let services: ServiceContainer
     /// Retained for the app's lifetime: finishes out-of-band StoreKit transactions (renewals,
@@ -31,6 +31,9 @@ struct RepTodayApp: App {
     /// (US-T04) needs the identity owner: `AppState` is constructed first, and the services receive
     /// both its launch value and its per-emission reader so account deletion can rotate it in place.
     @State private var appState: AppState
+
+    /// Decides when the device's data syncs to the account and reports how it went (M3).
+    @State private var syncCoordinator: AccountSyncCoordinator
 
     init() {
         // Before anything reads the opt-out flag: an XCUITest run launched with the US-T06 probe
@@ -59,9 +62,25 @@ struct RepTodayApp: App {
             analyticsInstallId: appState.analyticsInstallId,
             coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
             analyticsGate: appState.analyticsGate,
-            analyticsConsentGeneration: appState.analyticsConsentGenerationProvider
+            analyticsConsentGeneration: appState.analyticsConsentGenerationProvider,
+            legacyICloudImport: PersistenceController.shared.legacyICloudImport
         )
         self.services = services
+        // Clerk restores the cached session at launch, before anything asks for a token.
+        (services.accountAuthService as? ClerkAccountAuthService)?.start()
+        _syncCoordinator = State(initialValue: AccountSyncCoordinator(
+            engine: services.syncEngine,
+            store: services.syncStore,
+            cursorStore: services.syncCursorStore,
+            appState: appState,
+            migrator: LegacyAccountMigrator(
+                appState: appState,
+                store: services.syncStore,
+                importer: services.legacyICloudImport,
+                defaults: .standard
+            ),
+            onRemoteChangesApplied: { [appState] in appState.markPlanInputsChanged() }
+        ))
         self.transactionListener = services.subscriptionService.startObservingTransactions()
 
         // Settings persists the authoritative gate and advances its opt-out generation before this
@@ -111,11 +130,14 @@ struct RepTodayApp: App {
                 .environment(\.managedObjectContext, persistenceController.viewContext)
                 .environment(\.services, services)
                 .environment(appState)
+                .environment(syncCoordinator)
+                .task { syncCoordinator.start(observing: persistenceController.viewContext) }
                 .onChange(of: scenePhase) { _, phase in
                     guard phase == .active else { return }
                     // A foreground is a bounded recovery trigger for work whose prior attempt was
                     // interrupted or whose background-execution lease expired.
                     Task { await services.analyticsService.resumePendingDelivery() }
+                    syncCoordinator.requestSync(after: .zero)
                 }
         }
     }

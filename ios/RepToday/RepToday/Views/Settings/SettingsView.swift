@@ -275,7 +275,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(Self.deleteFailureMessage)
+            Text(deletion?.failureMessage ?? Self.deleteFailureMessage)
         }
     }
 
@@ -374,34 +374,50 @@ struct SettingsView: View {
     /// XCUITest that presses it (US-AD01) - so they cannot drift apart.
     static let deleteAccountTitle = "Delete Account"
 
-    /// The section footer. Stays generic - it does not assert a Sign in with Apple link, which a
-    /// local-only account does not have; the confirmation alert names that only when it applies.
+    /// The section footer (US-AU05): the account, its server data and this device. It does not assert
+    /// a Sign in with Apple link; the confirmation names that only when it applies.
     static let deleteAccountFooter = """
-        Permanently deletes your profile and workout history from this device and iCloud. This \
-        can't be undone.
+        Permanently deletes your account, your profile and your workout history from Rep Today's \
+        servers and this device. This can't be undone.
         """
 
-    /// The confirmation body for an account that used Sign in with Apple (US-AD04/US-AD05): it names
-    /// the Apple link among what is destroyed, then preserves the shared subscription warning.
+    /// The confirmation body for an account that signed in with Apple (US-AD04/US-AD05): it names the
+    /// Apple sign-in among what is removed, then preserves the shared subscription warning.
     static let confirmMessageApple = """
-        This permanently deletes your profile, your workout history, and your Sign in with Apple \
-        link on this device. This can't be undone. Deleting your account does not cancel your App \
-        Store subscription.
+        This permanently deletes your Rep Today account, which you sign in to with Apple, and your \
+        profile and workout history on Rep Today's servers and this device. This can't be undone. \
+        Deleting your account does not cancel your App Store subscription.
         """
 
-    /// The failure body shown when the teardown throws. Honest about what happened - the teardown
-    /// deletes durable records first and saves each step, so a late-step throw may already have
-    /// removed some data; it does not claim anything is still intact - and points at the safe next
-    /// action, since the teardown is idempotent and a retry completes it.
+    /// The failure body for a teardown that stopped part-way on the device. Honest about what
+    /// happened - the device teardown deletes durable records first and saves each step, so a
+    /// late-step throw may already have removed some data - and points at the safe next action, since
+    /// the teardown is idempotent and a retry completes it.
     static let deleteFailureMessage = """
         Something went wrong and your account may not be fully deleted. Please try again.
         """
 
-    /// The confirmation body for the local-only account (never signed in with Apple): it omits the
-    /// Apple link the account does not have while preserving the shared subscription warning.
+    /// The failure body when deletion needs a connection: the server step runs first, so nothing was
+    /// deleted anywhere.
+    static let deleteNeedsConnectionMessage = """
+        Deleting your account needs a connection. Nothing was deleted - try again when you're online.
+        """
+
+    /// The failure body when the account no longer accepts this device's session.
+    static let deleteNeedsSignInMessage = """
+        Sign in again from Profile > Account, then delete your account. Nothing was deleted.
+        """
+
+    /// The failure body when the server refused or failed: nothing was deleted.
+    static let deleteServerFailedMessage = """
+        We couldn't delete your account just now. Nothing was deleted - please try again.
+        """
+
+    /// The confirmation body for an account that signed in with Google or an email code.
     static let confirmMessageLocal = """
-        This permanently deletes your profile and your workout history on this device. This can't \
-        be undone. Deleting your account does not cancel your App Store subscription.
+        This permanently deletes your Rep Today account and your profile and workout history on Rep \
+        Today's servers and this device. This can't be undone. Deleting your account does not cancel \
+        your App Store subscription.
         """
 
     /// The one label the toggle is known by - to a reader, to VoiceOver, and to the XCUITest suite

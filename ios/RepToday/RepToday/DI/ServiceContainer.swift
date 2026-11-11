@@ -54,6 +54,21 @@ struct ServiceContainer {
     /// shared store; a container built without one simply cannot tune from the coach (the chat still talks),
     /// so it carries an initializer default like `coachClient`.
     let coachPolicyService: (any CoachPolicyServiceProtocol)?
+    /// Signs the user in to their Rep Today account (M3, ADR-0016): Clerk in a configured build, the
+    /// on-device stub in tests, previews and a Debug build without a Clerk key.
+    let accountAuthService: any AccountAuthServiceProtocol
+    /// The on-device side of sync: the outbox and the records it names (`CoreDataSyncStore` in the
+    /// live container).
+    let syncStore: any SyncStore
+    /// Where the device last pulled the account's changes up to.
+    let syncCursorStore: any SyncCursorStore
+    /// The account backend (`ConvexSyncRemote`), or `nil` when this build has none: then nothing
+    /// syncs and the data stays on the device.
+    let syncRemote: (any SyncRemote)?
+    /// Runs sync cycles over `syncStore` and `syncRemote`; `nil` exactly when `syncRemote` is.
+    let syncEngine: SyncEngine?
+    /// Reports when a migrating user's iCloud import has settled (US-AU04).
+    let legacyICloudImport: any LegacyICloudImporting
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -73,7 +88,13 @@ struct ServiceContainer {
         accountDeletionService: any AccountDeletionServiceProtocol,
         coachClient: CoachProxyClient? = nil,
         coachPolicyService: (any CoachPolicyServiceProtocol)? = nil,
-        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService()
+        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService(),
+        accountAuthService: any AccountAuthServiceProtocol = StubAccountAuthService(),
+        syncStore: any SyncStore = NoOpSyncStore(),
+        syncCursorStore: any SyncCursorStore = InMemorySyncCursorStore(),
+        syncRemote: (any SyncRemote)? = nil,
+        syncEngine: SyncEngine? = nil,
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport)
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -93,6 +114,12 @@ struct ServiceContainer {
         self.accountDeletionService = accountDeletionService
         self.coachClient = coachClient
         self.coachPolicyService = coachPolicyService
+        self.accountAuthService = accountAuthService
+        self.syncStore = syncStore
+        self.syncCursorStore = syncCursorStore
+        self.syncRemote = syncRemote
+        self.syncEngine = syncEngine
+        self.legacyICloudImport = legacyICloudImport
     }
 
     static func mock() -> ServiceContainer {
@@ -124,6 +151,9 @@ struct ServiceContainer {
         let authService = MockAuthService()
         // One Outside Activity store, read by Today and torn down by account deletion.
         let outsideActivityService = InMemoryOutsideActivityService()
+        // On-device account sign-in with no backend: the mock container never syncs.
+        let accountAuthService = StubAccountAuthService()
+        let syncCursorStore = InMemorySyncCursorStore()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
@@ -172,12 +202,20 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
-                outsideActivityService: outsideActivityService
+                outsideActivityService: outsideActivityService,
+                account: AccountDeletionService.AccountTeardown(
+                    remote: nil,
+                    auth: accountAuthService,
+                    syncStore: NoOpSyncStore(),
+                    cursorStore: syncCursorStore
+                )
             ),
             // The coach's bounded policy-write path (US-AC07), over the same shared in-memory policy store
             // as the deterministic Programmer above, so both writers share one in-force policy.
             coachPolicyService: CoachSessionPolicyService(store: policyStore),
-            outsideActivityService: outsideActivityService
+            outsideActivityService: outsideActivityService,
+            accountAuthService: accountAuthService,
+            syncCursorStore: syncCursorStore
         )
     }
 
@@ -255,7 +293,9 @@ struct ServiceContainer {
         analyticsConfiguration: Bundle = .main,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
-        analyticsService: (any AnalyticsServiceProtocol)? = nil
+        analyticsService: (any AnalyticsServiceProtocol)? = nil,
+        accountConfiguration: Bundle = .main,
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport)
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
@@ -280,6 +320,18 @@ struct ServiceContainer {
         // row in the device-local store and the Keychain item that outlives a reinstall.
         let activeSessionStore = CoreDataActiveSessionStore(context: context)
         let authService = AppleAuthService.live()
+        // The account (M3): sign-in, the outbox over the same context, and the backend when this build
+        // has one. The sync remote exists only when sign-in is real, so a stub sign-in never sends a
+        // request.
+        let accountAuthService = resolveAccountAuthService(bundle: accountConfiguration)
+        let syncStore = CoreDataSyncStore(context: context)
+        let syncCursorStore = DefaultsSyncCursorStore()
+        let syncRemote: (any SyncRemote)? = accountAuthService.isConfigured
+            ? AccountBackendConfiguration.convexURL(bundle: accountConfiguration).map { url in
+                ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url) { try await accountAuthService.sessionToken() })
+            }
+            : nil
+        let syncEngine = syncRemote.map { SyncEngine(store: syncStore, remote: $0, cursorStore: syncCursorStore) }
         // The telemetry transport keeps its own session and durable outbox in every ordinary build.
         // Debug probe launches use the counting in-process interceptor; an in-process XCTest host uses
         // a silent interceptor. Both pair interception with volatile storage and no UIKit background
@@ -392,7 +444,14 @@ struct ServiceContainer {
                 activeSessionStore: activeSessionStore,
                 authService: authService,
                 coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() },
-                outsideActivityService: outsideActivityService
+                outsideActivityService: outsideActivityService,
+                account: AccountDeletionService.AccountTeardown(
+                    remote: syncRemote,
+                    auth: accountAuthService,
+                    syncStore: syncStore,
+                    cursorStore: syncCursorStore,
+                    engine: syncEngine
+                )
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,
@@ -400,8 +459,36 @@ struct ServiceContainer {
             // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
             // in-force policy and the engine reads whichever landed last on the next open.
             coachPolicyService: CoachSessionPolicyService(store: policyStore),
-            outsideActivityService: outsideActivityService
+            outsideActivityService: outsideActivityService,
+            accountAuthService: accountAuthService,
+            syncStore: syncStore,
+            syncCursorStore: syncCursorStore,
+            syncRemote: syncRemote,
+            syncEngine: syncEngine,
+            legacyICloudImport: legacyICloudImport
         )
+    }
+
+    /// The account sign-in for this build: Clerk when the build carries a publishable key. Without
+    /// one, a Debug build signs in on the device only (so onboarding can finish) and a Release build
+    /// cannot sign in at all. An XCTest host and an XCUITest launch (`-RepTodayAccountStub YES`) always
+    /// get the on-device stub, so no test talks to Clerk.
+    static func resolveAccountAuthService(bundle: Bundle = .main) -> any AccountAuthServiceProtocol {
+        #if DEBUG
+        let isTestLaunch = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || UserDefaults.standard.bool(forKey: "RepTodayAccountStub")
+        if isTestLaunch {
+            return StubAccountAuthService()
+        }
+        #endif
+        if let clerk = ClerkAccountAuthService.configured(bundle: bundle) {
+            return clerk
+        }
+        #if DEBUG
+        return StubAccountAuthService()
+        #else
+        return UnavailableAccountAuthService()
+        #endif
     }
 
     static func resolveCoachAuthentication(

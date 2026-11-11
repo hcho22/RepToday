@@ -1,19 +1,26 @@
 import CoreData
 
-/// The app's CoreData stack (US-A04, CloudKit-enabled in US-N02).
+/// The app's CoreData stack (US-A04): the on-device store the app runs on, local-first.
 ///
-/// Backed by `NSPersistentCloudKitContainer`. In production the store is split into two
-/// persistent stores in one container:
+/// In production the store is split into two persistent stores in one container:
 ///
-/// - a **Cloud** store (the `Cloud` model configuration - `CDUser`, `CDWorkoutLog`,
-///   `CDSessionPolicy`) that mirrors to the user's private CloudKit database, so their
-///   identity, history, and in-force policy sync and back up across devices; and
-/// - a **Local** store (the `Local` configuration - `CDActiveSession`, `CDOutsideActivity`) that
-///   never leaves the device: an in-progress session is transient, device-bound state (it holds
-///   absolute wall-clock instants tied to this device's run) that has no meaning on another, and an
-///   Outside Activity may carry Apple Health data, which may not be stored in iCloud.
+/// - the **Cloud** store (the `Cloud` model configuration - `CDUser`, `CDWorkoutLog`,
+///   `CDSessionPolicy`), named for the iCloud mirror it had before accounts; and
+/// - the **Local** store (the `Local` configuration - `CDActiveSession`, `CDOutsideActivity`, and
+///   since model version 3 the sync outbox `CDSyncChange`), which never mirrors to iCloud: an
+///   in-progress session is device-bound, an Outside Activity may carry Apple Health data, and the
+///   outbox is this device's own pending work.
 ///
-/// Sync is strictly additive: if CloudKit cannot be set up - no iCloud account, offline, or an
+/// Since accounts (M3, ADR-0016) the user's data syncs to their Rep Today account through the sync
+/// outbox (`CoreDataSyncStore`, `SyncEngine`), not through iCloud. The container is still an
+/// `NSPersistentCloudKitContainer` for one reason: a user who onboarded before accounts may have
+/// history that is only in their private iCloud database, so until their one-time migration has
+/// queued everything (`LegacyAccountMigrationStage.mirrorsICloud`) the Cloud store keeps its iCloud
+/// mirror on, and `legacyICloudImport` reports when its import has settled. Every other launch -
+/// every new user, and a migrated one - opens both stores with no iCloud mirror at all. The iCloud
+/// copy is never deleted by the migration; turning the mirror off leaves it as it was.
+///
+/// The mirror is strictly additive: if CloudKit cannot be set up - no iCloud account, offline, or an
 /// unsigned build with no iCloud entitlement (e.g. the Simulator) - the Cloud store is retried
 /// **local-only** so the core loop always works. Nothing about generating and completing a
 /// session depends on the network or an account.
@@ -45,21 +52,31 @@ final class PersistenceController {
 
     let container: NSPersistentCloudKitContainer
 
+    /// Reports when the iCloud mirror's import has settled, for a migrating user (US-AU04). Settled
+    /// as `.nothingToImport` whenever the mirror is not running.
+    let legacyICloudImport: LegacyICloudImportMonitor
+
     /// The main-queue context views and view models read from.
     var viewContext: NSManagedObjectContext { container.viewContext }
 
-    /// - Parameter inMemory: when `true`, every entity is loaded into a single ephemeral
-    ///   `/dev/null` store with no CloudKit - the isolated, disk-free stack tests and previews
-    ///   use. When `false`, the production Cloud + Local split described above is loaded.
-    init(inMemory: Bool = false) {
+    /// - Parameters:
+    ///   - inMemory: when `true`, every entity is loaded into a single ephemeral `/dev/null` store
+    ///     with no CloudKit - the isolated, disk-free stack tests and previews use. When `false`, the
+    ///     production Cloud + Local split described above is loaded.
+    ///   - defaults: where the migration stage is read from, deciding whether the iCloud mirror runs.
+    init(inMemory: Bool = false, defaults: UserDefaults = .standard) {
         container = NSPersistentCloudKitContainer(name: "RepToday", managedObjectModel: Self.managedObjectModel)
 
+        let mirrorsICloud = !inMemory && (LegacyAccountMigrationStage.resolved(in: defaults)?.mirrorsICloud ?? false)
+        legacyICloudImport = mirrorsICloud
+            ? LegacyICloudImportMonitor(container: container)
+            : LegacyICloudImportMonitor(settled: .nothingToImport)
         if inMemory {
             Self.configureInMemoryStore(container)
         } else {
-            Self.configureCloudAndLocalStores(container, in: NSPersistentContainer.defaultDirectoryURL(), mirrorsToCloudKit: true)
+            Self.configureCloudAndLocalStores(container, in: NSPersistentContainer.defaultDirectoryURL(), mirrorsToCloudKit: mirrorsICloud)
         }
-        Self.load(container)
+        Self.load(container, onMirrorUnavailable: legacyICloudImport.markNotMirroring)
     }
 
     /// The production Cloud + Local split on disk in `directory`, with no CloudKit mirroring - the
@@ -67,6 +84,7 @@ final class PersistenceController {
     /// model version opens through lightweight migration and keeps its data.
     init(localOnlyStoresIn directory: URL) {
         container = NSPersistentCloudKitContainer(name: "RepToday", managedObjectModel: Self.managedObjectModel)
+        legacyICloudImport = LegacyICloudImportMonitor(settled: .nothingToImport)
         Self.configureCloudAndLocalStores(container, in: directory, mirrorsToCloudKit: false)
         Self.load(container)
     }
@@ -79,7 +97,7 @@ final class PersistenceController {
             .flatMap { NSManagedObjectModel(contentsOf: $0.appendingPathComponent("\(versionName).mom")) }
     }
 
-    private static func load(_ container: NSPersistentCloudKitContainer) {
+    private static func load(_ container: NSPersistentCloudKitContainer, onMirrorUnavailable: @escaping () -> Void = {}) {
         let coordinator = container.persistentStoreCoordinator
         container.loadPersistentStores { description, error in
             guard let error = error as NSError? else { return }
@@ -89,6 +107,7 @@ final class PersistenceController {
             // additive - it resumes on its own once an account and connectivity are available.
             if description.cloudKitContainerOptions != nil {
                 description.cloudKitContainerOptions = nil
+                onMirrorUnavailable()
                 do {
                     try coordinator.addPersistentStore(
                         ofType: description.type,
@@ -140,10 +159,11 @@ final class PersistenceController {
         description.cloudKitContainerOptions = nil
     }
 
-    /// The production split: the durable `Cloud` configuration mirrors to CloudKit; the `Local`
-    /// configuration (`CDActiveSession`, `CDOutsideActivity`) stays on-device. Both stores migrate lightweight across
-    /// model versions (the description defaults: migrate automatically, infer the mapping), which is why
-    /// every model change must stay additive.
+    /// The production split: the `Cloud` configuration, mirrored to CloudKit only when
+    /// `mirrorsToCloudKit` (a migrating user's pending import); the `Local` configuration
+    /// (`CDActiveSession`, `CDOutsideActivity`, `CDSyncChange`) never. Both stores migrate lightweight
+    /// across model versions (the description defaults: migrate automatically, infer the mapping),
+    /// which is why every model change must stay additive.
     private static func configureCloudAndLocalStores(
         _ container: NSPersistentCloudKitContainer,
         in baseURL: URL,
@@ -152,8 +172,9 @@ final class PersistenceController {
 
         let cloud = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("RepToday.sqlite"))
         cloud.configuration = "Cloud"
-        // Persistent history + remote-change notifications are prerequisites for CloudKit mirroring
-        // and let the view context merge changes synced in from other devices.
+        // Persistent history + remote-change notifications are prerequisites for CloudKit mirroring.
+        // History stays on even with no mirror: a store that once tracked history opens read-only
+        // without it, and every pre-account install's Cloud store did.
         cloud.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         cloud.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         cloud.cloudKitContainerOptions = mirrorsToCloudKit

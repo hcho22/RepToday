@@ -2,7 +2,8 @@ import CoreData
 import Foundation
 
 /// The CoreData-backed `UserServiceProtocol` (US-N02), so the single user aggregate survives
-/// relaunch and syncs through CloudKit (the `Cloud` configuration) across the user's devices.
+/// relaunch. Every save also records the change in the sync outbox (`CDSyncChange`), in the same
+/// save, so it reaches the user's account (M3, US-AU03).
 ///
 /// Rep Today has exactly one local user, keyed by their stable identity (`User.id`, the Sign in
 /// with Apple identifier or a local fallback, US-N01). Reads return that record; `save` upserts
@@ -37,6 +38,7 @@ final class CoreDataUserService: UserServiceProtocol, @unchecked Sendable {
             let persistedPhase = record.phaseRaw.flatMap(Phase.init(rawValue:))
             let ratchetedUser = persistedPhase.map { user.advancingPhase(to: $0) } ?? user
             try record.update(from: ratchetedUser)
+            try CDSyncChange.markChanged(.profile, recordId: user.id, in: self.context)
             if self.context.hasChanges {
                 try self.context.save()
             }
@@ -56,11 +58,14 @@ final class CoreDataUserService: UserServiceProtocol, @unchecked Sendable {
             guard advanced != current else { return current }
 
             record.phaseRaw = advanced.phase.rawValue
+            try CDSyncChange.markChanged(.profile, recordId: userId, in: self.context)
             try self.context.save()
             return advanced
         }
     }
 
+    /// Account deletion only: it records nothing in the sync outbox, because deletion removes the
+    /// account's server data itself (`AccountDeletionService`).
     func deleteCurrentUser() async throws {
         try await context.perform {
             for record in try self.context.fetch(CDUser.fetchRequest()) {

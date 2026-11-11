@@ -48,6 +48,16 @@
 	     uses App Attest/StoreKit; the operator bearer must never be distributed in an app binary. -->
 	<key>RepTodayCoachSecret</key>
 	<string>$(REPTODAY_COACH_SECRET)</string>
+	<!-- The account backend (M3, ADR-0016), expanded from the per-configuration
+	     `REPTODAY_CLERK_PUBLISHABLE_KEY` and `REPTODAY_CONVEX_URL` build settings in
+	     `ios/RepToday/project.yml`. The publishable key is Clerk's public identifier for the instance
+	     (never a secret; the secret key lives only on the Convex deployment). Without a usable key a
+	     Release build cannot sign in and the archive script refuses to build it; without a usable
+	     Convex URL nothing syncs and data stays on the device. -->
+	<key>RepTodayClerkPublishableKey</key>
+	<string>$(REPTODAY_CLERK_PUBLISHABLE_KEY)</string>
+	<key>RepTodayConvexURL</key>
+	<string>$(REPTODAY_CONVEX_URL)</string>
 	<key>RepTodayBuildConfiguration</key>
 	<string>$(CONFIGURATION)</string>
 	<key>RepTodayCoachSyntheticQA</key>

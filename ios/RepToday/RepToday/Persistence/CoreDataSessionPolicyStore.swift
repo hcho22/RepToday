@@ -5,9 +5,9 @@ import Foundation
 /// policy survives relaunch and offline use (US-D03).
 ///
 /// Reads and writes the one `CDSessionPolicy` record per user (`userId`-keyed, overwritten in place),
-/// on the supplied context. The running app injects the shared stack's context; the policy lives in
-/// the CloudKit-synced `Cloud` store configuration alongside the user and logs (US-N02), so it backs
-/// up and follows the user across devices. The deterministic service is otherwise unit-tested against
+/// on the supplied context. The running app injects the shared stack's context; every write also
+/// records the change in the sync outbox (`CDSyncChange`), so the policy reaches the user's account
+/// and follows them across devices (M3, US-AU03). The deterministic service is otherwise unit-tested against
 /// `InMemorySessionPolicyStore`, keeping its logic free of CoreData.
 final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable {
     // Safe: the only state is this immutable reference, and every access to the
@@ -31,6 +31,7 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
             let request = CDSessionPolicy.fetchRequest(userId: userId)
             let record = try self.context.fetch(request).first ?? CDSessionPolicy(context: self.context)
             try record.update(from: policy, userId: userId)
+            try CDSyncChange.markChanged(.sessionPolicy, recordId: userId, in: self.context)
             if self.context.hasChanges {
                 try self.context.save()
             }
@@ -54,6 +55,7 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
             return try authorization.performIfAuthorized {
                 let record = existing ?? CDSessionPolicy(context: self.context)
                 try record.update(from: next, userId: userId)
+                try CDSyncChange.markChanged(.sessionPolicy, recordId: userId, in: self.context)
                 if self.context.hasChanges {
                     try self.context.save()
                 }
@@ -64,10 +66,10 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
 
     func deleteAll() async throws {
         // Account deletion (US-AD02/US-AD03): remove every policy record without a user id, so
-        // teardown completes even when the `CDUser` aggregate is unreadable, and save so the CloudKit
-        // mirror tombstones it. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the
-        // change flows through the view context and CloudKit mirror like `save` does. Single-user, so
-        // this is the one stored record.
+        // teardown completes even when the `CDUser` aggregate is unreadable. Deleted object-by-object
+        // rather than via `NSBatchDeleteRequest` so the change flows through the view context like
+        // `save` does. Single-user, so this is the one stored record. It records nothing in the sync
+        // outbox: account deletion removes the account's server data itself.
         try await context.perform {
             for record in try self.context.fetch(CDSessionPolicy.fetchRequest()) {
                 self.context.delete(record)

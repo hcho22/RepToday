@@ -1,55 +1,66 @@
-import AuthenticationServices
 import SwiftUI
 
-/// Reachable after onboarding; the credential is optional and never a purchase prerequisite.
+/// The Account screen (M3): who is signed in and how much of the device's data is on the account.
+///
+/// Signing in is required and happens before the app opens, so there is nothing optional here. The one
+/// action it can offer is signing in again, when the account no longer accepts this device's session;
+/// the data stays on the phone until then. Premium stays with the App Store account.
 struct AccountView: View {
-    @State private var viewModel: AccountViewModel
-
-    init(authService: any AuthServiceProtocol) {
-        _viewModel = State(initialValue: AccountViewModel(authService: authService))
-    }
-
-    init(viewModel: AccountViewModel) {
-        _viewModel = State(initialValue: viewModel)
-    }
+    @Environment(\.services) private var services
+    @Environment(AppState.self) private var appState
+    @Environment(AccountSyncCoordinator.self) private var syncCoordinator: AccountSyncCoordinator?
+    @State private var reSignIn: AccountSignInViewModel?
 
     var body: some View {
+        let presentation = AccountStatusPresentation(
+            account: appState.account,
+            status: syncCoordinator?.status ?? (appState.account == nil ? .signedOut : .localOnly),
+            pendingCount: syncCoordinator?.pendingCount ?? 0,
+            lastSyncedAt: syncCoordinator?.lastSyncedAt,
+            migrationStage: appState.legacyMigrationStage,
+            now: Date()
+        )
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                switch viewModel.state {
-                case .loading:
-                    SwiftUI.ProgressView("Checking sign-in status")
-                case .signedIn:
-                    Label("Signed in with Apple", systemImage: "checkmark.seal.fill")
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.accent)
-                case .signedOut:
-                    SignInWithAppleButton(.signIn) { request in
-                        // No name or email is needed: this app stores only the opaque identifier.
-                        request.requestedScopes = []
-                        viewModel.beginSignIn()
-                    } onCompletion: { result in
-                        Task { await viewModel.handleAppleSignIn(result) }
+                card {
+                    Label {
+                        Text(presentation.accountLine)
+                            .font(Theme.Typography.headline)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "person.crop.circle.fill")
+                            .foregroundStyle(Theme.Colors.accent)
                     }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: Theme.Spacing.buttonHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                    .disabled(!viewModel.canSignIn)
-                    .accessibilityHint("Optional. Your existing workouts and history are kept.")
-                    if viewModel.isSigningIn {
-                        SwiftUI.ProgressView("Signing in")
-                    }
-                case .unavailable:
-                    Button("Retry sign-in status") { Task { await viewModel.load() } }
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .accessibilityElement(children: .combine)
                 }
 
-                if let message = viewModel.message {
-                    Text(message)
-                        .font(Theme.Typography.body)
-                        .fixedSize(horizontal: false, vertical: true)
+                card {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Label {
+                            Text(presentation.headline)
+                                .font(Theme.Typography.headline)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: presentation.symbol)
+                                .foregroundStyle(Theme.Colors.accent)
+                        }
+                        if let detail = presentation.detail {
+                            Text(detail)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
                 }
-                Text("Sign in is optional. Your workouts and history stay as they are. Premium purchases and restores use your App Store account and don't require signing in here.")
+
+                if presentation.offersSignIn, let reSignIn {
+                    AccountSignInPanel(viewModel: reSignIn)
+                }
+
+                Text("Your plan and sessions live on this phone first and save to your account whenever you're connected. Premium purchases and restores use your App Store account.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -60,6 +71,24 @@ struct AccountView: View {
         .foregroundStyle(Theme.Colors.textPrimary)
         .background(Theme.Colors.background)
         .navigationTitle("Account")
-        .task { await viewModel.load() }
+        .onAppear {
+            if reSignIn == nil {
+                reSignIn = AccountSignInViewModel(auth: services.accountAuthService, context: .existingUser) { identity in
+                    if let syncCoordinator {
+                        syncCoordinator.linkAccount(identity)
+                    } else {
+                        appState.linkAccount(identity)
+                    }
+                }
+            }
+        }
+        .task { await syncCoordinator?.syncNow() }
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.md)
+            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
     }
 }

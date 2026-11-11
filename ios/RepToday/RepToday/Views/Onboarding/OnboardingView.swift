@@ -1,4 +1,3 @@
-import AuthenticationServices
 import SwiftUI
 
 /// The minimal v6 onboarding flow (US-I01).
@@ -8,20 +7,23 @@ import SwiftUI
 /// levels, and no badges anywhere; every color, font, and dimension comes from `Theme`.
 ///
 /// The view owns an `@Observable` `OnboardingViewModel`, built from the injected `ServiceContainer`
-/// so the final save/seed goes through the real services. `onComplete` is called once the user is
-/// saved and the cold-start policy seeded, so the router can flip `AppState` to the main app.
+/// so the final save/seed goes through the real services. The flow ends at "Save your plan" (M3,
+/// US-AU02): `onComplete` is called with the signed-in account once its plan is on the phone - brought
+/// back from the account, or created from these answers - so the router can link the account and flip
+/// `AppState` to the main app.
 struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
-    private let onComplete: () -> Void
+    @State private var signIn: AccountSignInViewModel
 
-    init(services: ServiceContainer, onComplete: @escaping () -> Void) {
+    init(services: ServiceContainer, onComplete: @escaping (AccountIdentity) -> Void) {
         self.init(
             viewModel: OnboardingViewModel(
                 userService: services.userService,
                 sessionPolicyService: services.sessionPolicyService,
-                authService: services.authService,
+                accountRestorer: services.syncEngine,
                 analytics: services.analyticsService
             ),
+            accountAuth: services.accountAuthService,
             onComplete: onComplete
         )
     }
@@ -29,9 +31,16 @@ struct OnboardingView: View {
     /// Opens the flow on an already-built view model, so a caller can render a step other than the
     /// first. Previews and tests use it to reach a mid-flow step through the production view rather
     /// than by reimplementing it.
-    init(viewModel: OnboardingViewModel, onComplete: @escaping () -> Void = {}) {
+    init(
+        viewModel: OnboardingViewModel,
+        accountAuth: any AccountAuthServiceProtocol = StubAccountAuthService(),
+        onComplete: @escaping (AccountIdentity) -> Void = { _ in }
+    ) {
         _viewModel = State(initialValue: viewModel)
-        self.onComplete = onComplete
+        _signIn = State(initialValue: AccountSignInViewModel(auth: accountAuth, context: .onboarding) { identity in
+            _ = try await viewModel.completeSignIn(as: identity)
+            onComplete(identity)
+        })
     }
 
     var body: some View {
@@ -48,7 +57,8 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if let errorMessage = viewModel.errorMessage {
+                // The sign-in panel explains its own outcome on the last step.
+                if let errorMessage = viewModel.errorMessage, viewModel.step != .saveYourPlan {
                     Text(errorMessage)
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.red)
@@ -100,6 +110,7 @@ struct OnboardingView: View {
         case .why:          WhyStep(viewModel: viewModel)
         case .lifestyle:    LifestyleStep(viewModel: viewModel)
         case .duration:     DurationStep(viewModel: viewModel)
+        case .saveYourPlan: SaveYourPlanStep(signIn: signIn)
         }
     }
 
@@ -114,7 +125,10 @@ struct OnboardingView: View {
             ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
             : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
         return layout {
-            if dynamicTypeSize.isAccessibilitySize {
+            if viewModel.step == .saveYourPlan {
+                // Signing in is the only way forward from here, so Back stands alone.
+                backButton
+            } else if dynamicTypeSize.isAccessibilitySize {
                 primaryButton
                 backButton
             } else {
@@ -130,13 +144,13 @@ struct OnboardingView: View {
             Button(action: viewModel.goBack) {
                 Text("Back")
                     .font(Theme.Typography.button)
-                    .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                    .foregroundStyle(isBusy ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
             }
             .buttonStyle(.bordered)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .disabled(viewModel.isFinishing)
+            .disabled(isBusy)
         }
     }
 
@@ -158,20 +172,13 @@ struct OnboardingView: View {
         .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
 
-    private var primaryTitle: String {
-        viewModel.isLastStep ? "Start moving" : "Continue"
-    }
+    private var primaryTitle: String { "Continue" }
+
+    /// Saving or signing in: the flow holds still until it ends.
+    private var isBusy: Bool { viewModel.isFinishing || signIn.isWorking }
 
     private func primaryAction() {
-        if viewModel.isLastStep {
-            Task {
-                if await viewModel.finish() {
-                    onComplete()
-                }
-            }
-        } else {
-            viewModel.advance()
-        }
+        viewModel.advance()
     }
 }
 
@@ -213,11 +220,6 @@ private struct WelcomeStep: View {
                 subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
             )
 
-            // Sign in with Apple is optional and never gates the first session (US-N01). When the
-            // user signs in, the record is keyed by their stable Apple identifier; if they skip it
-            // (or it fails offline), onboarding falls back to a local identifier and moves on.
-            signInSection
-
             // The anonymous-usage-data disclosure (US-T06). It sits on the *first* screen rather
             // than the last because the first event the app emits hangs off app entry (US-T07's
             // `app_install`), so a disclosure shown at the end of onboarding would come after the
@@ -246,35 +248,6 @@ private struct WelcomeStep: View {
         .padding(.top, Theme.Spacing.sm)
     }
 
-    @ViewBuilder
-    private var signInSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            if viewModel.signedInIdentifier != nil {
-                Label("Signed in with Apple", systemImage: "checkmark.seal.fill")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    .accessibilityLabel("Signed in with Apple")
-            } else if viewModel.canSignInWithApple {
-                SignInWithAppleButton(.signIn) { request in
-                    request.requestedScopes = [.fullName, .email]
-                } onCompletion: { result in
-                    viewModel.handleAppleSignIn(result)
-                }
-                .signInWithAppleButtonStyle(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.buttonHeight)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                .disabled(viewModel.isSigningIn)
-                .accessibilityHint("Optional. You can start moving without signing in.")
-
-                Text("Optional - keeps your identity private. You can start without it.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
-        }
-        .padding(.top, Theme.Spacing.sm)
-    }
 }
 
 // MARK: - Basics
@@ -714,6 +687,39 @@ private struct DurationStep: View {
     }
 }
 
+// MARK: - Save your plan
+
+/// The last onboarding step (M3, US-AU02, decision 23): signing in to a Rep Today account, required to
+/// finish. Copy stays discipline-first - what the account keeps, not what could be lost.
+private struct SaveYourPlanStep: View {
+    let signIn: AccountSignInViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            StepHeader(
+                title: "Save your plan",
+                subtitle: "Sign in to keep your plan and every session you finish, on this phone and the next. Rep Today still works offline - it saves to your account whenever you're connected."
+            )
+
+            AccountSignInPanel(viewModel: signIn)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Already have an account? Sign in and your plan comes back.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Link(destination: LegalLinks.privacyPolicy) {
+                    Text("Privacy Policy")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.accent)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                }
+                .accessibilityLabel("Privacy Policy")
+            }
+        }
+    }
+}
+
 private struct DurationChip: View {
     let minutes: Int
     let isSelected: Bool
@@ -845,5 +851,5 @@ private extension FitnessLevel {
 }
 
 #Preview {
-    OnboardingView(services: .mock(), onComplete: {})
+    OnboardingView(services: .mock(), onComplete: { _ in })
 }

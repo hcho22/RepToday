@@ -332,6 +332,68 @@ final class AppState {
         rotateCoachSafetyIdentifier()
     }
 
+    // MARK: - Account (M3, ADR-0016)
+
+    /// The Rep Today account this device's data syncs to, or `nil` before the user has signed in.
+    /// Persisted, and read with no network, so an account the user signed in to keeps the app open
+    /// offline: the session's freshness only decides whether sync runs, never whether the app does.
+    private(set) var account: AccountIdentity? {
+        didSet {
+            if let account {
+                userDefaults.set(account.userId, forKey: Keys.accountUserId)
+                userDefaults.set(account.email, forKey: Keys.accountEmail)
+                userDefaults.set(account.method.rawValue, forKey: Keys.accountMethod)
+            } else {
+                userDefaults.removeObject(forKey: Keys.accountUserId)
+                userDefaults.removeObject(forKey: Keys.accountEmail)
+                userDefaults.removeObject(forKey: Keys.accountMethod)
+            }
+        }
+    }
+
+    /// The one-time move to an account of a user who onboarded before accounts (US-AU04), or `nil`
+    /// for a user who signed in during onboarding. `PersistenceController` reads the same value at
+    /// launch (`LegacyAccountMigrationStage.resolved(in:)`).
+    private(set) var legacyMigrationStage: LegacyAccountMigrationStage? {
+        didSet {
+            userDefaults.set(legacyMigrationStage?.rawValue, forKey: LegacyAccountMigrationStage.defaultsKey)
+        }
+    }
+
+    /// True while account deletion runs (US-AU05), so sync uploads nothing to an account that is going
+    /// away. Transient: a relaunch never resumes a deletion half-way, and sync simply runs again.
+    var isAccountDeletionInProgress = false
+
+    /// Whether the app must ask for the one-time sign-in before anything else (decision 23): an
+    /// onboarded user with no account yet, which after M3 only ever means someone who onboarded before
+    /// accounts existed.
+    var needsAccountSignIn: Bool { isOnboarded && account == nil }
+
+    /// Links the device to the account the user just signed in to. For a user who onboarded before
+    /// accounts - the only onboarded user who can be unlinked, since onboarding now ends by signing
+    /// in - this starts the move of their history (`importingFromICloud`).
+    func linkAccount(_ identity: AccountIdentity) {
+        account = identity
+        if isOnboarded, legacyMigrationStage == nil || legacyMigrationStage == .awaitingSignIn {
+            legacyMigrationStage = .importingFromICloud
+        }
+    }
+
+    /// Records the next stage of the one-time move. Stages only move forward.
+    func advanceLegacyMigration(to stage: LegacyAccountMigrationStage) {
+        guard let current = legacyMigrationStage,
+              let currentIndex = LegacyAccountMigrationStage.allCases.firstIndex(of: current),
+              let nextIndex = LegacyAccountMigrationStage.allCases.firstIndex(of: stage),
+              nextIndex > currentIndex else { return }
+        legacyMigrationStage = stage
+    }
+
+    /// Forgets the account on this device, at the end of account deletion.
+    func unlinkAccount() {
+        account = nil
+        legacyMigrationStage = nil
+    }
+
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
@@ -561,6 +623,19 @@ final class AppState {
         lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
             .flatMap(Phase.init(rawValue:)) ?? .discipline
 
+        account = userDefaults.string(forKey: Keys.accountUserId).flatMap { userId in
+            userId.isEmpty ? nil : AccountIdentity(
+                userId: userId,
+                email: userDefaults.string(forKey: Keys.accountEmail),
+                method: userDefaults.string(forKey: Keys.accountMethod).flatMap(AccountSignInMethod.init(rawValue:)) ?? .email
+            )
+        }
+        // An install onboarded before accounts starts its one-time move here; `didSet` does not fire
+        // during `init`, so a newly resolved stage is written through.
+        let stage = LegacyAccountMigrationStage.resolved(in: userDefaults)
+        legacyMigrationStage = stage
+        userDefaults.set(stage?.rawValue, forKey: LegacyAccountMigrationStage.defaultsKey)
+
         acknowledgedCoachDataSharingDisclosureVersion =
             userDefaults.object(forKey: Keys.hasAcknowledgedCoachDataSharing) == nil
             ? nil
@@ -632,8 +707,8 @@ final class AppState {
 
     /// The persisted keys. The opt-out flag's key is deliberately *not* here - it is
     /// `AppState.analyticsEnabledKey`, non-private because the telemetry gate and the XCUITest
-    /// launch argument both name it.
-    private enum Keys {
+    /// launch argument both name it. Internal so `LegacyAccountMigrationStage` reads the same keys.
+    enum Keys {
         static let isOnboarded = "AppState.isOnboarded"
         static let selectedTab = "AppState.selectedTab"
         static let installId = "AppState.installId"
@@ -650,6 +725,9 @@ final class AppState {
         static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
         static let healthWorkoutSuggestionsEnabled = "AppState.healthWorkoutSuggestionsEnabled"
         static let dismissedHealthWorkoutIds = "AppState.dismissedHealthWorkoutIds"
+        static let accountUserId = "AppState.accountUserId"
+        static let accountEmail = "AppState.accountEmail"
+        static let accountMethod = "AppState.accountMethod"
     }
 }
 
