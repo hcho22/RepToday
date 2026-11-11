@@ -165,7 +165,7 @@ final class ConvexSyncRemoteTests: XCTestCase {
                        "https://courteous-dogfish-560.convex.cloud")
         XCTAssertNotNil(AccountBackendConfiguration.usableConvexURL(" https://a-b-1.convex.cloud/ "))
         for bad in ["", "$(REPTODAY_CONVEX_URL)", "http://a-b-1.convex.cloud", "https://a-b-1.convex.site",
-                    "https://convex.cloud", "https://a-b-1.convex.cloud/api", "https://user@a-b-1.convex.cloud",
+                    "https://convex.cloud", "https://a-b-1.convex.cloud/api", "https://user:@a-b-1.convex.cloud",
                     "https://evil.example.com/?x=.convex.cloud"] {
             XCTAssertNil(AccountBackendConfiguration.usableConvexURL(bad), bad)
         }

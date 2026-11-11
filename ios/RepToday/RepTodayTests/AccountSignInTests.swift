@@ -143,7 +143,7 @@ final class AccountSignInTests: XCTestCase {
     }
 
     func testSignedInTextNamesTheAccount() {
-        XCTAssertEqual(AccountSignInPanel.signedInText(AccountIdentity(userId: "u", email: "a@b.co", method: .google)), "Signed in as a@b.co")
+        XCTAssertEqual(AccountSignInPanel.signedInText(AccountIdentity(userId: "u", email: "a@example.com", method: .google)), "Signed in as a@example.com")
         XCTAssertEqual(AccountSignInPanel.signedInText(AccountIdentity(userId: "u", email: nil, method: .apple)), "Signed in with Apple")
     }
 
