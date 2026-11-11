@@ -11,7 +11,7 @@ name: CI
 #   waitlist (ubuntu) - the Waitlist contract file, anonymous-view checker, landing-page checks, Mac-side tooling
 #                    and the address-boundary guard (no Xcode).
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
-#                    compile of the XCUITest scheme (Xcode 16.4, iOS 18 simulator).
+#                    compile of the XCUITest scheme (Xcode 26.3, iOS 18 simulator).
 #   ios-26 (macos) - the same build + unit tests + XCUITest compile on Xcode 26.5
 #                    and an iOS 26 simulator.
 #
@@ -134,16 +134,19 @@ jobs:
   # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.
   #
-  # Runner/Xcode are pinned to a natively-compatible pair that exists on the
-  # macos-15 image: Xcode 16.4 (the image default, in the project's documented
-  # 16.x line per ios/RepToday/project.yml). We pin the device (iPhone 16) but NOT
-  # the iOS runtime version (a hard OS pin like OS=18.5 breaks the moment that
-  # runtime is dropped). The "Select iOS Simulator" step below resolves a concrete
-  # available iPhone 16 to a UDID at runtime - creating one against the newest
-  # available iOS runtime if the image shipped none - because the hosted image now
-  # co-installs several iOS runtimes and its device set is not guaranteed to hold an
-  # iPhone 16 for whichever runtime "OS:latest" picks, so a bare "name=iPhone 16"
-  # destination intermittently matches nothing (xcodebuild exits 70).
+  # This is the minimum-supported lane: it runs the suite on an iOS 18 simulator. The
+  # toolchain is Xcode 26.3 on the macos-15 image, not the image default 16.4,
+  # because the app links Clerk's ClerkKit (M3, ADR-0016), whose package manifest
+  # needs Swift tools 6.2 (Xcode 26 or later); the image's iOS 18 simulator runtimes
+  # run under Xcode 26.3 unchanged. We pin the device (iPhone 16) and the iOS major
+  # version (18) but NOT the point release (a hard OS pin like OS=18.5 breaks the
+  # moment that runtime is dropped). The "Select iOS Simulator" step below resolves
+  # a concrete available iOS 18 iPhone 16 to a UDID at runtime - creating one against
+  # the newest available iOS 18 runtime if the image shipped none - because the
+  # hosted image co-installs several iOS runtimes and its device set is not
+  # guaranteed to hold an iPhone 16 for whichever runtime "OS:latest" picks, so a
+  # bare "name=iPhone 16" destination intermittently matches nothing (xcodebuild
+  # exits 70).
   #
   # Signing: the app carries CloudKit / HealthKit / Sign in with Apple
   # entitlements, so a fully unsigned build (CODE_SIGNING_ALLOWED=NO) cannot launch
@@ -152,7 +155,8 @@ jobs:
   # identity "-"): it needs no certificate or provisioning profile - so no secrets -
   # yet lets entitlements load on the simulator. DEVELOPMENT_TEAM and the profile
   # specifier are cleared so a runner without the signing team never consults a
-  # profile. The app links no third-party Swift package; xcodegen is a build-time
+  # profile. The one third-party Swift package is ClerkKit (pinned in project.yml,
+  # resolved from GitHub at build time, no secret); xcodegen is a build-time
   # project generator, not a linked dep.
   #
   # What this job gates:
@@ -168,7 +172,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       DESTINATION: 'platform=iOS Simulator,name=iPhone 16'
       SIGNING_FLAGS: >-
         CODE_SIGNING_ALLOWED=YES
@@ -219,19 +223,21 @@ jobs:
       # iPhone 16 for whichever runtime "latest" resolves to (and on a cold image
       # can be empty entirely), so the by-name destination intermittently matches
       # nothing and xcodebuild exits 70 ("Unable to find a device matching ...").
-      # Pick any available iPhone 16 deterministically, creating one against the
-      # newest available iOS runtime if the image shipped none, and pin the
-      # destination to its id for the rest of the job.
+      # Pick an available iOS 18 iPhone 16 deterministically (newest 18.x first),
+      # creating one against the newest available iOS 18 runtime if the image
+      # shipped none, and pin the destination to its id for the rest of the job.
+      # Restricting to 18.x keeps this the minimum-supported lane now that Xcode
+      # 26.3 would otherwise default to an iOS 26 runtime.
       - name: Select iOS Simulator
         run: |
           set -euo pipefail
           udid=$(xcrun simctl list devices available -j \
-            | jq -r '[ .devices | to_entries[] | select(.key | test("iOS")) | .value[]
-                       | select(.isAvailable and .name == "iPhone 16") | .udid ] | first // empty')
+            | jq -r '[ .devices | to_entries[] | select(.key | test("iOS-18")) ] | sort_by(.key) | reverse
+                     | [ .[].value[] | select(.isAvailable and .name == "iPhone 16") | .udid ] | first // empty')
           if [ -z "$udid" ]; then
             runtime=$(xcrun simctl list runtimes available -j \
-              | jq -r '[ .runtimes[] | select(.name | test("iOS")) | .identifier ] | last')
-            echo "No available iPhone 16 simulator; creating one against ${runtime}"
+              | jq -r '[ .runtimes[] | select(.name | test("^iOS 18")) | .identifier ] | last')
+            echo "No available iOS 18 iPhone 16 simulator; creating one against ${runtime}"
             udid=$(xcrun simctl create 'iPhone 16' 'iPhone 16' "$runtime")
           fi
           xcrun simctl boot "$udid" || true
@@ -272,8 +278,8 @@ jobs:
   # ---------------------------------------------------------------------------
   # Toolchain 2b: the same iOS unit gate on the current OS - iOS 26.
   #
-  # The `ios` job above covers the minimum-supported side (Xcode 16.4, an iOS 18
-  # runtime). Most users run iOS 26, and a test race once failed only on the iOS 26.5
+  # The `ios` job above covers the minimum-supported side (an iOS 18 runtime, under
+  # Xcode 26.3). Most users run iOS 26, and a test race once failed only on the iOS 26.5
   # simulator and reached main unnoticed (fixed in #191), so this job runs the same
   # build + unit suite on a hosted macos-26 runner with Xcode 26.5 (the pin Immerse's
   # native workflow uses on the same image). It runs in parallel with `ios`.
