@@ -72,10 +72,11 @@ final class ClerkAccountAuthService: AccountAuthServiceProtocol, @unchecked Send
     }
 
     @MainActor
-    func signInWithApple(identityToken: String) async throws -> AccountIdentity {
+    func signInWithApple() async throws -> AccountIdentity {
         start()
         return try await mapped(.apple) {
-            try await Clerk.shared.auth.signInWithIdToken(identityToken, provider: .apple)
+            // Only the email is asked for; Rep Today never stores a name from Apple.
+            try await Clerk.shared.auth.signInWithApple(requestedScopes: [.email])
         }
     }
 

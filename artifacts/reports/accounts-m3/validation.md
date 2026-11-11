@@ -45,6 +45,7 @@ The walks left two Clerk test accounts (test addresses only) and their rows on t
 - Airplane mode: play a session, see "will save when you're online" on Profile > Account, turn airplane mode off, see "Everything is saved".
 - Delete the account; confirm onboarding returns, and signing in again with the same Apple ID starts a new, empty account.
 - VoiceOver on "Save your plan" and "Keep your history".
+- The Sign in with Apple choice is a custom button (Apple logo and "Continue with Apple", black in light appearance and white in dark), so it shares one type size, weight and height with the other choices at every text size; confirm it meets Apple's Sign in with Apple button guidelines before submission.
 
 ## Release steps (each a separate, captain-approved step)
 

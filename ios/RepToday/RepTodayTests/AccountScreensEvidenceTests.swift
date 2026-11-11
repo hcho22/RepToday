@@ -44,6 +44,16 @@ final class AccountScreensEvidenceTests: XCTestCase {
         }
     }
 
+    /// The three sign-in choices share one height, so no choice looks bigger or smaller than another
+    /// at any text size.
+    private func assertChoicesMatch(in root: UIView, file: StaticString = #filePath, line: UInt = #line) throws {
+        let heights = try ["Continue with Apple", "Continue with Google", "Continue with email"].map { label in
+            try XCTUnwrap(AccessibilityTree.element(labeled: label, in: root), "\(label) missing", file: file, line: line)
+                .accessibilityFrame.height
+        }
+        XCTAssertLessThanOrEqual((heights.max() ?? 0) - (heights.min() ?? 0), 0.5, "choice heights differ: \(heights)", file: file, line: line)
+    }
+
     private func assertDisciplineFirstCopy(_ root: UIView, file: StaticString = #filePath, line: UInt = #line) {
         let spoken = AccessibilityTree.spokenStrings(in: root).joined(separator: " ").lowercased()
         for word in ["streak", "lose", "lost", "don't miss", "last chance"] {
@@ -60,8 +70,8 @@ final class AccountScreensEvidenceTests: XCTestCase {
             waitFor("Continue with email", in: root)
             XCTAssertNotNil(AccessibilityTree.element(labeled: "Save your plan", in: root), "\(AccessibilityTree.labels(in: root))")
             XCTAssertNotNil(AccessibilityTree.element(labeled: "Step 8 of 8", in: root))
-            try assertControls(["Continue with Google", "Continue with email", "Back"], in: root, window: window)
-            XCTAssertNotNil(AccessibilityTree.element(whereLabel: { $0.contains("Apple") }, in: root), "the Sign in with Apple button")
+            try assertControls(["Continue with Apple", "Continue with Google", "Continue with email", "Back"], in: root, window: window)
+            try assertChoicesMatch(in: root)
             XCTAssertNil(AccessibilityTree.element(labeled: "Continue", in: root), "signing in is the only way forward")
             assertDisciplineFirstCopy(root)
             try EvidenceOutput.write(HostedSurface.capture(root, size: phone), named: name, for: story)
@@ -75,8 +85,15 @@ final class AccountScreensEvidenceTests: XCTestCase {
         )
         let root = host.view!
         waitFor("Continue with email", in: root)
-        try assertControls(["Continue with Google", "Continue with email", "Back"], in: root, window: window)
+        try assertControls(["Continue with Apple", "Continue with Google", "Continue with email", "Back"], in: root, window: window)
+        try assertChoicesMatch(in: root)
         try EvidenceOutput.write(HostedSurface.capture(root, size: tall), named: "save-your-plan-ax5-375.png", for: story)
+        let (darkHost, _) = HostedSurface.host(
+            saveYourPlan().environment(\.dynamicTypeSize, .accessibility5), size: tall, style: .dark
+        )
+        waitFor("Continue with email", in: darkHost.view)
+        try assertChoicesMatch(in: darkHost.view)
+        try EvidenceOutput.write(HostedSurface.capture(darkHost.view, size: tall), named: "save-your-plan-ax5-375-dark.png", for: story)
 
         // The real 375x667 screen: the heading and the first choice are on the first screenful.
         let (smallHost, _) = HostedSurface.host(saveYourPlan(), size: smallPhone, style: .light,

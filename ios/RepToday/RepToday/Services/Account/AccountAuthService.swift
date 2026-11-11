@@ -51,9 +51,8 @@ protocol AccountAuthServiceProtocol: Sendable {
     /// The signed-in account, from the session cached on the device.
     func currentIdentity() async -> AccountIdentity?
 
-    /// Completes Sign in with Apple with the identity token from Apple's own button, creating the
-    /// account if it is new.
-    func signInWithApple(identityToken: String) async throws -> AccountIdentity
+    /// Runs Sign in with Apple (Apple's own sheet), creating the account if it is new.
+    func signInWithApple() async throws -> AccountIdentity
 
     /// Runs Google sign-in in a browser sheet, creating the account if it is new.
     func signInWithGoogle() async throws -> AccountIdentity

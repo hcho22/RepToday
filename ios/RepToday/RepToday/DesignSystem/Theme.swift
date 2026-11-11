@@ -64,6 +64,13 @@ enum Theme {
         /// The system red so it reads as danger in both light and dark and tracks accessibility
         /// contrast settings, rather than a hardcoded `.red` at the call site.
         static let danger = Color(uiColor: .systemRed)
+
+        /// The Sign in with Apple button's fill: Apple's black style in light appearance and its white
+        /// style in dark, as Apple's guidelines require of a custom Sign in with Apple button.
+        static let signInWithAppleFill = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .white : .black })
+
+        /// The Sign in with Apple button's logo and title, the opposite of its fill.
+        static let signInWithAppleInk = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
     }
 
     // MARK: - Typography

@@ -38,7 +38,7 @@ actor StubAccountAuthService: AccountAuthServiceProtocol {
 
     func currentIdentity() async -> AccountIdentity? { identity }
 
-    func signInWithApple(identityToken: String) async throws -> AccountIdentity {
+    func signInWithApple() async throws -> AccountIdentity {
         try signIn(.apple, email: nil)
     }
 
@@ -87,7 +87,7 @@ actor StubAccountAuthService: AccountAuthServiceProtocol {
 struct UnavailableAccountAuthService: AccountAuthServiceProtocol {
     let isConfigured = false
     func currentIdentity() async -> AccountIdentity? { nil }
-    func signInWithApple(identityToken: String) async throws -> AccountIdentity { throw AccountAuthError.notConfigured }
+    func signInWithApple() async throws -> AccountIdentity { throw AccountAuthError.notConfigured }
     func signInWithGoogle() async throws -> AccountIdentity { throw AccountAuthError.notConfigured }
     func sendEmailCode(to email: String) async throws -> EmailCodeChallenge { throw AccountAuthError.notConfigured }
     func verifyEmailCode(_ code: String, for challenge: EmailCodeChallenge) async throws -> AccountIdentity {

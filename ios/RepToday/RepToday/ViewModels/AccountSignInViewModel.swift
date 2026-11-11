@@ -1,4 +1,3 @@
-import AuthenticationServices
 import Foundation
 import Observation
 
@@ -81,29 +80,10 @@ final class AccountSignInViewModel {
 
     // MARK: - Apple
 
-    /// Called by Apple's button before its sheet appears.
-    func beginApple() {
+    func signInWithApple() async {
         guard !isWorking else { return }
         message = nil
-        activity = .apple
-    }
-
-    func handleApple(_ result: Result<ASAuthorization, Error>) async {
-        switch result {
-        case .success(let authorization):
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                  let tokenData = credential.identityToken,
-                  let token = String(data: tokenData, encoding: .utf8) else {
-                activity = nil
-                message = Self.message(for: AccountAuthError.failed("no identity token"), context: context)
-                return
-            }
-            await signIn(.apple) { try await self.auth.signInWithApple(identityToken: token) }
-        case .failure(let error):
-            activity = nil
-            let canceled = (error as? ASAuthorizationError)?.code == .canceled
-            message = canceled ? nil : Self.message(for: AccountAuthError.failed(error.localizedDescription), context: context)
-        }
+        await signIn(.apple) { try await self.auth.signInWithApple() }
     }
 
     // MARK: - Google

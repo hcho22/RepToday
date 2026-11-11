@@ -1,4 +1,3 @@
-import AuthenticationServices
 import XCTest
 @testable import RepToday
 
@@ -97,11 +96,11 @@ final class AccountSignInTests: XCTestCase {
         XCTAssertNil(vm.message)
         XCTAssertEqual(vm.phase, .choosing)
 
-        vm.beginApple()
-        XCTAssertEqual(vm.activity, .apple)
-        await vm.handleApple(.failure(ASAuthorizationError(.canceled)))
+        await auth.failNext(with: .canceled)
+        await vm.signInWithApple()
         XCTAssertNil(vm.message)
         XCTAssertNil(vm.activity)
+        XCTAssertEqual(vm.phase, .choosing)
     }
 
     func testABuildWithoutSignInSaysSo() async {
@@ -140,6 +139,13 @@ final class AccountSignInTests: XCTestCase {
         XCTAssertEqual(vm.phase, .choosing)
         let signOuts = await auth.signOutCount
         XCTAssertEqual(signOuts, 1)
+    }
+
+    func testAppleSignInFinishes() async {
+        let recorder = FinishRecorder()
+        let vm = model(recorder: recorder)
+        await vm.signInWithApple()
+        XCTAssertEqual(recorder.finished, [AccountIdentity(userId: "user_stub_apple", email: nil, method: .apple)])
     }
 
     func testSignedInTextNamesTheAccount() {

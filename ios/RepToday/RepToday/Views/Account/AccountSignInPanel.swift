@@ -1,4 +1,3 @@
-import AuthenticationServices
 import SwiftUI
 
 /// The account sign-in controls (M3, decision 23): Apple, Google and an email code, then the
@@ -6,16 +5,13 @@ import SwiftUI
 /// screen, which each supply their own heading.
 ///
 /// Every color, font and dimension comes from `Theme`; controls are full-width, at least 56pt tall, and
-/// grow with Dynamic Type instead of truncating.
+/// grow with Dynamic Type instead of truncating. The three sign-in choices share one type size, weight
+/// and height at every text size: Apple's own button draws its title at a fixed size, so the Apple
+/// choice is a custom Sign in with Apple button in Apple's black (light) or white (dark) style with the
+/// Apple logo and "Continue with Apple", which Apple's guidelines allow.
 struct AccountSignInPanel: View {
     @Bindable var viewModel: AccountSignInViewModel
-    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var focusedField: Field?
-    /// Apple's button draws its title in proportion to its height and ignores Dynamic Type, so its
-    /// height scales with the text size instead. It stops at one and a half times the standard: past
-    /// that the title is limited by the button's width, and the button would only outgrow the two-line
-    /// buttons beside it.
-    @ScaledMetric(relativeTo: .headline) private var appleButtonHeight: CGFloat = Theme.Spacing.buttonHeight
 
     private enum Field {
         case email, code
@@ -69,29 +65,31 @@ struct AccountSignInPanel: View {
     // MARK: - Choosing
 
     private var choices: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            SignInWithAppleButton(.continue) { request in
-                // Only the account email is asked for; Rep Today never stores a name from Apple.
-                request.requestedScopes = [.email]
-                viewModel.beginApple()
-            } onCompletion: { result in
-                Task { await viewModel.handleApple(result) }
+        EqualHeightColumn(spacing: Theme.Spacing.sm) {
+            choiceButton(
+                "Continue with Apple",
+                logo: "apple.logo",
+                fill: Theme.Colors.signInWithAppleFill,
+                ink: Theme.Colors.signInWithAppleInk,
+                working: viewModel.activity == .apple
+            ) {
+                Task { await viewModel.signInWithApple() }
             }
-            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-            .frame(maxWidth: .infinity)
-            .frame(height: min(appleButtonHeight, Theme.Spacing.buttonHeight * 1.5))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .disabled(viewModel.isWorking)
             .accessibilityHint("Signs in with your Apple Account")
 
             // Text only: Google's mark is a licensed asset this app does not ship
             // (docs/asset-attribution.md), and a stand-in glyph would misrepresent it.
-            secondaryButton("Continue with Google", working: viewModel.activity == .google) {
+            choiceButton(
+                "Continue with Google",
+                fill: Theme.Colors.surface,
+                ink: Theme.Colors.textPrimary,
+                working: viewModel.activity == .google
+            ) {
                 Task { await viewModel.signInWithGoogle() }
             }
             .accessibilityHint("Opens Google sign-in")
 
-            secondaryButton("Continue with email", working: false) {
+            choiceButton("Continue with email", fill: Theme.Colors.surface, ink: Theme.Colors.textPrimary, working: false) {
                 viewModel.chooseEmail()
                 focusedField = .email
             }
@@ -218,22 +216,34 @@ struct AccountSignInPanel: View {
         .accessibilityLabel(title)
     }
 
-    private func secondaryButton(_ title: String, working: Bool, action: @escaping () -> Void) -> some View {
+    /// One sign-in choice: the same type, weight, padding and corner radius for every choice, filling the
+    /// height its column gives it so the three always match.
+    private func choiceButton(
+        _ title: String,
+        logo: String? = nil,
+        fill: Color,
+        ink: Color,
+        working: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: Theme.Spacing.sm) {
                 if working {
-                    ProgressView()
+                    ProgressView().tint(ink)
                 }
-                Text(title)
-                    .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                // The logo sits inside the title text, so the title wraps exactly like the other
+                // choices' at large text sizes instead of being pushed narrower by a separate glyph.
+                // VoiceOver reads the button's own label, so the logo is never spoken.
+                (logo.map { Text("\(Image(systemName: $0))\u{00A0}\u{00A0}") } ?? Text("")) + Text(title)
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: Theme.Spacing.buttonHeight)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .font(Theme.Typography.button)
+            .foregroundStyle(ink)
             .padding(.horizontal, Theme.Spacing.md)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, maxHeight: .infinity)
+            .background(fill, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         }
         .buttonStyle(.plain)
@@ -262,5 +272,35 @@ struct AccountSignInPanel: View {
             .padding(.horizontal, Theme.Spacing.md)
             .frame(minHeight: Theme.Spacing.buttonHeight)
             .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+}
+
+/// Stacks its children full width and gives every one the height of the tallest, so buttons whose
+/// titles wrap differently at large text sizes still match.
+private struct EqualHeightColumn: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let height = rowHeight(width: width, subviews: subviews)
+        let count = CGFloat(subviews.count)
+        return CGSize(width: width, height: height * count + spacing * max(count - 1, 0))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let height = rowHeight(width: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for subview in subviews {
+            subview.place(
+                at: CGPoint(x: bounds.minX, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: bounds.width, height: height)
+            )
+            y += height + spacing
+        }
+    }
+
+    private func rowHeight(width: CGFloat, subviews: Subviews) -> CGFloat {
+        subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }.max() ?? 0
     }
 }
