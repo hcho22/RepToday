@@ -22,7 +22,9 @@ sources.extend(app / path for path in [
     'Services/Coach/CoachProxyClient.swift', 'Services/Coach/CoachContextBundle.swift',
     'Services/Coach/CoachAnalyticsInsight.swift', 'Services/Coach/CoachRuntimeAuthentication.swift',
     'Services/Coach/CoachRuntimeProofProbe.swift',
-    'Utilities/AppState.swift', 'Services/Mock/MockExerciseService.swift'
+    'Utilities/AppState.swift', 'Services/Mock/MockExerciseService.swift',
+    'Services/Account/AccountAuthService.swift', 'Services/Sync/LegacyAccountMigration.swift',
+    'Services/Sync/SyncTypes.swift'
 ])
 for mode in ['qa', 'ordinary']:
     package = base / mode
