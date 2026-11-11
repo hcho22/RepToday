@@ -99,28 +99,63 @@ struct RootView: View {
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
         .telemetryProbeHUD()
-        // US-AD05: the post-deletion Apple-ID guidance. Hosted here, at the router, because account
-        // deletion routes back to onboarding and tears down the Settings screen that triggered it -
-        // so the alert has to live above that transition to survive it. Shown only when the deleted
-        // account used Sign in with Apple (`AccountDeletionViewModel` arms the flag only in that case,
-        // and only on a successful teardown). Option (a): on-device guidance, no token revoke.
-        .alert("One more step", isPresented: $appState.showAppleSignOutGuidance) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
+        // US-AD05: the post-deletion Apple-ID guidance, and (US-AU05) the note that the server is still
+        // removing the sign-in when Clerk could not be reached. Hosted here, at the router, because
+        // account deletion routes back to onboarding and tears down the Settings screen that triggered
+        // it - so the alert has to live above that transition to survive it. The Apple guidance shows
+        // only when the deleted account used Sign in with Apple (`AccountDeletionViewModel` arms the flag
+        // only in that case, and only on a successful teardown). Option (a): on-device guidance, no
+        // token revoke.
+        .alert(
+            Self.deletionNoticeTitle(appleGuidance: appState.showAppleSignOutGuidance),
+            isPresented: Binding(
+                get: { appState.showAppleSignOutGuidance || appState.showAccountDeletionUnderWay },
+                set: { presented in
+                    if !presented {
+                        appState.showAppleSignOutGuidance = false
+                        appState.showAccountDeletionUnderWay = false
+                    }
                 }
-                appState.showAppleSignOutGuidance = false
+            )
+        ) {
+            if appState.showAppleSignOutGuidance {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    appState.showAppleSignOutGuidance = false
+                    appState.showAccountDeletionUnderWay = false
+                }
             }
             Button("Done", role: .cancel) {
                 appState.showAppleSignOutGuidance = false
+                appState.showAccountDeletionUnderWay = false
             }
         } message: {
-            Text(
-                "Your Rep Today data is deleted. To also stop using your Apple ID with Rep Today, "
+            Text(Self.deletionNoticeMessage(
+                appleGuidance: appState.showAppleSignOutGuidance,
+                signInRemovalPending: appState.showAccountDeletionUnderWay
+            ))
+        }
+    }
+
+    static func deletionNoticeTitle(appleGuidance: Bool) -> String {
+        appleGuidance ? "One more step" : "Deletion under way"
+    }
+
+    /// What the post-deletion alert says: always that the data is deleted; that removing the sign-in
+    /// finishes on its own when the server is still doing it; and the Apple ID step when it applies.
+    static func deletionNoticeMessage(appleGuidance: Bool, signInRemovalPending: Bool) -> String {
+        var message = "Your Rep Today data is deleted."
+        if signInRemovalPending {
+            message += " Removing your sign-in is still under way and finishes on its own - there's nothing more you need to do."
+        }
+        if appleGuidance {
+            message += " To also stop using your Apple ID with Rep Today, "
                 + "open Settings, tap your name, then Sign-In & Security \u{2192} Sign in with Apple, "
                 + "and choose Rep Today."
-            )
         }
+        return message
     }
 
     /// Reconcile the persisted earned phase before phase-dependent tabs are constructed, then reveal

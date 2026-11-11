@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalMutation, type MutationCtx } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { accountError, findAccount, requireOwner } from "./ownership";
 
@@ -9,32 +9,29 @@ import { accountError, findAccount, requireOwner } from "./ownership";
  * Only the signed-in owner can start it, and only for themselves: the action reads the owner from
  * the verified session token and passes it to internal functions no client can call.
  *
- * The order is what makes it safe to repeat and impossible to half-finish silently:
+ * Once the account is marked, the deletion is committed: nothing cancels it, and it finishes on the
+ * server even if the phone goes offline or is wiped straight after.
  *
- * 1. `beginDeletion` marks the account (`users.deletionStartedAt`), which makes every later write for
- *    this owner fail, and schedules `finishDeletion` for `DELETION_GRACE_MS` later. Both commit in
- *    one transaction, so the finishing job exists whenever the mark does.
- * 2. The Clerk user is deleted through Clerk's Backend API with the deployment's `CLERK_SECRET_KEY`.
- *    A 404 means an earlier attempt already deleted it. When the request fails, the action asks
+ * 1. `beginDeletion` marks the account (`users.deletionStartedAt`), which makes every later write and
+ *    read for this owner fail, and schedules `continueDeletion`. Both commit in one transaction, so
+ *    the job that finishes the deletion exists whenever the mark does.
+ * 2. The action deletes the Clerk user through Clerk's Backend API with the deployment's
+ *    `CLERK_SECRET_KEY`. A 404 means it is already gone; when the request fails, the action asks
  *    Clerk whether the user still exists, because a lost response or a second device's deletion can
- *    mean it is already gone. Only when Clerk answers that the user still exists does
- *    `cancelDeletion` clear the mark - the scheduled job then finds a different (or no) deletion and
- *    does nothing - and the action throws, so nothing was deleted and the caller can try again. When
- *    Clerk cannot be reached at all, the mark stays (the account refuses writes) and the scheduled job
- *    completes the deletion the user asked for.
- * 3. Once Clerk has confirmed the user is gone, the mark is re-asserted (a concurrent attempt may have
- *    cleared it in between) and `purgeData` removes the owner's rows straight away, in batches.
- * 4. `finishDeletion` runs after the grace period, once every session token issued before the Clerk
- *    user was deleted has expired (Clerk session tokens live about a minute). It removes anything a
- *    still-valid token wrote in the meantime - none can, because the mark refuses writes - and then
- *    the account row itself, so nothing about the owner is left.
- *
- * Steps 3 and 4 run on the server, so once Clerk has deleted the user the deletion completes even if
- * the phone goes offline or is wiped straight after.
+ *    mean it is already gone. Every attempt is recorded on the account row (`recordClerkAttempt`).
+ * 3. `purgeData` removes the owner's rows straight away, in batches, whatever Clerk answered.
+ * 4. `continueDeletion` retries the Clerk deletion on a growing, capped back-off
+ *    (`CLERK_RETRY_DELAYS_MS`) until Clerk confirms the user is gone. `DELETION_GRACE_MS` after that
+ *    confirmation, once every session token issued before it has expired (Clerk session tokens live
+ *    about a minute), `finishDeletion` removes anything left and then the account row itself. Until
+ *    then the marked row stays, so a still-linked phone is refused and can never recreate the account.
  */
 
-/** How long after the Clerk user is deleted the account row itself is removed. */
+/** How long after Clerk confirms the user is deleted the account row itself is removed. */
 export const DELETION_GRACE_MS = 10 * 60 * 1000;
+
+/** The waits between retries of the Clerk deletion; the last one repeats until Clerk confirms. */
+export const CLERK_RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000, 30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000];
 
 /** Rows removed per table per transaction; larger accounts continue in a scheduled follow-up. */
 export const PURGE_BATCH = 200;
@@ -59,37 +56,40 @@ const OWNED_TABLES = [
   "coachMemory",
 ] as const;
 
+/** Whether the Clerk user is gone, still exists, or could not be found out. */
+const clerkUserState = v.union(v.literal("gone"), v.literal("exists"), v.literal("unknown"));
+type ClerkUserState = "gone" | "exists" | "unknown";
+
 /**
- * Delete the caller's account: their Convex data and their Clerk user. Resolves once the Clerk user
- * is gone and the data purge has run; the account row follows after `DELETION_GRACE_MS`.
+ * Delete the caller's account: their Convex data and their Clerk user. Resolves once the deletion is
+ * committed and the data purge has run. `clerkUserDeleted` says whether Clerk has confirmed the user
+ * is gone; when it has not, the server keeps retrying until it does.
  */
 export const deleteAccount = action({
   args: {},
-  handler: async (ctx): Promise<{ deleted: true }> => {
+  handler: async (ctx): Promise<{ deleted: true; clerkUserDeleted: boolean }> => {
     const owner = await requireOwner(ctx);
-    const secret = process.env.CLERK_SECRET_KEY;
-    if (secret === undefined || secret.length === 0) {
+    const secret = clerkSecret();
+    if (secret === undefined) {
       // Checked before anything is marked, so a misconfigured deployment changes nothing.
       throw accountError("deletion_unavailable", "Account deletion is not configured on this deployment.");
     }
 
-    const startedAt: number = await ctx.runMutation(internal.accounts.beginDeletion, owner);
-    const clerkUser = await deleteClerkUser(owner.clerkUserId, secret);
-    if (clerkUser === "exists") {
-      await ctx.runMutation(internal.accounts.cancelDeletion, { ownerId: owner.ownerId, startedAt });
-      throw accountError("deletion_failed", "We couldn't delete your account. Nothing was deleted.");
-    }
-    if (clerkUser === "unknown") {
-      throw accountError("deletion_failed", "We couldn't confirm your account was deleted. Please try again.");
-    }
-    const mark: number = await ctx.runMutation(internal.accounts.beginDeletion, owner);
-    await ctx.runMutation(internal.accounts.purgeData, { ownerId: owner.ownerId, startedAt: mark });
-    return { deleted: true };
+    await ctx.runMutation(internal.accounts.beginDeletion, owner);
+    const outcome = await deleteClerkUser(owner.clerkUserId, secret);
+    const clerkUserDeleted: boolean = await ctx.runMutation(internal.accounts.recordClerkAttempt, {
+      ownerId: owner.ownerId,
+      outcome,
+    });
+    await ctx.runMutation(internal.accounts.purgeData, { ownerId: owner.ownerId });
+    return { deleted: true, clerkUserDeleted };
   },
 });
 
-/** Whether the Clerk user is gone, still exists, or could not be found out. */
-type ClerkUserState = "gone" | "exists" | "unknown";
+function clerkSecret(): string | undefined {
+  const secret = process.env.CLERK_SECRET_KEY;
+  return secret === undefined || secret.length === 0 ? undefined : secret;
+}
 
 /**
  * Deletes the Clerk user. 200 is success and 404 means it is already gone. When the request fails -
@@ -136,14 +136,14 @@ function clerkUserURL(clerkUserId: string): string {
 
 /**
  * Marks the account as being deleted and schedules the job that finishes it. Keeps the first mark
- * when one is already in place, so a repeated request continues that deletion. Returns the mark.
+ * when one is already in place, so a repeated request continues that deletion.
  */
 export const beginDeletion = internalMutation({
   args: { ownerId: v.string(), clerkUserId: v.string() },
   handler: async (ctx, { ownerId, clerkUserId }) => {
     const existing = await findAccount(ctx, ownerId);
     if (existing?.deletionStartedAt !== undefined) {
-      return existing.deletionStartedAt;
+      return;
     }
     const startedAt = Date.now();
     if (existing === null) {
@@ -151,49 +151,109 @@ export const beginDeletion = internalMutation({
     } else {
       await ctx.db.patch(existing._id, { deletionStartedAt: startedAt });
     }
-    await ctx.scheduler.runAfter(DELETION_GRACE_MS, internal.accounts.finishDeletion, { ownerId, startedAt });
-    return startedAt;
+    await ctx.scheduler.runAfter(CLERK_RETRY_DELAYS_MS[0], internal.accounts.continueDeletion, { ownerId });
   },
 });
 
-/** Clears a mark Clerk refused to act on, so the account carries on as if deletion was never asked. */
-export const cancelDeletion = internalMutation({
-  args: { ownerId: v.string(), startedAt: v.number() },
-  handler: async (ctx, { ownerId, startedAt }) => {
+/**
+ * Records one attempt to delete the Clerk user, and the moment Clerk first confirmed it is gone.
+ * Returns whether Clerk has confirmed it.
+ */
+export const recordClerkAttempt = internalMutation({
+  args: { ownerId: v.string(), outcome: clerkUserState },
+  handler: async (ctx, { ownerId, outcome }) => {
     const account = await findAccount(ctx, ownerId);
-    if (account !== null && account.deletionStartedAt === startedAt) {
-      await ctx.db.patch(account._id, { deletionStartedAt: undefined });
+    if (account === null || account.deletionStartedAt === undefined) {
+      return false;
     }
+    const now = Date.now();
+    const clerkUserDeletedAt = account.clerkUserDeletedAt ?? (outcome === "gone" ? now : undefined);
+    await ctx.db.patch(account._id, {
+      clerkDeletionAttempts: (account.clerkDeletionAttempts ?? 0) + 1,
+      clerkDeletionLastAttemptAt: now,
+      clerkDeletionLastOutcome: outcome,
+      clerkUserDeletedAt,
+    });
+    return clerkUserDeletedAt !== undefined;
   },
 });
 
-/** Removes the owner's data rows, continuing in follow-up transactions until none are left. */
-export const purgeData = internalMutation({
-  args: { ownerId: v.string(), startedAt: v.number() },
-  handler: async (ctx, { ownerId, startedAt }) => {
+/** Where a committed deletion stands, or `null` when there is none for this owner. */
+export const deletionState = internalQuery({
+  args: { ownerId: v.string() },
+  handler: async (ctx, { ownerId }) => {
     const account = await findAccount(ctx, ownerId);
-    if (account === null || account.deletionStartedAt !== startedAt) {
+    if (account === null || account.deletionStartedAt === undefined) {
+      return null;
+    }
+    return {
+      clerkUserId: account.clerkUserId,
+      clerkUserDeletedAt: account.clerkUserDeletedAt ?? null,
+      attempts: account.clerkDeletionAttempts ?? 0,
+    };
+  },
+});
+
+/**
+ * The scheduled half of a committed deletion: retries the Clerk deletion until Clerk confirms it,
+ * then, once the grace period after that confirmation has passed, finishes the deletion.
+ */
+export const continueDeletion = internalAction({
+  args: { ownerId: v.string() },
+  handler: async (ctx, { ownerId }) => {
+    const state = await ctx.runQuery(internal.accounts.deletionState, { ownerId });
+    if (state === null) {
+      return;
+    }
+    let confirmedAt = state.clerkUserDeletedAt;
+    if (confirmedAt === null) {
+      const secret = clerkSecret();
+      const outcome = secret === undefined ? "unknown" : await deleteClerkUser(state.clerkUserId, secret);
+      const confirmed: boolean = await ctx.runMutation(internal.accounts.recordClerkAttempt, { ownerId, outcome });
+      if (!confirmed) {
+        const attempts = state.attempts + 1;
+        const delay = CLERK_RETRY_DELAYS_MS[Math.min(attempts, CLERK_RETRY_DELAYS_MS.length) - 1];
+        await ctx.scheduler.runAfter(delay, internal.accounts.continueDeletion, { ownerId });
+        return;
+      }
+      confirmedAt = Date.now();
+    }
+    const wait = confirmedAt + DELETION_GRACE_MS - Date.now();
+    if (wait > 0) {
+      await ctx.scheduler.runAfter(wait, internal.accounts.continueDeletion, { ownerId });
+      return;
+    }
+    await ctx.runMutation(internal.accounts.finishDeletion, { ownerId });
+  },
+});
+
+/** Removes the owner's data rows of a committed deletion, continuing until none are left. */
+export const purgeData = internalMutation({
+  args: { ownerId: v.string() },
+  handler: async (ctx, { ownerId }) => {
+    const account = await findAccount(ctx, ownerId);
+    if (account === null || account.deletionStartedAt === undefined) {
       return;
     }
     if (await purgeBatch(ctx, ownerId)) {
-      await ctx.scheduler.runAfter(0, internal.accounts.purgeData, { ownerId, startedAt });
+      await ctx.scheduler.runAfter(0, internal.accounts.purgeData, { ownerId });
     }
   },
 });
 
 /**
- * The deletion's last step: removes any data rows left, then the account row. A job whose mark was
- * cancelled (or replaced by a later deletion) does nothing.
+ * The deletion's last step, once Clerk has confirmed the user is gone and the grace period has
+ * passed: removes any data rows left, then the account row.
  */
 export const finishDeletion = internalMutation({
-  args: { ownerId: v.string(), startedAt: v.number() },
-  handler: async (ctx, { ownerId, startedAt }) => {
+  args: { ownerId: v.string() },
+  handler: async (ctx, { ownerId }) => {
     const account = await findAccount(ctx, ownerId);
-    if (account === null || account.deletionStartedAt !== startedAt) {
+    if (account === null || account.deletionStartedAt === undefined || account.clerkUserDeletedAt === undefined) {
       return;
     }
     if (await purgeBatch(ctx, ownerId)) {
-      await ctx.scheduler.runAfter(0, internal.accounts.finishDeletion, { ownerId, startedAt });
+      await ctx.scheduler.runAfter(0, internal.accounts.finishDeletion, { ownerId });
       return;
     }
     await ctx.db.delete(account._id);

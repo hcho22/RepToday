@@ -33,9 +33,7 @@ export type AccountErrorCode =
   /** A change was malformed or over a size limit. */
   | "invalid_change"
   /** The deployment has no Clerk secret key, so the Clerk user cannot be deleted. */
-  | "deletion_unavailable"
-  /** Clerk refused or failed to delete the user; nothing was deleted. */
-  | "deletion_failed";
+  | "deletion_unavailable";
 
 export function accountError(code: AccountErrorCode, message: string): ConvexError<{ code: AccountErrorCode; message: string }> {
   return new ConvexError({ code, message });
@@ -61,6 +59,8 @@ export async function findAccount(ctx: QueryCtx, ownerId: string): Promise<Doc<"
 /**
  * The owner's account row for a write: created on the first write, and refused once deletion has
  * started, so a device that is still syncing cannot put data back while the account is going away.
+ * The marked row stays until Clerk has confirmed the user is deleted and every session token issued
+ * before then has expired (`convex/accounts.ts`), so no write can recreate it.
  */
 export async function writableAccount(ctx: MutationCtx, owner: Owner): Promise<Doc<"users">> {
   const existing = await findAccount(ctx, owner.ownerId);

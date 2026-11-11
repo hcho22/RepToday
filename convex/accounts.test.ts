@@ -2,12 +2,12 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
-import { DELETION_GRACE_MS, PURGE_BATCH } from "./accounts";
+import { CLERK_RETRY_DELAYS_MS, DELETION_GRACE_MS, PURGE_BATCH } from "./accounts";
 import type { SyncChange } from "./sync";
 
 /**
  * Behavioural coverage of account deletion (M3, US-AU05): `accounts:deleteAccount` removes the
- * caller's Convex data and their Clerk user, refuses to half-finish, and is safe to repeat.
+ * caller's Convex data and their Clerk user, finishes once committed even while Clerk is unreachable, and is safe to repeat.
  *
  * Clerk's Backend API is replaced with a recorded `fetch` stub, so nothing leaves the process.
  */
@@ -117,7 +117,7 @@ describe("deleteAccount", () => {
     await seedFutureTables(t, ALICE.tokenIdentifier);
     expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(8);
 
-    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true });
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: true });
 
     expect(clerkRequests).toEqual([
       { url: "https://api.clerk.com/v1/users/user_alice", method: "DELETE", authorization: `Bearer ${TEST_CLERK_SECRET}` },
@@ -153,43 +153,89 @@ describe("deleteAccount", () => {
     await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
     await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {});
     clerkStatus = 404;
-    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true });
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: true });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
     expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
   });
 
-  test("deletes nothing when Clerk fails, and the account carries on", async () => {
+  test("Clerk unreachable, then recovering: the deletion is committed and finishes on its own", async () => {
     const t = convexTest(schema, modules);
     await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
-    clerkStatus = 500;
-
-    await expectRefusal(t.withIdentity(ALICE).action(api.accounts.deleteAccount, {}), "deletion_failed");
-
-    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(6);
-    expect((await account(t, ALICE.tokenIdentifier))?.deletionStartedAt).toBeUndefined();
-    // The finishing job scheduled with the cancelled mark does nothing when it fires.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(await account(t, ALICE.tokenIdentifier)).not.toBeNull();
-    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(6);
-    const push = await t.withIdentity(ALICE).mutation(api.sync.push, {
-      changes: [{ table: "workoutLog", recordId: "L9", clientUpdatedAt: 2, deleted: false, payload: "{}", completedAt: 2 }],
-    });
-    expect(push.results[0].outcome).toBe("applied");
-  });
-
-  test("deletes nothing when the delete request is lost but Clerk still has the user", async () => {
-    const t = convexTest(schema, modules);
-    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
+    let clerkReachable = false;
+    const methods: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_input: string, init?: RequestInit) => {
-      if (init?.method === "DELETE") {
+      methods.push(init?.method ?? "GET");
+      if (!clerkReachable) {
         throw new TypeError("network down");
       }
       return new Response(null, { status: 200 });
     }));
-    await expectRefusal(t.withIdentity(ALICE).action(api.accounts.deleteAccount, {}), "deletion_failed");
-    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(6);
-    expect((await account(t, ALICE.tokenIdentifier))?.deletionStartedAt).toBeUndefined();
+
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: false });
+
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+    const pending = await account(t, ALICE.tokenIdentifier);
+    expect(pending?.deletionStartedAt).toBeDefined();
+    expect(pending?.clerkDeletionAttempts).toBe(1);
+    expect(pending?.clerkDeletionLastOutcome).toBe("unknown");
+    expect(pending?.clerkUserDeletedAt).toBeUndefined();
+
+    clerkReachable = true;
+    vi.advanceTimersByTime(CLERK_RETRY_DELAYS_MS[0]);
+    await t.finishInProgressScheduledFunctions();
+    const confirmed = await account(t, ALICE.tokenIdentifier);
+    expect(confirmed?.clerkDeletionAttempts).toBe(2);
+    expect(confirmed?.clerkDeletionLastOutcome).toBe("gone");
+    expect(confirmed?.clerkUserDeletedAt).toBeDefined();
+    expect(methods).toEqual(["DELETE", "GET", "DELETE"]);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+  });
+
+  test("Clerk never recovering: the server keeps retrying on a capped back-off and keeps the account closed", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
+    clerkStatus = 500;
+
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: false });
+
+    const attemptTimes: number[] = [];
+    for (let step = 0; step < CLERK_RETRY_DELAYS_MS.length + 2; step += 1) {
+      vi.advanceTimersByTime(CLERK_RETRY_DELAYS_MS[Math.min(step, CLERK_RETRY_DELAYS_MS.length - 1)]);
+      await t.finishInProgressScheduledFunctions();
+      attemptTimes.push((await account(t, ALICE.tokenIdentifier))?.clerkDeletionLastAttemptAt ?? 0);
+    }
+
+    const row = await account(t, ALICE.tokenIdentifier);
+    expect(row?.clerkDeletionAttempts).toBe(CLERK_RETRY_DELAYS_MS.length + 3);
+    expect(row?.clerkDeletionLastOutcome).toBe("exists");
+    expect(row?.clerkUserDeletedAt).toBeUndefined();
+    const gaps = attemptTimes.slice(1).map((time, i) => time - attemptTimes[i]);
+    const longest = CLERK_RETRY_DELAYS_MS[CLERK_RETRY_DELAYS_MS.length - 1];
+    expect(gaps).toEqual([...CLERK_RETRY_DELAYS_MS.slice(1), longest, longest]);
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
+    await expectRefusal(t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() }), "account_deleting");
+  });
+
+  test("a linked phone writing during a pending deletion is refused and never rebuilds the account", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
+    clerkStatus = 503;
+    clerkLookupStatus = 503;
+    await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {});
+
+    vi.advanceTimersByTime(DELETION_GRACE_MS + CLERK_RETRY_DELAYS_MS[0] + CLERK_RETRY_DELAYS_MS[1]);
+    await t.finishInProgressScheduledFunctions();
+
+    await expectRefusal(t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() }), "account_deleting");
+    await expectRefusal(t.withIdentity(ALICE).query(api.sync.pull, { since: 0 }), "account_deleting");
+    const rows = await t.run(async (ctx) => (await ctx.db.query("users").collect()).filter((row) => row.ownerId === ALICE.tokenIdentifier));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deletionStartedAt).toBeDefined();
+    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
   });
 
   test("completes when Clerk deleted the user but the response was lost", async () => {
@@ -204,7 +250,7 @@ describe("deleteAccount", () => {
       return new Response(null, { status: 404 });
     }));
 
-    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true });
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: true });
 
     expect(methods).toEqual(["DELETE", "GET"]);
     expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
@@ -212,43 +258,17 @@ describe("deleteAccount", () => {
     expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
   });
 
-  test("keeps the deletion going when Clerk cannot be reached at all", async () => {
+  test("a second device's request while the first is pending continues the same deletion", async () => {
     const t = convexTest(schema, modules);
     await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      throw new TypeError("network down");
-    }));
+    clerkStatus = 500;
+    await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {});
+    const startedAt = (await account(t, ALICE.tokenIdentifier))?.deletionStartedAt;
 
-    await expectRefusal(t.withIdentity(ALICE).action(api.accounts.deleteAccount, {}), "deletion_failed");
+    clerkStatus = 200;
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: true });
 
-    // Clerk may already have deleted the user, so the mark stays: nothing more is written, and the
-    // scheduled job completes the deletion.
-    expect((await account(t, ALICE.tokenIdentifier))?.deletionStartedAt).toBeDefined();
-    await expectRefusal(t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() }), "account_deleting");
-    vi.advanceTimersByTime(DELETION_GRACE_MS);
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
-    expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
-  });
-
-  test("a concurrent attempt that cancels the shared mark cannot strand a confirmed deletion", async () => {
-    const t = convexTest(schema, modules);
-    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: changes() });
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      // Another device's attempt saw Clerk refuse and cleared the mark while this request was in flight.
-      await t.run(async (ctx) => {
-        const row = (await ctx.db.query("users").collect()).find((user) => user.ownerId === ALICE.tokenIdentifier);
-        if (row !== undefined) {
-          await ctx.db.patch(row._id, { deletionStartedAt: undefined });
-        }
-      });
-      return new Response(null, { status: 200 });
-    }));
-
-    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true });
-
-    expect(await ownedRowCount(t, ALICE.tokenIdentifier)).toBe(0);
-    vi.advanceTimersByTime(DELETION_GRACE_MS);
+    expect((await account(t, ALICE.tokenIdentifier))?.deletionStartedAt).toBe(startedAt);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await account(t, ALICE.tokenIdentifier)).toBeNull();
   });
@@ -288,7 +308,7 @@ describe("deleteAccount", () => {
 
   test("a signed-in caller with no data yet can still delete their Clerk user", async () => {
     const t = convexTest(schema, modules);
-    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true });
+    expect(await t.withIdentity(ALICE).action(api.accounts.deleteAccount, {})).toEqual({ deleted: true, clerkUserDeleted: true });
     expect(clerkRequests).toHaveLength(1);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await account(t, ALICE.tokenIdentifier)).toBeNull();

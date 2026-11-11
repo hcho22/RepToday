@@ -285,6 +285,9 @@ struct ServiceContainer {
     ///     rows capture it so a later re-enable cannot revive work from before the opt-out.
     ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
     ///     pseudonym at request time so account deletion rotates an already-configured client.
+    ///   - linkedAccountUserId: Reads the Clerk user id of the account this device is linked to, so the
+    ///     account backend only ever receives that account's session token. Bound to `AppState`'s store
+    ///     the same way `analyticsGate` is.
     ///   - legacyICloudErasure: Deletes the Rep Today data in the user's iCloud from before accounts
     ///     during account deletion. `nil` by default, so a test building this container never reaches
     ///     CloudKit.
@@ -299,6 +302,7 @@ struct ServiceContainer {
         analyticsService: (any AnalyticsServiceProtocol)? = nil,
         accountConfiguration: Bundle = .main,
         legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport),
+        linkedAccountUserId: @escaping @Sendable () -> String? = AppState.linkedAccountUserId(),
         legacyICloudErasure: LegacyICloudErasure? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
@@ -340,7 +344,7 @@ struct ServiceContainer {
         let syncRemote: (any SyncRemote)? = accountAuthService.isConfigured
             ? AccountBackendConfiguration.convexURL(bundle: accountConfiguration).map { url in
                 ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url, session: syncSession) {
-                    try await accountAuthService.sessionToken()
+                    try await accountAuthService.sessionToken(forLinkedAccount: linkedAccountUserId())
                 })
             }
             : nil

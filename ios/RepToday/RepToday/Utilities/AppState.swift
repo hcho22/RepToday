@@ -69,6 +69,11 @@ final class AppState {
     /// `false` on every launch. It gates emission of nothing and cohorts nothing.
     var showAppleSignOutGuidance: Bool = false
 
+    /// One-shot, never-persisted UI flag set by account deletion (US-AU05) when the account's data is
+    /// deleted but Clerk has not yet confirmed its sign-in is removed: the server finishes that on its
+    /// own, and `RootView` says so over the onboarding screen the deletion routed to.
+    var showAccountDeletionUnderWay: Bool = false
+
     /// Bumped every time the user confirms a change in the injury control (US-AC08), from either
     /// entry point - Settings or the coach's route.
     ///
@@ -546,6 +551,14 @@ final class AppState {
     /// construction instead of by both happening to name `.standard`. `RepTodayApp.init()` passes the
     /// store its own `AppState` was built on, exactly as it passes `installId` down rather than
     /// letting a second path re-derive it.
+    /// A reader for the Clerk user id of the linked account, bound to the store `AppState` writes, for
+    /// the account backend's token: a session token is sent only for the account this device is linked
+    /// to (`AccountAuthServiceProtocol.sessionToken(forLinkedAccount:)`).
+    static func linkedAccountUserId(in userDefaults: UserDefaults = .standard) -> @Sendable () -> String? {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { store.wrapped.string(forKey: Keys.accountUserId) }
+    }
+
     static func analyticsGate(in userDefaults: UserDefaults = .standard) -> @Sendable () -> Bool {
         let store = SendableUserDefaults(wrapped: userDefaults)
         return { isAnalyticsEnabled(in: store.wrapped) }
@@ -566,6 +579,9 @@ final class AppState {
     /// flag to. This is what production hands the container, so the toggle the user sees and the
     /// gate the transport asks cannot read different stores.
     var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
+
+    /// The linked account's Clerk user id reader, bound to this `AppState`'s store.
+    var linkedAccountUserIdProvider: @Sendable () -> String? { AppState.linkedAccountUserId(in: userDefaults) }
 
     /// The generation provider paired with `analyticsGate`, bound to the same persisted store.
     var analyticsConsentGenerationProvider: @Sendable () -> Int {

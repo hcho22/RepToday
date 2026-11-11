@@ -28,6 +28,7 @@ actor FakeAccountServer: SyncRemote {
     private var failPushes: [Int: SyncRemoteError] = [:]
     private var failPulls: [Int: SyncRemoteError] = [:]
     private var deleteError: SyncRemoteError?
+    private var deletionOutcome: RemoteAccountDeletion = .complete
     /// When set, every call fails with this, as if the device were offline.
     private var offlineError: SyncRemoteError?
 
@@ -43,6 +44,11 @@ actor FakeAccountServer: SyncRemote {
 
     func failDeletion(with error: SyncRemoteError?) {
         deleteError = error
+    }
+
+    /// What a successful deletion answers: `.signInRemovalPending` when Clerk could not be reached.
+    func answerDeletion(with outcome: RemoteAccountDeletion) {
+        deletionOutcome = outcome
     }
 
     func setOffline(_ offline: Bool) {
@@ -104,11 +110,12 @@ actor FakeAccountServer: SyncRemote {
         return SyncPullPage(records: records, cursor: page.last?.1.serverSeq ?? since, hasMore: after.count > limit)
     }
 
-    func deleteAccount() async throws {
+    func deleteAccount() async throws -> RemoteAccountDeletion {
         deleteCalls += 1
         if let offlineError { throw offlineError }
         if let deleteError { throw deleteError }
         rows = [:]
+        return deletionOutcome
     }
 
     /// The profile and the policy are one row per account; logs and activities are keyed by id.

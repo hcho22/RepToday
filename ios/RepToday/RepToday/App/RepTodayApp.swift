@@ -69,6 +69,7 @@ struct RepTodayApp: App {
             analyticsGate: appState.analyticsGate,
             analyticsConsentGeneration: appState.analyticsConsentGenerationProvider,
             legacyICloudImport: PersistenceController.shared.legacyICloudImport,
+            linkedAccountUserId: appState.linkedAccountUserIdProvider,
             legacyICloudErasure: legacyICloudErasure
         )
         self.services = services

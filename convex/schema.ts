@@ -49,8 +49,10 @@ const syncedRecord = {
 export default defineSchema({
   /**
    * One row per account: the Clerk identity and the owner's change counter. Created on the first
-   * authenticated write. `deletionStartedAt` is set while account deletion runs; every write is
-   * refused from then on, and the deletion job removes this row last.
+   * authenticated write. `deletionStartedAt` is set once account deletion is committed; every write
+   * is refused from then on. The `clerkDeletion*` fields record each attempt to delete the Clerk
+   * user, and `clerkUserDeletedAt` when Clerk confirmed it; the deletion job removes this row last,
+   * only after that confirmation.
    */
   users: defineTable({
     ownerId: v.string(),
@@ -59,6 +61,10 @@ export default defineSchema({
     /** The last `serverSeq` handed out to one of this owner's rows. */
     changeSeq: v.number(),
     deletionStartedAt: v.optional(v.number()),
+    clerkDeletionAttempts: v.optional(v.number()),
+    clerkDeletionLastAttemptAt: v.optional(v.number()),
+    clerkDeletionLastOutcome: v.optional(v.union(v.literal("gone"), v.literal("exists"), v.literal("unknown"))),
+    clerkUserDeletedAt: v.optional(v.number()),
   }).index("by_ownerId", ["ownerId"]),
 
   /**

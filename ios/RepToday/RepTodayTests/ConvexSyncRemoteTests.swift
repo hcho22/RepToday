@@ -13,10 +13,61 @@ final class ConvexSyncRemoteTests: XCTestCase {
     }
 
     private func remote(token: String? = "session-token") -> ConvexSyncRemote {
+        remote { token }
+    }
+
+    private func remote(token: @escaping @Sendable () async throws -> String?) -> ConvexSyncRemote {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubConvexProtocol.self]
         let session = URLSession(configuration: configuration)
-        return ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: deployment, session: session) { token })
+        return ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: deployment, session: session, token: token))
+    }
+
+    /// A Clerk-shaped session token issued to `subject` (only the payload is read on the device).
+    private static func sessionToken(subject: String) -> String {
+        let payload = Data(#"{"sub":"\#(subject)","exp":4102444800}"#.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "eyJhbGciOiJSUzI1NiJ9.\(payload).signature"
+    }
+
+    // MARK: - The linked account's token only
+
+    /// The device is linked to A, but the Clerk session on it is B's (signed in moments before the link
+    /// is refused, or left behind by a sign-out that failed): no request reaches the backend, so
+    /// nothing of A's is uploaded to B and nothing of B's is pulled into A's store.
+    func testAnotherAccountsSessionSendsNothing() async throws {
+        let auth = StubAccountAuthService(isConfigured: true, identity: AccountIdentity(userId: "user_b", email: nil, method: .google),
+                                          token: Self.sessionToken(subject: "user_b"))
+        let remote = remote { try await auth.sessionToken(forLinkedAccount: "user_a") }
+
+        do {
+            _ = try await remote.pull(since: 0, limit: 10)
+            XCTFail("another account's session must not be used")
+        } catch {
+            XCTAssertEqual(error as? SyncRemoteError, .notSignedIn)
+        }
+        do {
+            _ = try await remote.deleteAccount()
+            XCTFail("another account's session must not be used")
+        } catch {
+            XCTAssertEqual(error as? SyncRemoteError, .notSignedIn)
+        }
+        XCTAssertTrue(StubConvexProtocol.requests.isEmpty)
+    }
+
+    func testTheLinkedAccountsSessionIsSentAndAnUnlinkedDeviceSendsAnySession() async throws {
+        let token = Self.sessionToken(subject: "user_a")
+        let auth = StubAccountAuthService(isConfigured: true, identity: AccountIdentity(userId: "user_a", email: nil, method: .apple), token: token)
+        let linked = try await auth.sessionToken(forLinkedAccount: "user_a")
+        XCTAssertEqual(linked, token)
+        let unlinked = try await auth.sessionToken(forLinkedAccount: nil)
+        XCTAssertEqual(unlinked, token, "onboarding's restore runs before the device links")
+        let other = try await auth.sessionToken(forLinkedAccount: "user_b")
+        XCTAssertNil(other)
+        let unreadable = try await StubAccountAuthService(isConfigured: true, identity: AccountIdentity(userId: "user_a", email: nil, method: .apple), token: "not-a-jwt")
+            .sessionToken(forLinkedAccount: "user_a")
+        XCTAssertNil(unreadable, "a token whose subject cannot be read is never sent for a linked account")
     }
 
     // MARK: - push
@@ -150,12 +201,19 @@ final class ConvexSyncRemoteTests: XCTestCase {
     }
 
     func testDeleteAccountCallsTheAction() async throws {
-        StubConvexProtocol.respond(json: #"{"status":"success","value":{"deleted":true}}"#)
-        try await remote().deleteAccount()
+        StubConvexProtocol.respond(json: #"{"status":"success","value":{"deleted":true,"clerkUserDeleted":true}}"#)
+        let outcome = try await remote().deleteAccount()
+        XCTAssertEqual(outcome, .complete)
         XCTAssertEqual(StubConvexProtocol.requests.first?.url?.path, "/api/action")
         let body = try XCTUnwrap(StubConvexProtocol.bodies.first)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(json["path"] as? String, "accounts:deleteAccount")
+    }
+
+    func testADeletionClerkHasNotConfirmedIsPending() async throws {
+        StubConvexProtocol.respond(json: #"{"status":"success","value":{"deleted":true,"clerkUserDeleted":false}}"#)
+        let outcome = try await remote().deleteAccount()
+        XCTAssertEqual(outcome, .signInRemovalPending)
     }
 
     // MARK: - Configuration

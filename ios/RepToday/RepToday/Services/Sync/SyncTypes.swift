@@ -101,8 +101,18 @@ protocol SyncRemote: Sendable {
     func push(_ changes: [PendingSyncChange]) async throws
     /// The account's records written after `since`.
     func pull(since: Int, limit: Int) async throws -> SyncPullPage
-    /// Deletes the account's server data and its sign-in identity (`accounts:deleteAccount`).
-    func deleteAccount() async throws
+    /// Deletes the account's server data and its sign-in identity (`accounts:deleteAccount`). Once it
+    /// returns the deletion is committed on the server.
+    func deleteAccount() async throws -> RemoteAccountDeletion
+}
+
+/// How far a committed server-side account deletion got before answering.
+enum RemoteAccountDeletion: Equatable, Sendable {
+    /// The data and the sign-in identity are deleted.
+    case complete
+    /// The data is deleted; removing the sign-in identity is still under way and the server finishes
+    /// it on its own.
+    case signInRemovalPending
 }
 
 /// Encodes and decodes the domain records that travel as sync payloads.

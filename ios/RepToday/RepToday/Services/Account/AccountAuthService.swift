@@ -77,3 +77,30 @@ protocol AccountAuthServiceProtocol: Sendable {
     /// account), so it is safe at the end of account deletion.
     func signOut() async
 }
+
+extension AccountAuthServiceProtocol {
+    /// A session token for the account backend, only when it was issued to `linkedUserId`, the Clerk
+    /// user this device is linked to. A session for any other account - one signed in moments before it
+    /// is refused and signed out, or one a failed sign-out left behind - yields no token, so nothing is
+    /// pulled from or uploaded to an account this device's data does not belong to. With no linked
+    /// account (onboarding's restore, before the device links), any session's token is returned.
+    func sessionToken(forLinkedAccount linkedUserId: String?) async throws -> String? {
+        guard let token = try await sessionToken() else { return nil }
+        guard let linkedUserId else { return token }
+        return SessionTokenClaims.subject(of: token) == linkedUserId ? token : nil
+    }
+}
+
+/// Reads the subject (`sub`, the Clerk user id) a Clerk session token was issued to. The token is a
+/// JWT; only its payload is decoded, never verified - the account backend verifies it.
+enum SessionTokenClaims {
+    static func subject(of token: String) -> String? {
+        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3 else { return nil }
+        var payload = segments[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return claims["sub"] as? String
+    }
+}

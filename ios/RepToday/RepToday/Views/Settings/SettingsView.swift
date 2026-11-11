@@ -409,8 +409,8 @@ struct SettingsView: View {
         Sign in again from Profile > Account, then delete your account. Nothing was deleted.
         """
 
-    /// The failure body when the server refused, failed, or could not confirm the deletion. Nothing
-    /// on this device was deleted.
+    /// The failure body when the server refused or failed before committing the deletion. Nothing on
+    /// this device was deleted.
     static let deleteServerFailedMessage = """
         We couldn't delete your account just now. Everything on this phone is as it was - please try again.
         """

@@ -197,6 +197,42 @@ final class AccountDeletionAccountTests: XCTestCase {
         XCTAssertEqual(outbox, [])
     }
 
+    // MARK: - Clerk not reachable yet
+
+    /// The server committed the deletion but could not reach Clerk: the phone wipes its data exactly as
+    /// on success and says the sign-in removal finishes on its own, instead of claiming nothing changed.
+    func testAPendingSignInRemovalStillWipesThePhoneAndSaysSo() async throws {
+        let fixture = try await makeFixture()
+        await fixture.server.answerDeletion(with: .signInRemovalPending)
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        let user = try await fixture.stack.users.currentUser()
+        XCTAssertNil(user)
+        let logs = try await fixture.stack.logs.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(logs.isEmpty)
+        let outbox = try await fixture.stack.outbox()
+        XCTAssertEqual(outbox, [])
+        await MainActor.run {
+            XCTAssertTrue(fixture.appState.showAccountDeletionUnderWay)
+            XCTAssertNil(fixture.appState.account)
+            XCTAssertFalse(fixture.appState.isOnboarded)
+        }
+        XCTAssertFalse(defaults.bool(forKey: AccountDeletionService.AccountTeardown.signInRemovalPendingKey))
+        XCTAssertEqual(
+            RootView.deletionNoticeMessage(appleGuidance: false, signInRemovalPending: true),
+            "Your Rep Today data is deleted. Removing your sign-in is still under way and finishes on its own - there's nothing more you need to do."
+        )
+    }
+
+    func testACompleteDeletionShowsNoPendingNote() async throws {
+        let fixture = try await makeFixture()
+
+        try await fixture.service.deleteAccount(appState: fixture.appState)
+
+        await MainActor.run { XCTAssertFalse(fixture.appState.showAccountDeletionUnderWay) }
+    }
+
     // MARK: - The legacy iCloud copy
 
     func testDeletionAlsoDeletesTheLegacyICloudCopyAndIsSafeToRepeat() async throws {
