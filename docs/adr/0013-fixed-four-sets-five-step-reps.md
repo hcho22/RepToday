@@ -1,6 +1,6 @@
 # ADR-0013: Fixed 4 sets, reps in steps of 5, reps as the fit lever, and fixed movement counts
 
-- Status: Accepted (decided 2026-11-10); not yet implemented (M1, `US-TD00`...`US-TD04`).
+- Status: Accepted (decided 2026-11-10); implemented in M1 (2026-11-10, `US-TD00`...`US-TD04`; `Services/Engine/RepGrammar.swift`, `Services/Engine/AdaptiveOverload.swift`, `Services/Engine/SessionAssembly.swift`), with the reconciliations below.
 - Date: 2026-11-10
 - Deciders: captain, via the Push/Pull/Legs design grill (2026-11-09 to 2026-11-10)
 - Spec: `.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`
@@ -56,4 +56,4 @@ M1 is implemented on top of them, and where the two disagree this ADR wins as th
   "Too hard" and "couldn't finish" still step back one step, and at the bottom of the range step down the chain, exactly as ADR-0011 records.
 - **Advancement.** The per-movement `advancementCriteria` numbers (ADR-0011's "raised to 15") give way to the one bar of this ADR, judged at the user's level.
 
-These reconciliations are the implementer's reading and are flagged for the captain to confirm (PRD Open Question 2).
+The captain confirmed these reconciliations on 2026-11-10 (PRD Open Question 2).
