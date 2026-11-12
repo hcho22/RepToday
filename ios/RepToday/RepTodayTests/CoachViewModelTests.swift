@@ -27,9 +27,13 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.access, .free)
 
         await fixture.entitlements.set(premium: true)
+        await fixture.entitlements.holdStatus()
         let recheck = Task { await fixture.viewModel.load() }
-        await Task.yield()
+        while await fixture.entitlements.waitingOnStatus == 0 {
+            await Task.yield()
+        }
         XCTAssertEqual(fixture.viewModel.access, .free, "the preview stays while the re-check waits on the server")
+        await fixture.entitlements.releaseStatus()
         await recheck.value
         XCTAssertEqual(fixture.viewModel.access, .premium)
     }

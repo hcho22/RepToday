@@ -103,6 +103,8 @@ actor MockPremiumEntitlementService: PremiumEntitlementServiceProtocol {
     private let token = UUID()
     private var linkResult: ServerPremiumStatus?
     private var linkError: PremiumEntitlementError?
+    private var holdsStatus = false
+    private var heldStatus: [CheckedContinuation<Void, Never>] = []
 
     init(premium: Bool = false) {
         current = ServerPremiumStatus(premium: premium, expiresAt: nil, productId: premium ? SubscriptionPlan.ProductID.monthly : nil)
@@ -118,7 +120,26 @@ actor MockPremiumEntitlementService: PremiumEntitlementServiceProtocol {
         linkError = error
     }
 
-    func status() async throws -> ServerPremiumStatus { current }
+    /// Makes every `status()` wait until `releaseStatus()`, so a test can look at a re-check in flight.
+    func holdStatus() {
+        holdsStatus = true
+    }
+
+    func releaseStatus() {
+        holdsStatus = false
+        heldStatus.forEach { $0.resume() }
+        heldStatus = []
+    }
+
+    /// How many `status()` calls are waiting on `releaseStatus()`.
+    var waitingOnStatus: Int { heldStatus.count }
+
+    func status() async throws -> ServerPremiumStatus {
+        if holdsStatus {
+            await withCheckedContinuation { heldStatus.append($0) }
+        }
+        return current
+    }
 
     func appAccountToken() async throws -> UUID { token }
 
