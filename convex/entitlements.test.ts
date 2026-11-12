@@ -270,6 +270,67 @@ describe("linkTransaction: purchase and Restore Purchases link a subscription to
     expect(await entitlementRows(t)).toHaveLength(1);
   });
 
+  test("a refunded subscription replayed through its older signed transaction stays revoked", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const purchase = await signJws(transaction({ expiresDate: now + 365 * DAY, signedDate: now - 5000 }), chain);
+    await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, { jws: purchase });
+    await post(t, await notification("REFUND", transaction({ expiresDate: now + 365 * DAY, revocationDate: now - 200, signedDate: now - 200 })));
+    expect(await premium(t, ALICE)).toBe(false);
+    const replay = await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, { jws: purchase });
+    expect(replay.premium).toBe(false);
+    const [row] = await entitlementRows(t);
+    expect(row.revokedAt).toBe(now - 200);
+    expect(row.lastSignedAt).toBe(now - 200);
+  });
+
+  test("an older signed transaction still links an unowned subscription without replacing its facts", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await post(t, await notification("REFUND", transaction({ revocationDate: now - 200, signedDate: now - 200 })));
+    await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, { jws: await signJws(transaction({ signedDate: now - 5000 }), chain) });
+    const [row] = await entitlementRows(t);
+    expect(row.ownerId).toBeDefined();
+    expect(row.revokedAt).toBe(now - 200);
+    expect(await premium(t, ALICE)).toBe(false);
+  });
+
+  test("a link made during a billing grace period keeps the grace period", async () => {
+    const t = convexTest(schema, modules);
+    const alice = await token(t, ALICE);
+    const now = Date.now();
+    await post(
+      t,
+      await notification("DID_FAIL_TO_RENEW", transaction({ appAccountToken: alice, expiresDate: now - DAY, signedDate: now - 3000 }), {
+        renewal: { environment: "Sandbox", originalTransactionId: "1000000001", gracePeriodExpiresDate: now + 3 * DAY, signedDate: now - 500 },
+      }),
+    );
+    const older = await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, {
+      jws: await signJws(transaction({ appAccountToken: alice, expiresDate: now - DAY, signedDate: now - 9000 }), chain),
+    });
+    expect(older.premium).toBe(true);
+    const newer = await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, {
+      jws: await signJws(transaction({ appAccountToken: alice, expiresDate: now - DAY, signedDate: now - 100 }), chain),
+    });
+    expect(newer.premium).toBe(true);
+    expect((await entitlementRows(t))[0].gracePeriodExpiresAt).toBe(now + 3 * DAY);
+  });
+
+  test("a newer signed transaction still updates the row", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, {
+      jws: await signJws(transaction({ expiresDate: now + DAY, signedDate: now - 5000 }), chain),
+    });
+    const renewed = await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, {
+      jws: await signJws(transaction({ transactionId: "2000000002", expiresDate: now + 31 * DAY, signedDate: now - 100 }), chain),
+    });
+    expect(renewed.expiresAt).toBe(now + 31 * DAY);
+    const [row] = await entitlementRows(t);
+    expect(row.expiresAt).toBe(now + 31 * DAY);
+    expect(row.lastSignedAt).toBe(now - 100);
+  });
+
   test("a subscription linked to another live account is never moved", async () => {
     const t = convexTest(schema, modules);
     await t.withIdentity(ALICE).action(api.entitlements.linkTransaction, { jws: await signJws(transaction(), chain) });

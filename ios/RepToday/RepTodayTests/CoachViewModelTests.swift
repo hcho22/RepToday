@@ -140,6 +140,23 @@ final class CoachViewModelTests: XCTestCase {
         fixture.viewModel.draft = "hello"
         await fixture.viewModel.send()
         XCTAssertEqual(fixture.viewModel.errorMessage, CoachCopy.limitReached)
+        XCTAssertTrue(fixture.viewModel.messages.isEmpty, "a message the server never stored is not left on screen")
+        XCTAssertEqual(fixture.viewModel.draft, "hello", "the text waits in the draft to send later")
+        XCTAssertFalse(fixture.viewModel.canRetry)
+    }
+
+    func testASignedOutOrDeletingAccountGivesTheTextBack() async {
+        for refusal in [CoachServiceError.signedOut, .accountDeleting] {
+            let fixture = CoachFixture()
+            await fixture.viewModel.load()
+            await fixture.coach.setReply { _ in throw refusal }
+            fixture.viewModel.draft = "hello"
+            await fixture.viewModel.send()
+            XCTAssertEqual(fixture.viewModel.errorMessage, CoachCopy.signedOut)
+            XCTAssertTrue(fixture.viewModel.messages.isEmpty, "\(refusal): the unsent message is not left on screen")
+            XCTAssertEqual(fixture.viewModel.draft, "hello", "\(refusal): the text waits in the draft")
+            XCTAssertFalse(fixture.viewModel.canRetry)
+        }
     }
 
     // MARK: - Tools: apply and Undo (US-CA03)
@@ -273,6 +290,60 @@ final class CoachViewModelTests: XCTestCase {
         let outcomes = await fixture.coach.outcomes
         XCTAssertEqual(outcomes.map(\.status), [.declined])
         XCTAssertFalse(fixture.viewModel.canUndo(try XCTUnwrap(fixture.viewModel.messages.last?.proposals.first)))
+    }
+
+    /// An applied proposal whose outcome the server missed is never offered again: a reload shows what the
+    /// phone did, and the outcome is resent until the server stores it.
+    func testAnAppliedProposalTheServerDidNotHearOfIsNotOfferedAgainAfterAReload() async throws {
+        let (fixture, message, proposal) = try await proposing(.outsideActivity(type: .run, minutes: 30, distanceMeters: nil, day: .today))
+        await fixture.coach.setOutcomeFailure(.offline)
+        await fixture.viewModel.apply(proposal, in: message)
+        let unrecorded = await fixture.coach.outcomes
+        XCTAssertTrue(unrecorded.isEmpty)
+
+        await fixture.viewModel.load()
+        XCTAssertEqual(status(fixture, proposal), .applied, "the reloaded history still says proposed; the phone knows better")
+        XCTAssertTrue(fixture.viewModel.canUndo(try XCTUnwrap(fixture.viewModel.messages.last?.proposals.first)))
+        await fixture.viewModel.apply(try XCTUnwrap(fixture.viewModel.messages.last?.proposals.first), in: message)
+        let logged = try await fixture.outsideActivityService.activities(from: nil, to: nil)
+        XCTAssertEqual(logged.count, 1, "no second activity")
+
+        await fixture.coach.setOutcomeFailure(nil)
+        await fixture.viewModel.load()
+        let outcomes = await fixture.coach.outcomes
+        XCTAssertEqual(outcomes.map(\.status), [.applied], "resent once the server can hear it")
+        let stored = await fixture.coach.stored
+        XCTAssertEqual(stored.flatMap(\.proposals).first { $0.id == proposal.id }?.status, .applied)
+        await fixture.viewModel.load()
+        let afterAnotherLoad = await fixture.coach.outcomes
+        XCTAssertEqual(afterAnotherLoad.count, 1, "a stored outcome is not sent again")
+    }
+
+    func testAnUndoAndADeclineTheServerDidNotHearOfAreResentInOrder() async throws {
+        let (fixture, message, proposal) = try await proposing(.restChoice(.restToday))
+        await fixture.coach.setOutcomeFailure(.offline)
+        await fixture.viewModel.apply(proposal, in: message)
+        await fixture.viewModel.undo(try XCTUnwrap(fixture.viewModel.messages.last?.proposals.first), in: message)
+        await fixture.viewModel.load()
+        XCTAssertEqual(status(fixture, proposal), .undone)
+
+        let declined = CoachFixture.proposal(.restChoice(.trainAnyway))
+        await fixture.coach.setOutcomeFailure(nil)
+        await fixture.coach.setReply { _ in ("Confirm below.", [declined]) }
+        fixture.viewModel.draft = "again"
+        await fixture.viewModel.send()
+        let second = try XCTUnwrap(fixture.viewModel.messages.last)
+        await fixture.coach.setOutcomeFailure(.unavailable)
+        await fixture.viewModel.decline(try XCTUnwrap(second.proposals.first), in: second)
+        await fixture.viewModel.load()
+        XCTAssertEqual(status(fixture, declined), .declined)
+        XCTAssertEqual(status(fixture, proposal), .undone)
+
+        await fixture.coach.setOutcomeFailure(nil)
+        await fixture.viewModel.load()
+        let outcomes = await fixture.coach.outcomes
+        XCTAssertEqual(outcomes.map(\.proposalId), [proposal.id, proposal.id, declined.id])
+        XCTAssertEqual(outcomes.map(\.status), [.applied, .undone, .declined])
     }
 
     /// The closed action set: a de-load, a Return, the cold start, the pace, the phase and the injury

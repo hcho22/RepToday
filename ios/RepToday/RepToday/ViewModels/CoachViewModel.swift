@@ -109,6 +109,18 @@ final class CoachViewModel {
     /// Undo handles by proposal id.
     private var undos: [String: CoachProposalApplier.Undo] = [:]
 
+    /// A proposal outcome this phone acted on that the server has not stored yet.
+    private struct UnrecordedOutcome {
+        let id = UUID()
+        let messageId: String
+        let proposalId: String
+        let status: CoachProposal.Status
+    }
+
+    /// Outcomes still owed to the server, in the order they happened. They are resent until stored, and
+    /// shown over a reloaded history so a proposal already acted on is never offered again.
+    private var unrecordedOutcomes: [UnrecordedOutcome] = []
+
     init(
         coach: (any CoachServiceProtocol)?,
         entitlements: (any PremiumEntitlementServiceProtocol)?,
@@ -227,6 +239,9 @@ final class CoachViewModel {
         }
         if let history = try? await coach.history() {
             messages = history
+            for outcome in unrecordedOutcomes {
+                setStatus(outcome.status, for: outcome.proposalId, in: outcome.messageId)
+            }
         }
         if let workouts = try? await customWorkouts.workouts() {
             acceptedWorkouts = Dictionary(
@@ -234,6 +249,7 @@ final class CoachViewModel {
                 uniquingKeysWith: { first, _ in first }
             )
         }
+        await sendUnrecordedOutcomes()
     }
 
     // MARK: - Sending
@@ -293,9 +309,13 @@ final class CoachViewModel {
             errorMessage = CoachCopy.messageTooLong
             pendingRetry = nil
         case .limitReached:
+            messages.removeAll { $0.id == pendingId }
+            if trimmedDraft.isEmpty { draft = text }
             errorMessage = CoachCopy.limitReached
             pendingRetry = nil
         case .signedOut, .accountDeleting:
+            messages.removeAll { $0.id == pendingId }
+            if trimmedDraft.isEmpty { draft = text }
             errorMessage = CoachCopy.signedOut
             pendingRetry = nil
         case .offline, .unavailable:
@@ -336,7 +356,7 @@ final class CoachViewModel {
         do {
             undos[proposal.id] = try await applier.apply(proposal.action)
             setStatus(.applied, for: proposal.id, in: message.id)
-            try? await coach?.recordOutcome(messageId: message.id, proposalId: proposal.id, status: .applied)
+            await record(.applied, for: proposal.id, in: message.id)
         } catch CoachProposalApplier.ApplyError.notificationsOff {
             proposalErrors[proposal.id] = CoachReminderCopy.permissionDenied
         } catch {
@@ -347,7 +367,7 @@ final class CoachViewModel {
     func decline(_ proposal: CoachProposal, in message: CoachMessage) async {
         guard proposal.status == .proposed, !busyProposals.contains(proposal.id) else { return }
         setStatus(.declined, for: proposal.id, in: message.id)
-        try? await coach?.recordOutcome(messageId: message.id, proposalId: proposal.id, status: .declined)
+        await record(.declined, for: proposal.id, in: message.id)
     }
 
     /// Whether this session can undo a proposal it applied.
@@ -364,7 +384,7 @@ final class CoachViewModel {
             undos[proposal.id] = nil
             if case .customWorkout = proposal.action { acceptedWorkouts[proposal.id] = nil }
             setStatus(.undone, for: proposal.id, in: message.id)
-            try? await coach?.recordOutcome(messageId: message.id, proposalId: proposal.id, status: .undone)
+            await record(.undone, for: proposal.id, in: message.id)
         } catch {
             proposalErrors[proposal.id] = CoachCopy.couldNotUndo
         }
@@ -390,7 +410,7 @@ final class CoachViewModel {
             undos[proposal.id] = undo
             acceptedWorkouts[proposal.id] = accepted
             setStatus(.applied, for: proposal.id, in: message.id)
-            try? await coach?.recordOutcome(messageId: message.id, proposalId: proposal.id, status: .applied)
+            await record(.applied, for: proposal.id, in: message.id)
             return accepted
         } catch {
             proposalErrors[proposal.id] = CoachCopy.couldNotApply
@@ -404,6 +424,26 @@ final class CoachViewModel {
         let library = (try? await exerciseService.exercises()) ?? []
         guard let user = try? await userService.currentUser() else { return nil }
         return CustomWorkoutPlayback(workout: workout, playable: workout.playableWorkout(library: library, now: now()), library: library, user: user)
+    }
+
+    /// Records a proposal's outcome with the server, keeping it on the phone until the server stores it.
+    private func record(_ status: CoachProposal.Status, for proposalId: String, in messageId: String) async {
+        unrecordedOutcomes.append(UnrecordedOutcome(messageId: messageId, proposalId: proposalId, status: status))
+        await sendUnrecordedOutcomes()
+    }
+
+    /// Sends every owed outcome in order; a proposal whose outcome fails keeps its later ones for next time.
+    private func sendUnrecordedOutcomes() async {
+        guard let coach else { return }
+        var failed: Set<String> = []
+        for outcome in unrecordedOutcomes where !failed.contains(outcome.proposalId) {
+            do {
+                try await coach.recordOutcome(messageId: outcome.messageId, proposalId: outcome.proposalId, status: outcome.status)
+                unrecordedOutcomes.removeAll { $0.id == outcome.id }
+            } catch {
+                failed.insert(outcome.proposalId)
+            }
+        }
     }
 
     private func setStatus(_ status: CoachProposal.Status, for proposalId: String, in messageId: String) {

@@ -120,7 +120,11 @@ export const linkTransaction = action({
   },
 });
 
-/** Applies a verified transaction to the owner's entitlement, refusing one held by another account. */
+/**
+ * Applies a verified transaction to the owner's entitlement, refusing one held by another account.
+ * A transaction signed before the row's newest update only claims the row; it never replaces the
+ * newer facts (a refund, a grace period) a notification already applied.
+ */
 export const linkVerified = internalMutation({
   args: { ownerId: v.string(), clerkUserId: v.string(), facts: transactionFacts },
   handler: async (ctx, { ownerId, clerkUserId, facts }) => {
@@ -138,7 +142,13 @@ export const linkVerified = internalMutation({
         throw accountError("linked_to_other_account", "This subscription belongs to another Rep Today account.");
       }
     }
-    await upsert(ctx, existing, ownerId, facts, undefined);
+    if (existing !== null && existing.lastSignedAt > facts.signedAt) {
+      if (existing.ownerId !== ownerId) {
+        await ctx.db.patch(existing._id, { ownerId, updatedAt: Date.now() });
+      }
+    } else {
+      await upsert(ctx, existing, ownerId, facts, existing?.gracePeriodExpiresAt);
+    }
     return await premiumState(ctx, ownerId, Date.now());
   },
 });

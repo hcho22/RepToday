@@ -140,6 +140,7 @@ actor MockCoachService: CoachServiceProtocol {
     private(set) var sent: [(message: String, today: CoachTodaySnapshot?)] = []
     private(set) var outcomes: [(messageId: String, proposalId: String, status: CoachProposal.Status)] = []
     private var reply: @Sendable (String) throws -> (text: String, proposals: [CoachProposal])
+    private var outcomeFailure: CoachServiceError?
     private let now: @Sendable () -> Date
 
     init(
@@ -158,6 +159,11 @@ actor MockCoachService: CoachServiceProtocol {
         self.reply = reply
     }
 
+    /// Makes `recordOutcome` fail with `error` (or succeed again with `nil`), as an unreachable server would.
+    func setOutcomeFailure(_ error: CoachServiceError?) {
+        outcomeFailure = error
+    }
+
     func history() async throws -> [CoachMessage] { stored }
 
     func send(clientMessageId: UUID, message: String, today: CoachTodaySnapshot?) async throws -> CoachTurn {
@@ -170,6 +176,7 @@ actor MockCoachService: CoachServiceProtocol {
     }
 
     func recordOutcome(messageId: String, proposalId: String, status: CoachProposal.Status) async throws {
+        if let outcomeFailure { throw outcomeFailure }
         outcomes.append((messageId, proposalId, status))
         guard let index = stored.firstIndex(where: { $0.id == messageId }),
               let proposalIndex = stored[index].proposals.firstIndex(where: { $0.id == proposalId }) else { return }
