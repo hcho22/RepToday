@@ -180,15 +180,24 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
     private var subscription: Subscription
     private let plans: [SubscriptionPlan]
     private let simulatesPurchase: Bool
+    private let signedTransactions: [String]?
+    private let restoreFails: Bool
 
+    /// `signedTransactions` overrides what `premiumTransactionJWS()` returns, for a phone whose Premium
+    /// state and signed transactions disagree; `restoreFails` makes Restore throw, as an App Store sync
+    /// that was cancelled or had no connection does.
     init(
         subscription: Subscription = .free,
         plans: [SubscriptionPlan] = SubscriptionPlan.samples,
-        simulatesPurchase: Bool = true
+        simulatesPurchase: Bool = true,
+        signedTransactions: [String]? = nil,
+        restoreFails: Bool = false
     ) {
         self.subscription = subscription
         self.plans = plans
         self.simulatesPurchase = simulatesPurchase
+        self.signedTransactions = signedTransactions
+        self.restoreFails = restoreFails
     }
 
     func currentSubscription() async throws -> Subscription {
@@ -214,13 +223,15 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
     }
 
     func restorePurchases() async throws -> Subscription {
+        if restoreFails { throw URLError(.notConnectedToInternet) }
         grantIfSimulating()
         return subscription
     }
 
     /// A stand-in signed transaction while Premium, so the account-link path (M4) has something to send.
     func premiumTransactionJWS() async -> [String] {
-        subscription.tier == .premium ? ["mock.premium.transaction"] : []
+        if let signedTransactions { return signedTransactions }
+        return subscription.tier == .premium ? ["mock.premium.transaction"] : []
     }
 
     private func grantIfSimulating() {

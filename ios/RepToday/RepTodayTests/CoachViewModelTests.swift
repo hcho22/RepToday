@@ -56,6 +56,57 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.access, .premium, "a StoreKit purchase made before accounts unlocks the Coach once linked")
     }
 
+    func testPremiumOnThisPhoneWithNoSignedTransactionSaysNothingWasFoundRatherThanLoopingOnRestore() async {
+        // The device case: the phone's Premium state says Premium, but StoreKit hands over no signed
+        // transaction (the run talks to a store that does not hold the subscription). Nothing can be
+        // linked, so the Coach must not ask for a Restore that can only lead back to the same place.
+        let premium = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
+        let fixture = CoachFixture(premium: false, subscription: premium, signedTransactions: [])
+        await fixture.viewModel.load()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        XCTAssertEqual(fixture.viewModel.restoreNote, CoachCopy.noSubscriptionFound)
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .free, "a restore with nothing to send never offers Restore again")
+        XCTAssertEqual(fixture.viewModel.restoreNote, CoachCopy.noSubscriptionFound)
+        let linked = await fixture.entitlements.linked
+        XCTAssertTrue(linked.isEmpty, "nothing is sent to the account")
+    }
+
+    func testARestoreThatFindsNothingSaysSo() async {
+        let fixture = CoachFixture(premium: false, simulatesPurchase: false)
+        await fixture.viewModel.load()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        XCTAssertNil(fixture.viewModel.restoreNote, "the preview opens without a restore result")
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        XCTAssertEqual(fixture.viewModel.restoreNote, CoachCopy.noSubscriptionFound)
+        await fixture.viewModel.load()
+        XCTAssertNil(fixture.viewModel.restoreNote, "the note answers the tap, and a later visit starts clean")
+    }
+
+    func testARestoreThatCouldNotReachTheAppStoreSaysSoRatherThanNothingWasFound() async {
+        // The App Store sync was cancelled or had no connection: nothing was looked up, so the preview
+        // must not state that this Apple ID has no subscription.
+        let fixture = CoachFixture(premium: false, restoreFails: true)
+        await fixture.viewModel.load()
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        XCTAssertEqual(fixture.viewModel.restoreNote, CoachCopy.couldNotRestore)
+        let linked = await fixture.entitlements.linked
+        XCTAssertTrue(linked.isEmpty, "nothing is sent to the account")
+    }
+
+    func testARestoreThatFindsTheSubscriptionLinksItAndOpensTheCoach() async {
+        let fixture = CoachFixture(premium: false)
+        await fixture.viewModel.load()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .premium)
+        XCTAssertNil(fixture.viewModel.restoreNote)
+        let linked = await fixture.entitlements.linked
+        XCTAssertEqual(linked, ["mock.premium.transaction"], "the restored transaction is linked to the account")
+    }
+
     func testASubscriptionOnAnotherAccountIsExplainedNotUnlocked() async {
         let premium = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
         let fixture = CoachFixture(premium: false, subscription: premium)

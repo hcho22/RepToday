@@ -25,7 +25,7 @@ It names no account, email address, token, key or prompt with user data in it.
 | Coach turn: Premium checked on every turn, ownership, daily limits, retries answered from memory without a second model call, tool calls clamped into proposals and unknown tools dropped, outcomes recorded, the under-18 diet decline before any model call and after the reply | `convex/coach.test.ts`, `convex/coachPrompt.test.ts` | Pass |
 | Custom Workout sync and account deletion of every Coach table | `convex/sync.test.ts`, `convex/accounts.test.ts` | Pass |
 | All Convex suites | `npm test` | 218 tests pass |
-| Proposal application through the app's own paths, confirm-first then Undo, decline writes nothing, an outcome the server has not stored is resent and shown over a reloaded history while one it refuses for good is dropped, the closed action set with no safety-owned move, Custom Workouts never saved or played before acceptance, a played one recorded as an Outside Activity that logs no session, the FR-8 group rule | `CoachViewModelTests` (35 cases) | Pass |
+| Proposal application through the app's own paths, confirm-first then Undo, decline writes nothing, an outcome the server has not stored is resent and shown over a reloaded history while one it refuses for good is dropped, the closed action set with no safety-owned move, Custom Workouts never saved or played before acceptance, a played one recorded as an Outside Activity that logs no session, the FR-8 group rule, a Restore that links the subscription and opens the Coach, and a Restore with no signed transaction to send saying nothing was found instead of offering Restore again, while a Restore that could not reach the App Store says it could not restore | `CoachViewModelTests` (39 cases) | Pass |
 | Today's choices shared by Today and the Coach; the Coach sees today's session with its swaps applied | `TodayChoicesTests` | Pass |
 | Custom Workout model, Core Data store (Local only), sync both ways, deletion | `CustomWorkoutTests` | Pass |
 | Reminders: permission at the first schedule, edit, disable, delete, identity-framed copy | `CoachRemindersTests` | Pass |
@@ -71,7 +71,8 @@ Layer captures of hosted screens do not draw the navigation bar's blur, so in th
 ## Simulator-only, and owed on a device (exit criteria)
 
 Everything above ran in the Simulator; the Premium state came from a seeded `Xcode`-environment entitlement, not a purchase.
-Owed on a real iPhone with a Debug build and a Sandbox Apple ID:
+Owed on a real iPhone with a Debug build run from the `RepToday Sandbox` scheme and a Sandbox Apple ID.
+The `RepToday` scheme attaches the local StoreKit configuration, and a run Xcode launches with it - on an iPhone too - uses Xcode's local StoreKit store, which cannot see a Sandbox subscription: the purchase sheet reads "[Environment: Xcode]" and Restore finds nothing to link (found on 2026-11-12, when the app sent no transaction to link during a device Restore).
 
 - Buy Premium with the Sandbox tester from the Coach's paywall; the Coach opens; the entitlement row on the dev deployment shows `Sandbox`.
 - A renewal arrives as a `DID_RENEW` notification and moves the entitlement's expiry; a test notification sent from App Store Connect arrives.

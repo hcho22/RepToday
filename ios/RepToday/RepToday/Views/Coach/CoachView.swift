@@ -111,7 +111,11 @@ struct CoachTabView: View {
                 Task { await viewModel.load() }
             }
         case .free:
-            CoachPreviewView(onUnlock: { showPaywall = true }, onRestore: { Task { await viewModel.restorePurchases() } })
+            CoachPreviewView(
+                note: viewModel.restoreNote,
+                onUnlock: { showPaywall = true },
+                onRestore: { Task { await viewModel.restorePurchases() } }
+            )
         case let .unconfirmed(message):
             CoachNotice(symbol: "creditcard.trianglebadge.exclamationmark", text: message, actionTitle: CoachCopy.restore) {
                 Task { await viewModel.restorePurchases() }
@@ -458,12 +462,32 @@ struct CoachNotice: View {
 /// What a free user sees on the Coach tab (decision 28): a preview of the Coach at work and the
 /// paywall's entry, framed as what Premium adds - never as something taken away.
 struct CoachPreviewView: View {
+    /// The answer to a Restore: nothing this phone can link (on every visit while StoreKit here shows
+    /// Premium with no signed transaction, or after a restore found nothing), or that it could not run.
+    var note: String?
     let onUnlock: () -> Void
     let onRestore: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                // At the top, so the answer to a Restore is on screen whatever the phone's size.
+                if let note {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .accessibilityHidden(true)
+                        Text(note)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                    .accessibilityElement(children: .combine)
+                    .onAppear { AccessibilityNotification.Announcement(note).post() }
+                }
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text(CoachCopy.previewTitle)
                         .font(Theme.Typography.title)
