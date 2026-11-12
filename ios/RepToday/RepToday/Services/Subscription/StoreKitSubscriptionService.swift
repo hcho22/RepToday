@@ -287,7 +287,11 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     }
 
     func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
-        switch try await facade.purchase(productID: plan.id) {
+        try await purchase(plan, appAccountToken: nil)
+    }
+
+    func purchase(_ plan: SubscriptionPlan, appAccountToken: UUID?) async throws -> PurchaseOutcome {
+        switch try await facade.purchase(productID: plan.id, appAccountToken: appAccountToken) {
         case .success(let entitlements):
             return .resolved(Self.grant(from: entitlements))
         case .userCancelled:
@@ -298,6 +302,10 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             // reassures the user and the approval is picked up out-of-band by the transaction listener.
             return .pending
         }
+    }
+
+    func premiumTransactionJWS() async -> [String] {
+        await facade.premiumTransactionJWS()
     }
 
     func purchasePremium() async throws -> Subscription {

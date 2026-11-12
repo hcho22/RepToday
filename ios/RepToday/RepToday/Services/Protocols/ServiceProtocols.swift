@@ -293,6 +293,12 @@ protocol SubscriptionServiceProtocol {
     /// Purchase a specific plan chosen on the paywall; returns the outcome so the paywall can tell a
     /// resolved purchase apart from one still awaiting approval (Ask to Buy).
     func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome
+    /// The same purchase carrying the signed-in account's App Store token, so Apple names the account in
+    /// the subscription's notifications and the Coach's server-side entitlement follows it (M4, US-CA02).
+    func purchase(_ plan: SubscriptionPlan, appAccountToken: UUID?) async throws -> PurchaseOutcome
+    /// The signed transactions (`jwsRepresentation`) behind the current Premium entitlements, which the
+    /// app sends after a purchase and on Restore Purchases to link the subscription to the account (M4).
+    func premiumTransactionJWS() async -> [String]
     func purchasePremium() async throws -> Subscription
     func restorePurchases() async throws -> Subscription
     func restorePurchaseGrant() async throws -> SubscriptionGrant
@@ -315,6 +321,14 @@ extension SubscriptionServiceProtocol {
     func restorePurchaseGrant() async throws -> SubscriptionGrant {
         SubscriptionGrant(subscription: try await restorePurchases())
     }
+
+    /// A service that predates accounts purchases without a token.
+    func purchase(_ plan: SubscriptionPlan, appAccountToken: UUID?) async throws -> PurchaseOutcome {
+        try await purchase(plan)
+    }
+
+    /// A service that predates accounts has no signed transactions to offer.
+    func premiumTransactionJWS() async -> [String] { [] }
 
     /// Default no-op listener: only the real StoreKit service (US-N04) overrides this, so mocks,
     /// previews, and test stubs stay StoreKit-free and deterministic.

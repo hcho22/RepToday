@@ -10,53 +10,8 @@ enum SubscriptionError: Error, Equatable {
     case notVerified
     /// Any other StoreKit failure, message attached for logs.
     case failed(String)
-    #if COACH_IPHONE_QA
-    /// Only a count, never product payloads or account data. Separates raw empty lookup from filtering.
-    case diagnosticProductsUnavailable(rawProductCount: Int)
-    /// Content-free evidence for product loading and restore in the dedicated QA build only.
-    case diagnosticFailure(StoreKitFailureDiagnostic)
-    #endif
 }
 
-#if COACH_IPHONE_QA
-/// Deliberately cannot carry arbitrary error text, userInfo, receipts or account identifiers.
-struct StoreKitFailureDiagnostic: Equatable {
-    enum Category: String {
-        case cancelled, network, system, storeKit, unclassified
-    }
-
-    struct ErrorCode: Equatable {
-        enum Domain: String {
-            case storeKit = "StoreKit.StoreKitError"
-            case legacyStoreKit = "SKErrorDomain"
-            case appStore = "ASDErrorDomain"
-            case appleMediaServices = "AMSErrorDomain"
-            case url = "NSURLErrorDomain"
-            case cfNetwork = "kCFErrorDomainCFNetwork"
-            case other
-        }
-
-        let domain: Domain
-        let code: Int
-
-        init(_ error: NSError) {
-            domain = Domain(rawValue: error.domain) ?? .other
-            code = error.code
-        }
-
-        var summary: String { "\(domain.rawValue) / \(code)" }
-    }
-
-    let category: Category
-    let error: ErrorCode
-    let underlying: ErrorCode?
-
-    var summary: String {
-        "\(category.rawValue) — \(error.summary)"
-            + (underlying.map { "; underlying \($0.summary)" } ?? "")
-    }
-}
-#endif
 
 /// A purchasable product as read from StoreKit, projected to a plain value so the mapping in
 /// `StoreKitSubscriptionService` is unit-testable without a live store.
@@ -230,6 +185,10 @@ protocol StoreKitFacade: Sendable {
     func currentEntitlements() async -> [StoreEntitlement]
     /// Run the purchase flow for a product id.
     func purchase(productID: String) async throws -> StorePurchaseResult
+    /// Run the purchase flow carrying the signed-in account's App Store token (M4, US-CA02).
+    func purchase(productID: String, appAccountToken: UUID?) async throws -> StorePurchaseResult
+    /// The signed transactions behind the current Premium entitlements, for the server to link (M4).
+    func premiumTransactionJWS() async -> [String]
     /// Sync with the App Store to restore purchases across devices/reinstalls.
     func sync() async throws
     /// A finite snapshot of the customer's transaction history. Verified rows carry the signed facts
@@ -248,4 +207,14 @@ protocol StoreKitFacade: Sendable {
     func listenForTransactions(
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) -> Task<Void, Never>
+}
+
+extension StoreKitFacade {
+    /// A facade that predates accounts purchases without a token.
+    func purchase(productID: String, appAccountToken: UUID?) async throws -> StorePurchaseResult {
+        try await purchase(productID: productID)
+    }
+
+    /// A facade that predates accounts has no signed transactions to offer.
+    func premiumTransactionJWS() async -> [String] { [] }
 }

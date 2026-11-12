@@ -21,13 +21,15 @@ struct PaywallView: View {
         premiumSessionAuthority: PremiumSessionAuthority,
         analyticsService: (any AnalyticsServiceProtocol)? = nil,
         entryPoint: EntryPoint = .progressUpsell,
+        entitlements: (any PremiumEntitlementServiceProtocol)? = nil,
         onUnlock: @escaping (Subscription) -> Void = { _ in }
     ) {
         _viewModel = State(
             initialValue: PaywallViewModel(
                 subscriptionService: subscriptionService,
                 analytics: analyticsService,
-                entryPoint: entryPoint
+                entryPoint: entryPoint,
+                entitlements: entitlements
             )
         )
         self.premiumSessionAuthority = premiumSessionAuthority
@@ -94,15 +96,6 @@ struct PaywallView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel(message)
                 }
-                #if COACH_IPHONE_QA
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Products: \(viewModel.productsDiagnostic.summary)")
-                    Text("Restore: \(viewModel.restoreDiagnostic.summary)")
-                }
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                #endif
                 restoreButton
                 disclosure
                 legalLinks
@@ -120,7 +113,7 @@ struct PaywallView: View {
             Text("Go deeper with Premium")
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Your workouts are always free. Premium just adds the deeper view for when you want it.")
+            Text("Your workouts are always free. Premium adds the coach and the deeper view for when you want them.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
@@ -129,6 +122,9 @@ struct PaywallView: View {
 
     private var benefits: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            // The Coach (M4): the one Premium surface that acts, always waiting for the user's OK.
+            PaywallBenefitRow(icon: "bubble.left.and.bubble.right.fill",
+                              text: "A coach that knows your training - it logs a run, adjusts today and writes workouts, with your OK")
             PaywallBenefitRow(icon: "chart.bar.fill", text: "Pattern-by-pattern balance across every movement")
             PaywallBenefitRow(icon: "calendar", text: "Your weekly training volume over time")
             PaywallBenefitRow(icon: "dial.medium", text: "How your sessions have felt - your difficulty mix")

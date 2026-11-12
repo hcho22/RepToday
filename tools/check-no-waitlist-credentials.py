@@ -85,9 +85,6 @@ FILE_PINNED = {
         'password' + chr(64) + 'api.storekit.apple.com',
         'password' + chr(64) + 'api.storekit-sandbox.apple.com',
     },
-    'ios/RepToday/RepTodayTests/CoachProxyClientConfiguredTests.swift': {
-        'user' + chr(64) + 'coach.reptoday.app',
-    },
 }
 
 WAITLIST_PATHS = (

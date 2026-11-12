@@ -6,8 +6,11 @@ name: CI
 # pushes to main: the repository is private, so Actions minutes are billed and
 # Mac minutes count ten times over; the merged commit is not re-tested on a Mac.
 #
-#   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
-#   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
+#   coach (macos) - the Cloudflare Worker's offline proxy/runtime, native operator, capture and
+#                   recovery tests (the Worker is unchanged; since M4 the app no longer calls its Coach
+#                   route), plus the Release build inspector's self-test.
+#   sink  (ubuntu) - the root Convex project (telemetry sink, account data, the Coach): npm ci +
+#                   typecheck + vitest.
 #   waitlist (ubuntu) - the Waitlist contract file, anonymous-view checker, landing-page checks, Mac-side tooling
 #                    and the address-boundary guard (no Xcode).
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
@@ -44,11 +47,9 @@ jobs:
         run: npm ci --prefix proxy
       - name: Verify runtime, native doubles, filtering and restoration guards
         run: bash tools/test-coach-final-diagnostics.sh
-      # Compiles the client with COACH_STAGING and runs the staging-only safety
-      # tests (CoachStagingTests etc.) that keep staging diagnostics and labels
-      # out of production. Offline: no Apple service, Keychain or network.
-      - name: Coach client tests with COACH_STAGING (staging safety gate)
-        run: bash tools/test-coach-runtime-client.sh
+      # The Release contract since M4: no Coach configuration or retired Worker client in the app.
+      - name: Release build inspector self-test
+        run: python3 tools/test-release-build-inspection.py
 
   # ---------------------------------------------------------------------------
   # Toolchain 1: Convex telemetry sink (repo root, TypeScript) - Linux.

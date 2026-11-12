@@ -145,7 +145,8 @@ final class ConvexSyncRemoteTests: XCTestCase {
           {"table":"sessionPolicy","recordId":"U1","serverSeq":6,"clientUpdatedAt":1000,"payload":"{}"},
           {"table":"workoutLog","recordId":"L1","serverSeq":7,"clientUpdatedAt":1000,"deleted":false,"payload":"{}","completedAt":2000},
           {"table":"outsideActivity","recordId":"A1","serverSeq":8,"clientUpdatedAt":1000,"deleted":true,"date":3000},
-          {"table":"customWorkout","recordId":"C1","serverSeq":9,"clientUpdatedAt":1000,"payload":"{}"}
+          {"table":"customWorkout","recordId":"C1","serverSeq":9,"clientUpdatedAt":1000,"deleted":false,"payload":"{}"},
+          {"table":"aLaterBuildsTable","recordId":"X1","serverSeq":9,"clientUpdatedAt":1000,"payload":"{}"}
         ]}}
         """)
 
@@ -158,6 +159,7 @@ final class ConvexSyncRemoteTests: XCTestCase {
             RemoteSyncRecord(type: .sessionPolicy, recordId: "U1", clientUpdatedAt: Date(syncMilliseconds: 1000), content: .sessionPolicy(payload: "{}")),
             RemoteSyncRecord(type: .workoutLog, recordId: "L1", clientUpdatedAt: Date(syncMilliseconds: 1000), content: .workoutLog(payload: "{}", completedAt: Date(syncMilliseconds: 2000))),
             RemoteSyncRecord(type: .outsideActivity, recordId: "A1", clientUpdatedAt: Date(syncMilliseconds: 1000), content: .deleted),
+            RemoteSyncRecord(type: .customWorkout, recordId: "C1", clientUpdatedAt: Date(syncMilliseconds: 1000), content: .customWorkout(payload: "{}")),
         ], "a table this build does not know is skipped, not fatal")
         let body = try XCTUnwrap(StubConvexProtocol.bodies.first)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])

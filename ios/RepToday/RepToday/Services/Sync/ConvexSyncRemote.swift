@@ -1,7 +1,8 @@
 import Foundation
 
 /// The account backend over Convex (M3, US-AU03/US-AU05): `sync:push`, `sync:pull` and
-/// `accounts:deleteAccount` in `convex/`, reached through `ConvexHTTPClient`.
+/// `accounts:deleteAccount` in `convex/`, reached through `ConvexHTTPClient`. Since M4 it carries
+/// accepted Custom Workouts too.
 ///
 /// This type only maps between the sync engine's values and the wire shapes `convex/sync.ts`
 /// validates; it decides nothing.
@@ -64,6 +65,13 @@ struct ConvexSyncRemote: SyncRemote {
                 self.date = date.syncMilliseconds
             case (.outsideActivity, .deleted):
                 table = "outsideActivity"
+                deleted = true
+            case (.customWorkout, .customWorkout(let payload)):
+                table = "customWorkout"
+                self.payload = payload
+                deleted = false
+            case (.customWorkout, .deleted):
+                table = "customWorkout"
                 deleted = true
             default:
                 // A profile or policy is never deleted through sync, and content always matches its type.
@@ -133,6 +141,14 @@ struct ConvexSyncRemote: SyncRemote {
                 } else {
                     guard let payload, let date else { return nil }
                     content = .outsideActivity(payload: payload, date: Date(syncMilliseconds: date))
+                }
+            case "customWorkout":
+                type = .customWorkout
+                if deleted == true {
+                    content = .deleted
+                } else {
+                    guard let payload else { return nil }
+                    content = .customWorkout(payload: payload)
                 }
             default:
                 return nil

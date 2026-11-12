@@ -63,13 +63,21 @@ final class ReadyViewModel {
     /// after every completed session.
     private(set) var plan: TrainingPlan = .train(.push)
 
+    /// What the user chose about today - rest or train anyway, the length, movements swapped out - from
+    /// Today's own controls or a confirmed Coach proposal (M4, `TodayChoices`). Re-read on every load.
+    private(set) var todayChoices: TodayChoices = .empty(on: "")
+
     /// The user chose "Train anyway" on today's Rest Day, forfeiting the rest: today then shows the next
-    /// group's session instead of the Rest Day card. In memory only - completing that session moves the
-    /// Rotation on, which is what makes the choice stick.
-    private(set) var trainsAnyway = false
+    /// group's session instead of the Rest Day card. Kept for the day (`TodayChoices`); completing that
+    /// session moves the Rotation on, which is what makes the choice stick.
+    var trainsAnyway: Bool { plan.isRest && todayChoices.rest == .trainAnyway }
+
+    /// Today's plan with the user's rest choice applied: the Rotation's plan, a Rest Day the user chose,
+    /// or the next Training Day on a Rest Day they chose to train through.
+    var effectivePlan: TrainingPlan { todayChoices.applied(to: plan) }
 
     /// Whether Today shows the Rest Day card (US-TD05) rather than a session.
-    var showsRestDay: Bool { plan.isRest && !trainsAnyway }
+    var showsRestDay: Bool { effectivePlan.isRest }
 
     /// Every logged Outside Activity (US-HO04), oldest first: the Rotation and the Consistency Score read
     /// them all. Refreshed on every load and after every log, edit or delete.
@@ -136,6 +144,8 @@ final class ReadyViewModel {
     /// Where an in-progress session is read from (US-K04) so an abandoned session can be resumed or
     /// discarded from the Ready Screen. The player writes to this same store while a session is live.
     private let activeSessionStore: any ActiveSessionStore
+    /// Today's choices, shared with the Coach (M4).
+    private let todayChoicesStore: any TodayChoicesStoring
     /// Anonymous product telemetry sink (US-T09). Optional exactly like `OnboardingViewModel.analytics`,
     /// so previews and tests that do not exercise the funnel construct the view model unchanged; when
     /// absent the `ready_screen_shown` emission is simply skipped. The emission goes through it
@@ -207,6 +217,7 @@ final class ReadyViewModel {
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         varietyLanguageResolver: VarietyLanguageResolver = VarietyLanguageResolver(),
         activeSessionStore: any ActiveSessionStore = InMemoryActiveSessionStore(),
+        todayChoicesStore: any TodayChoicesStoring = InMemoryTodayChoicesStore(),
         analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
@@ -221,6 +232,7 @@ final class ReadyViewModel {
         self.consistencyService = consistencyService
         self.varietyLanguageResolver = varietyLanguageResolver
         self.activeSessionStore = activeSessionStore
+        self.todayChoicesStore = todayChoicesStore
         self.analytics = analytics
         self.now = now
     }
@@ -247,6 +259,12 @@ final class ReadyViewModel {
             if !hasSeededSelection {
                 selectedMinutes = user.duration.defaultMinutes
                 hasSeededSelection = true
+            }
+            // Today's choices win over both: a length or a rest chosen from Today or the Coach (M4).
+            todayChoices = todayChoicesStore.choices(on: todayKey)
+            if let minutes = todayChoices.minutes, durationChips.contains(minutes), minutes != selectedMinutes {
+                selectedMinutes = minutes
+                variation = .none
             }
 
             // Surface any abandoned in-progress session so the screen can offer Resume or Discard
@@ -371,6 +389,9 @@ final class ReadyViewModel {
         // A new length starts the Different workout sequence over: its first session is the default one.
         variation = .none
         errorMessage = nil
+        // Kept for the day, so the Coach and a later visit see the length the user chose (M4).
+        todayChoicesStore.update(on: todayKey) { $0.minutes = minutes }
+        todayChoices.minutes = minutes
         do {
             // Unlike the load path, this tap can arrive long after the profile was read - and the
             // injury safety filters on it are editable from Settings and the coach's route while this
@@ -462,7 +483,7 @@ final class ReadyViewModel {
         await refreshInsights(for: refreshed, logs: history)
         // The finished session moved the Rotation (or, a Recovery flow, did not), so Today shows the next
         // Training Day - or the Rest Day a completed Cycle owes - rather than the session just played.
-        trainsAnyway = false
+        clearRestChoice()
         variation = .none
         plan = (try? await workoutEngine.trainingPlan(
             user: refreshed,
@@ -565,9 +586,9 @@ final class ReadyViewModel {
             asOf: now()
         )) ?? plan
         if plan != previousPlan {
-            // A new plan is a new day's work: the old "Train anyway" choice and Different workout presses
-            // belonged to the plan they were made on.
-            trainsAnyway = false
+            // A new plan is a new day's work: the old rest choice and Different workout presses belonged
+            // to the plan they were made on.
+            clearRestChoice()
             variation = .none
         }
         if showsRestDay {
@@ -578,19 +599,34 @@ final class ReadyViewModel {
         await refreshInsights(for: refreshed, logs: history)
     }
 
-    /// "Train anyway" on a Rest Day (US-TD05): forfeit the rest and build the next group's session.
+    /// "Train anyway" on a Rest Day (US-TD05): forfeit the rest and build the next group's session. On a
+    /// day the user chose to rest (M4), it takes that choice back. Kept for the day either way.
     func trainAnyway() async {
-        guard let cached = user, plan.isRest else { return }
-        trainsAnyway = true
+        guard let cached = user, showsRestDay else { return }
+        let previous = todayChoices
+        let choice: CoachProposal.RestChoice? = plan.isRest ? .trainAnyway : nil
+        todayChoicesStore.update(on: todayKey) { $0.rest = choice }
+        todayChoices.rest = choice
         errorMessage = nil
         do {
             let user = (try? await userService.currentUser()) ?? cached
             try await generate(user: user)
         } catch {
-            trainsAnyway = false
+            todayChoicesStore.save(previous)
+            todayChoices = previous
             errorMessage = "We couldn't build that session."
         }
     }
+
+    /// Forgets today's rest choice once the plan it was made on has moved.
+    private func clearRestChoice() {
+        guard todayChoices.rest != nil else { return }
+        todayChoicesStore.update(on: todayKey) { $0.rest = nil }
+        todayChoices.rest = nil
+    }
+
+    /// Today's key in the choices store.
+    private var todayKey: String { TodayChoices.dayKey(for: now(), calendar: calendar) }
 
     /// The Rest Day's optional Recovery flow (US-TD05), built to start now: a short mobility-only session
     /// that neither moves the Rotation nor counts as a session. `nil` when it cannot be built. Starting it
@@ -708,7 +744,11 @@ final class ReadyViewModel {
         )
         let generationMs = max(0, Int(now().timeIntervalSince(generationStart) * 1000))
         guard requested == selectedMinutes, requestedVariation == variation else { return }
-        workout = generated
+        let swapped = await todayChoices.applyingSwaps(
+            to: generated, user: user, recentLogs: recentLogs, sessionPolicy: policy, engine: workoutEngine
+        )
+        guard requested == selectedMinutes, requestedVariation == variation else { return }
+        workout = swapped
         lastGenerationMs = generationMs
 
         // Recompute the Variety Language line from the freshly generated session, so a duration chip
@@ -720,6 +760,9 @@ final class ReadyViewModel {
         varietyNote = note
     }
 
+    /// Today's session with the movements the user swapped out today (M4, `TodayChoices.swappedOut`)
+    /// replaced by the engine's own substitute for each, exactly as the player's Swap picks one. A movement
+    /// with no safe substitute stays.
     /// Store a fresh read of the full history and its recent window.
     private func setLogs(_ logs: [WorkoutLog]) {
         history = logs

@@ -19,21 +19,11 @@ packages:
 configs:
   Debug: debug
   Release: release
-  CoachDeviceQA: release
-  CoachStaging: release
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "QH9S83CX4Y"
-  configs:
-    CoachDeviceQA:
-      # Keep optimized release behavior while allowing this dedicated lane's @testable XCTest bundle.
-      ENABLE_TESTABILITY: YES
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_IPHONE_QA"
-    # Release-optimized Coach staging lane; its client code exists only under COACH_STAGING.
-    CoachStaging:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_STAGING"
 
 targets:
   RepToday:
@@ -66,11 +56,10 @@ targets:
     dependencies:
       - package: Clerk
         product: ClerkKit
-    # Each supplies one value from an untracked local file that no other configuration reads:
-    # CoachStaging its REPTODAY_COACH_STAGING_SUBDOMAIN, Debug the dev REPTODAY_ANALYTICS_SECRET.
+    # Supplies Debug's dev REPTODAY_ANALYTICS_SECRET from an untracked local file no other
+    # configuration reads.
     configFiles:
       Debug: Config/DebugTelemetry.xcconfig
-      CoachStaging: Config/CoachStaging.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reptoday.app
@@ -117,15 +106,13 @@ targets:
       # attacker (see `convex/README.md`). An empty value is inert exactly like an empty endpoint:
       # `LiveAnalyticsService.configured(...)` returns nil and the container falls back to
       # `NoOpAnalyticsService`, which is what a Debug build made without the Keychain item does.
-      # Release enables the approved public Coach origin with App Attest/StoreKit and no binary
-      # secret. Debug stays inert; CoachDeviceQA retains its separate synthetic preparation lane.
-      # Deployment confirmation is separate from genuine-device/model QA; see
-      # docs/coach-runtime-authentication.md.
+      # The Coach (M4, ADR-0017) runs on the account backend below, so it needs no build setting of
+      # its own: no Coach endpoint, secret or App Attest mode ships in any configuration.
       # The account backend (M3, ADR-0016): the Clerk publishable key and the Convex deployment the
       # app syncs to, expanded into `Info.plist`'s `RepTodayClerkPublishableKey` and
       # `RepTodayConvexURL`. A publishable key is a public identifier, safe in a public repository; the
-      # Clerk secret key lives only on the Convex deployment (`npx convex env set`). Debug and the two
-      # Coach QA lanes use the Clerk development instance and the dev deployment. Release stays empty
+      # Clerk secret key lives only on the Convex deployment (`npx convex env set`). Debug uses the
+      # Clerk development instance and the dev deployment. Release stays empty
       # until the production Clerk instance and backend are released, and `tools/archive-release.sh`
       # refuses to archive without both, because a Release build that cannot sign in cannot be used.
       configs:
@@ -134,41 +121,11 @@ targets:
           REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           # The secret key is absent here on purpose, not forgotten: see the comment above.
-          REPTODAY_COACH_SYNTHETIC_QA: "0"
-          REPTODAY_COACH_ENDPOINT: ""
-          REPTODAY_COACH_SECRET: ""
-          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         Release:
           REPTODAY_CLERK_PUBLISHABLE_KEY: ""
           REPTODAY_CONVEX_URL: ""
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
-          REPTODAY_COACH_SYNTHETIC_QA: "0"
-          REPTODAY_COACH_ENDPOINT: https://coach.reptoday.app/coach
-          REPTODAY_COACH_SECRET: ""
-          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
-        CoachDeviceQA:
-          INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach QA"
-          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_test_ZGVhci1mbG91bmRlci03NzM1LmNsZXJrLmFjY291bnRzLmRldiQ
-          REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
-          REPTODAY_ANALYTICS_ENDPOINT: ""
-          REPTODAY_ANALYTICS_SECRET: ""
-          REPTODAY_COACH_ENDPOINT: https://coach.reptoday.app/coach
-          REPTODAY_COACH_SECRET: ""
-          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
-          REPTODAY_COACH_SYNTHETIC_QA: "1"
-        # The separate staging Worker (tools/coach-staging.sh). Same App Attest mode and no secret; the
-        # client accepts only this exact workers.dev URL and only when compiled with COACH_STAGING.
-        CoachStaging:
-          INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach Staging"
-          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_test_ZGVhci1mbG91bmRlci03NzM1LmNsZXJrLmFjY291bnRzLmRldiQ
-          REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
-          REPTODAY_ANALYTICS_ENDPOINT: ""
-          REPTODAY_ANALYTICS_SECRET: ""
-          REPTODAY_COACH_ENDPOINT: "https://reptoday-coach-staging.$(REPTODAY_COACH_STAGING_SUBDOMAIN).workers.dev/coach"
-          REPTODAY_COACH_SECRET: ""
-          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
-          REPTODAY_COACH_SYNTHETIC_QA: "0"
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.
@@ -228,39 +185,6 @@ targets:
 # separate leaves `-scheme RepToday test` exactly the run it has always been, and the touch path is
 # asked for by name - `-scheme RepTodayUITests test` - when that is what is in question.
 schemes:
-  # No local StoreKit configuration and no launch-time send. Build this scheme for the iPhone
-  # preparation lane; ordinary RepToday keeps Debug/Release and its existing local test setup.
-  RepTodayCoachDeviceQA:
-    build:
-      targets:
-        RepToday: all
-    run:
-      config: CoachDeviceQA
-    test:
-      config: CoachDeviceQA
-      targets:
-        - RepTodayTests
-    profile:
-      config: CoachDeviceQA
-    analyze:
-      config: CoachDeviceQA
-    archive:
-      config: CoachDeviceQA
-  # Coach staging lane: release-optimized CoachStaging build with no local StoreKit file, so a real
-  # Sandbox purchase and App Attest reach the separate staging Worker. Archiving always produces
-  # Release, so a staging build can never be archived for distribution.
-  RepTodayCoachStaging:
-    build:
-      targets:
-        RepToday: all
-    run:
-      config: CoachStaging
-    profile:
-      config: CoachStaging
-    analyze:
-      config: CoachStaging
-    archive:
-      config: Release
   RepTodayUITests:
     build:
       targets:
@@ -282,3 +206,5 @@ schemes:
         # Opt-in M3 walks against the development Clerk instance and backend (`AccountEndToEndUITests`).
         REPTODAY_E2E_ACCOUNTS: "$(REPTODAY_E2E_ACCOUNTS)"
         REPTODAY_E2E_EXISTING_USER: "$(REPTODAY_E2E_EXISTING_USER)"
+        # Opt-in M4 walks against the development backend and the real Coach model (`CoachEndToEndUITests`).
+        REPTODAY_E2E_COACH: "$(REPTODAY_E2E_COACH)"

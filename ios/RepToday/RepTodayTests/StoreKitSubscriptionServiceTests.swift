@@ -534,7 +534,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
 
         await service.startObservingTransactions().value
-        let gate = CoachGateViewModel(
+        let gate = PremiumSurfaceReader(
             subscriptionService: service,
             premiumSessionAuthority: authority
         )
@@ -588,7 +588,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             ),
             premiumSessionAuthority: authority
         )
-        let gate = CoachGateViewModel(
+        let gate = PremiumSurfaceReader(
             subscriptionService: service,
             premiumSessionAuthority: authority
         )
@@ -621,7 +621,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         await service.startObservingTransactions().value
 
-        let reconstructedGate = CoachGateViewModel(
+        let reconstructedGate = PremiumSurfaceReader(
             subscriptionService: service,
             premiumSessionAuthority: authority
         )
@@ -685,7 +685,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
             await service.startObservingTransactions().value
 
-            let reconstructedGate = CoachGateViewModel(
+            let reconstructedGate = PremiumSurfaceReader(
                 subscriptionService: service,
                 premiumSessionAuthority: authority
             )
@@ -3279,5 +3279,32 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             named: "telemetry-boundary-transcript.md",
             for: EvidenceOutput.Story.trialConversionSubscribe
         )
+    }
+}
+
+/// A Premium surface's read of the shared authority, as every surface reads it: begin a read, take the
+/// signed snapshot, or record the failure. (The Coach tab's own gate is the server entitlement since M4;
+/// this is the on-device Premium read the Progress tab and the Coach tab's link check share.)
+@MainActor
+private final class PremiumSurfaceReader {
+    private let subscriptionService: any SubscriptionServiceProtocol
+    private let premiumSessionAuthority: PremiumSessionAuthority
+
+    var subscription: Subscription { premiumSessionAuthority.subscription }
+    var isPremium: Bool { subscription.tier == .premium }
+
+    init(subscriptionService: any SubscriptionServiceProtocol, premiumSessionAuthority: PremiumSessionAuthority) {
+        self.subscriptionService = subscriptionService
+        self.premiumSessionAuthority = premiumSessionAuthority
+    }
+
+    func load() async {
+        let token = premiumSessionAuthority.beginRead()
+        do {
+            let grant = try await subscriptionService.currentSubscriptionGrant()
+            premiumSessionAuthority.acceptSnapshot(grant, token: token)
+        } catch {
+            premiumSessionAuthority.acceptReadFailure(token: token)
+        }
     }
 }

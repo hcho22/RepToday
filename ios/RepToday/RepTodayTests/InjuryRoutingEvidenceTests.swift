@@ -103,39 +103,19 @@ final class InjuryRoutingEvidenceTests: XCTestCase {
 
     // MARK: - Evidence: the offer on the real coach surface
 
-    /// A canned transport so the real `CoachView` can complete a turn and raise the offer exactly as it
-    /// does in production.
-    private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
-        func post(
-            to url: URL,
-            jsonBody: Data,
-            headers: [String: String],
-            timeoutSeconds: Double
-        ) async throws -> (data: Data, statusCode: Int) {
-            (Data(#"{"reply":"Sore knees don't love deep flexion - ease off and stop if it pinches."}"#.utf8), 200)
-        }
-    }
-
     func testRealCoachSurfaceShowsTheOfferAfterAnInjuryMessage() async throws {
         var user = MockPersistence.sampleUser
         user.profile.injuries = []
-        let viewModel = CoachViewModel(
-            client: CoachProxyClient(
-                endpoint: URL(string: "https://proxy.example.com/coach")!,
-                safetyIdentifier: testCoachSafetyIdentifier,
-                transport: StubTransport()
-            ),
-            userService: MockUserService(user: user),
-            workoutLogService: MockWorkoutLogService(),
-            exerciseService: try! MockExerciseService()
-        )
-        viewModel.grantDataSharingConsent()
+        let fixture = CoachFixture(user: user)
+        await fixture.coach.setReply { _ in ("Sore knees don't love deep flexion - ease off and stop if it pinches.", []) }
+        let viewModel = fixture.viewModel
+        await viewModel.load()
         viewModel.draft = "my knee hurts on squats"
         await viewModel.send()
         XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .knees)
 
         let (host, hostedWindow) = HostedSurface.host(
-            NavigationStack { CoachView(viewModel: viewModel) }
+            CoachTabView(viewModel: viewModel)
                 .environment(\.services, ServiceContainer.mock()),
             size: surfaceSize
         )

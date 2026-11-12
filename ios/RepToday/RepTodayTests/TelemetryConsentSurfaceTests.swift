@@ -166,7 +166,8 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
     // MARK: - Coach data disclosure mirror (US-AC04)
 
     /// Settings mirrors the coach data disclosure in its own AI Coach section: it states the same facts
-    /// (message + training summary to OpenAI, no proxy storage, standard OpenAI retention disclosed),
+    /// (since M4: message + training records to OpenAI, what is never sent, standard OpenAI retention, the
+    /// conversation kept with the account),
     /// it is the shared copy the pre-use modal shows, and it is separate from - and does not touch -
     /// the telemetry opt-out above it.
     func testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry() throws {
@@ -182,17 +183,16 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
         // The coach footer states the same facts as the pre-use modal.
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
                       "the Settings coach entry names OpenAI; spoke: \(spoken)")
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("proxy")
-                      && spoken.localizedCaseInsensitiveContains("doesn't store"),
-                      "the Settings coach entry states that Rep Today's proxy does not store content; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("training records")
+                      && spoken.localizedCaseInsensitiveContains("flagged injury areas"),
+                      "the Settings coach entry names the training records the server sends (M4); spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("name, email, height and weight are never sent"),
+                      "the Settings coach entry says what is never sent; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse-monitoring")
                       && spoken.localizedCaseInsensitiveContains("up to 30 days"),
                       "the Settings coach entry discloses OpenAI's standard retention; spoke: \(spoken)")
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Rep Today identity"),
-                      "the Settings coach entry separates the safety code from Rep Today identity; spoke: \(spoken)")
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse prevention")
-                      && spoken.localizedCaseInsensitiveContains("delete your account"),
-                      "the Settings coach entry explains the safety code and its rotation; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("saved to your account and deleted with it"),
+                      "the Settings coach entry says the conversation is kept with the account (M4); spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("separate from the anonymous usage data"),
                       "the Settings coach entry declares its separation from telemetry; spoke: \(spoken)")
     }

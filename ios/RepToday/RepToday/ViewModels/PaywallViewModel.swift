@@ -47,45 +47,6 @@ final class PaywallViewModel {
     /// Never a blocking error - the sheet stays dismissible and the free tier is unaffected.
     private(set) var message: String?
 
-    #if COACH_IPHONE_QA
-    enum ProductsDiagnostic: Equatable {
-        case loading, loaded(Int), noUsableProducts, lookupWithoutSubscriptions(Int), failure(StoreKitFailureDiagnostic?)
-
-        var summary: String {
-            switch self {
-            case .loading: return "loading"
-            case .loaded(let count): return "loaded \(count) plans"
-            case .noUsableProducts: return "no usable products"
-            case .lookupWithoutSubscriptions(let count): return "lookup returned \(count) products; 0 usable subscriptions"
-            case .failure(let diagnostic): return diagnostic?.summary ?? "unclassified failure"
-            }
-        }
-    }
-
-    enum RestoreDiagnostic: Equatable {
-        case notAttempted, inProgress, premium, noCurrentEntitlement, failure(StoreKitFailureDiagnostic?)
-
-        var summary: String {
-            switch self {
-            case .notAttempted: return "not attempted"
-            case .inProgress: return "in progress"
-            case .premium: return "Premium success"
-            case .noCurrentEntitlement: return "no current entitlement"
-            case .failure(let diagnostic): return diagnostic?.summary ?? "unclassified failure"
-            }
-        }
-    }
-
-    // Separate latest results, held only by this paywall. Restore must not erase catalog evidence.
-    private(set) var productsDiagnostic: ProductsDiagnostic = .loading
-    private(set) var restoreDiagnostic: RestoreDiagnostic = .notAttempted
-
-    private static func diagnostic(from error: Error) -> StoreKitFailureDiagnostic? {
-        guard let error = error as? SubscriptionError,
-              case .diagnosticFailure(let diagnostic) = error else { return nil }
-        return diagnostic
-    }
-    #endif
 
     /// All store operations share one gate, including explicit catalog retries.
     var isBusy: Bool { isLoading || purchasingPlanID != nil || isRestoring }
@@ -103,6 +64,11 @@ final class PaywallViewModel {
     /// defaults to `.progressUpsell`.
     private let entryPoint: EntryPoint
 
+    /// The account's server-side entitlement (M4, US-CA02): a purchase carries the account's App Store
+    /// token, and a granted purchase or restore is linked to the account so the Coach unlocks. Optional
+    /// and best-effort: StoreKit still unlocks the on-device Premium surfaces whatever the server says.
+    private let entitlements: (any PremiumEntitlementServiceProtocol)?
+
     /// Injected clock so the emitted millisecond client timestamps are deterministic under test,
     /// mirroring `ReadyViewModel`/`OnboardingViewModel`.
     private let now: () -> Date
@@ -117,11 +83,13 @@ final class PaywallViewModel {
         subscriptionService: any SubscriptionServiceProtocol,
         analytics: (any AnalyticsServiceProtocol)? = nil,
         entryPoint: EntryPoint = .progressUpsell,
+        entitlements: (any PremiumEntitlementServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.subscriptionService = subscriptionService
         self.analytics = analytics
         self.entryPoint = entryPoint
+        self.entitlements = entitlements
         self.now = now
     }
 
@@ -145,31 +113,15 @@ final class PaywallViewModel {
 
         isLoading = true
         catalogMessage = nil
-        #if COACH_IPHONE_QA
-        productsDiagnostic = .loading
-        #endif
         defer { isLoading = false }
 
         do {
             plans = try await subscriptionService.premiumPlans()
-            #if COACH_IPHONE_QA
-            productsDiagnostic = plans.isEmpty ? .noUsableProducts : .loaded(plans.count)
-            #endif
             if plans.isEmpty {
                 catalogMessage = "Plans aren't available right now. Your workouts are always free - try again later."
             }
         } catch {
             plans = []
-            #if COACH_IPHONE_QA
-            if let error = error as? SubscriptionError, error == .productsUnavailable {
-                productsDiagnostic = .noUsableProducts
-            } else if let error = error as? SubscriptionError,
-                      case .diagnosticProductsUnavailable(let rawCount) = error {
-                productsDiagnostic = .lookupWithoutSubscriptions(rawCount)
-            } else {
-                productsDiagnostic = .failure(Self.diagnostic(from: error))
-            }
-            #endif
             catalogMessage = "We couldn't load plans right now. Your workouts are always free - try again later."
         }
     }
@@ -185,8 +137,14 @@ final class PaywallViewModel {
         defer { purchasingPlanID = nil }
 
         do {
-            switch try await subscriptionService.purchase(plan) {
+            // Best-effort: with no connection or no account the purchase goes ahead without a token, and
+            // the transaction is linked later (after this purchase, or on Restore Purchases).
+            let token = try? await entitlements?.appAccountToken()
+            switch try await subscriptionService.purchase(plan, appAccountToken: token) {
             case .resolved(let grant):
+                if grant.subscription.tier == .premium {
+                    await linkPremiumToAccount()
+                }
                 reflect(grant)
                 // US-T12: emit the monetization event only on a real grant. A user-cancel resolves
                 // here too but with an unchanged (typically `.free`) entitlement, so keying off the
@@ -208,26 +166,30 @@ final class PaywallViewModel {
         guard !isBusy else { return }
         isRestoring = true
         message = nil
-        #if COACH_IPHONE_QA
-        restoreDiagnostic = .inProgress
-        #endif
         defer { isRestoring = false }
 
         do {
             let grant = try await subscriptionService.restorePurchaseGrant()
-            #if COACH_IPHONE_QA
-            restoreDiagnostic = grant.subscription.tier == .premium ? .premium : .noCurrentEntitlement
-            #endif
+            if grant.subscription.tier == .premium {
+                // Restore Purchases also links an existing subscription to the account (US-CA02).
+                await linkPremiumToAccount()
+            }
             reflect(grant)
             if grant.subscription.tier != .premium {
                 message = "No active Premium subscription was found."
             }
         } catch {
-            #if COACH_IPHONE_QA
-            restoreDiagnostic = .failure(Self.diagnostic(from: error))
-            #endif
             message = "We couldn't restore right now. Please try again later."
         }
+    }
+
+    /// Sends the current Premium transactions to the server to link them to the account. Best-effort:
+    /// the Coach tab links again, and says so, when the account still shows no Premium.
+    private func linkPremiumToAccount() async {
+        guard let entitlements else { return }
+        let transactions = await subscriptionService.premiumTransactionJWS()
+        guard !transactions.isEmpty else { return }
+        _ = try? await entitlements.link(transactions: transactions)
     }
 
     private func reflect(_ grant: SubscriptionGrant) {

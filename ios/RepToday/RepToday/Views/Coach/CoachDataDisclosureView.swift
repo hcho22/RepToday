@@ -1,62 +1,60 @@
 import SwiftUI
 
-/// The canonical copy for the coach data disclosure (US-AC04), in one place so the pre-use modal
-/// (`CoachDataDisclosureView`) and the Settings entry (`SettingsView`) say the same thing and can
-/// never drift. Tests assert against these constants, so a wording change is a single edit.
+/// The canonical copy for the coach data disclosure (US-AC04, updated for the Coach agent in M4,
+/// US-CA07), in one place so the pre-use modal (`CoachDataDisclosureView`) and the Settings entry
+/// (`SettingsView`) say the same thing and can never drift. Tests assert against these constants, so a
+/// wording change is a single edit.
 ///
-/// The disclosure exists because the AI coach is the one honest break in Rep Today's on-device privacy
-/// posture: everything else - your history, your sessions, the engine that builds them - stays on the
-/// device, but a coach answer is written by OpenAI, so in the moment of a call your message *and* a
-/// short summary of your training context leave the device. The copy names that plainly and up front,
-/// never buried in fine print, and never dark-patterned into pretending it does not happen.
+/// Since M4 the coach runs on Rep Today's servers and reads the user's training records there, so the
+/// copy names plainly what reaches the model provider - including workout history and injury history -
+/// and that the conversation is kept with the account. Bump `AppState.coachDataSharingDisclosureVersion`
+/// whenever what it describes changes.
 enum CoachDataDisclosureCopy {
 
     /// The modal's headline.
-    static let title = "How the coach uses your messages"
+    static let title = "How the coach uses your data"
 
-    /// The modal's opening line: it frames the coach as the deliberate exception to on-device privacy.
-    static let intro = "Rep Today builds every workout on your device. The coach is the one part that asks a "
-        + "server for help - so here's exactly what leaves your phone when you chat with it."
+    /// The modal's opening line.
+    static let intro = "Rep Today builds your daily sessions on your phone. The coach is different: it runs on "
+        + "Rep Today's servers and asks an AI service to write its replies - so here's exactly what it uses."
 
-    /// The three disclosure points, each a concrete fact about what happens to your content.
-    static let whatIsSentTitle = "What's sent"
-    static let whatIsSent = "When you send a question, your message and a short summary of your training - "
-        + "your current movements, how consistent you've been, and your phase - go to OpenAI, the AI service that "
-        + "writes the reply. Rep Today's server also checks Apple proofs that this is our app and that your "
-        + "premium purchase is active. Those proofs are not sent to OpenAI."
+    static let whatIsSentTitle = "What's sent to OpenAI"
+    static let whatIsSent = "When you message the coach, Rep Today's server sends OpenAI, the AI service that "
+        + "writes the replies, your message and your training records from your account: your recent sessions, "
+        + "Outside Activities and Custom Workouts, your workout history and progress, the injury areas you've "
+        + "flagged, your fitness level and Focus Areas, whether you're 18 or over, today's plan, and your "
+        + "conversation with the coach. Your name, email, height and weight are never sent."
 
-    static let leavesDeviceTitle = "It leaves your device - just for this"
-    static let leavesDevice = "This is the one moment Rep Today sends your content off your phone. Your full "
-        + "workout history and everything else stay on the device, as they always have."
+    static let leavesDeviceTitle = "What's saved"
+    static let leavesDevice = "Your conversation with the coach and the Custom Workouts you accept are saved to "
+        + "your Rep Today account, so the coach remembers you on any device. Deleting your account deletes them."
 
     static let notStoredTitle = "How it's handled"
-    static let notStored = "Rep Today's proxy doesn't store your message, training summary, or reply. Under "
-        + "its standard retention, OpenAI may keep that content in abuse-monitoring logs for up to 30 days. "
-        + "To help prevent abuse, Rep Today also sends a random Coach code that stays the same between app "
-        + "launches and changes if you delete your account. It is not your installation ID, name, email, or "
-        + "Rep Today identity. The server keeps a device verification key and counters to prevent reused "
-        + "requests, for up to 30 days without activity. It doesn't save your purchase proof. Account deletion "
-        + "clears the key on your phone and tries to remove the server record; if offline, that record expires."
+    static let notStored = "Under its standard retention, OpenAI may keep messages and replies in abuse-monitoring "
+        + "logs for up to 30 days. To help prevent abuse, a code derived from your account - never your name or "
+        + "email - is sent with each message. Nothing the coach suggests changes your plan until you confirm it, "
+        + "and it never gives medical advice."
 
     /// The primary control: an explicit acknowledgement. Tapping it is what opens the coach.
     static let acknowledge = "I understand"
 
-    /// The secondary control: a clear, honest way to back out. Declining sends nothing and leaves the
-    /// coach unused - the user can open it again later and will see this disclosure again.
+    /// The secondary control: a clear, honest way to back out. Declining sends nothing; the disclosure
+    /// is offered again the next time the user wants the coach.
     static let decline = "Not now"
 
-    /// The Settings mirror: the same disclosure, condensed for the Privacy screen. It states the same
-    /// facts and makes the separation from the anonymous-telemetry control above it explicit, so the two
-    /// privacy choices are never confused for one.
+    /// Shown in place of the chat after "Not now": nothing was sent.
+    static let declined = "Nothing has been sent. The coach is ready when you are."
+    static let review = "Review and continue"
+
+    /// The Settings mirror: the same disclosure, condensed for the Privacy screen, and explicit that it is
+    /// separate from the anonymous-telemetry control above it.
     static let settingsRowTitle = "How the coach uses your data"
-    static let settingsFooter = "When you chat with the AI coach, your message and a short training summary "
-        + "are sent to OpenAI to answer. Rep Today's proxy doesn't store them. OpenAI may retain them and the "
-        + "reply in abuse-monitoring logs for up to 30 days under standard retention. A random Coach code is also "
-        + "sent for abuse prevention; it is not your installation ID or Rep Today identity and changes when you "
-        + "delete your account. Apple app and purchase proofs are checked by Rep Today's server, not sent "
-        + "to OpenAI or saved. Device verification keys and counters expire after 30 days without activity; "
-        + "account deletion clears the local key and attempts server deletion. This is separate from the "
-        + "anonymous usage data above."
+    static let settingsFooter = "When you message the AI coach, Rep Today's server sends your message and your "
+        + "training records - recent sessions, workout history, Outside Activities, Custom Workouts, flagged injury "
+        + "areas, fitness level, Focus Areas, whether you're 18 or over and today's plan - to OpenAI to write the "
+        + "reply. Your name, email, height and weight are never sent. OpenAI may keep messages and replies in "
+        + "abuse-monitoring logs for up to 30 days. Your conversation and accepted Custom Workouts are saved to "
+        + "your account and deleted with it. This is separate from the anonymous usage data above."
 }
 
 /// The versioned, pre-use consent disclosure for the AI coach (US-AC04).
@@ -67,7 +65,7 @@ enum CoachDataDisclosureCopy {
 /// lives in `CoachViewModel` (the send path refuses to run until consent is granted); this surface is
 /// how the user reads the disclosure and makes that choice.
 ///
-/// Presentation is owned by `CoachView`, which layers this over the (idle) chat surface and, on
+/// Presentation is owned by `CoachTabView`, which layers this over the (idle) chat surface and, on
 /// acknowledgement, persists the current disclosure version on `AppState`. The same version survives
 /// relaunch; account deletion or a changed contract requires acknowledgement again. Every color, font,
 /// and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the card
@@ -76,7 +74,7 @@ struct CoachDataDisclosureView: View {
     /// Records acknowledgement of the current disclosure contract and opens the coach.
     let onAcknowledge: () -> Void
 
-    /// Backs out without sending anything (dismisses the coach; the disclosure returns on a later open).
+    /// Backs out without sending anything (the disclosure is offered again when the user wants the coach).
     let onDecline: () -> Void
 
     private struct Point: Identifiable {
@@ -88,8 +86,8 @@ struct CoachDataDisclosureView: View {
 
     private let points: [Point] = [
         Point(symbol: "paperplane", title: CoachDataDisclosureCopy.whatIsSentTitle, detail: CoachDataDisclosureCopy.whatIsSent),
-        Point(symbol: "iphone.and.arrow.forward", title: CoachDataDisclosureCopy.leavesDeviceTitle, detail: CoachDataDisclosureCopy.leavesDevice),
-        Point(symbol: "lock.slash", title: CoachDataDisclosureCopy.notStoredTitle, detail: CoachDataDisclosureCopy.notStored)
+        Point(symbol: "tray.full", title: CoachDataDisclosureCopy.leavesDeviceTitle, detail: CoachDataDisclosureCopy.leavesDevice),
+        Point(symbol: "hand.raised", title: CoachDataDisclosureCopy.notStoredTitle, detail: CoachDataDisclosureCopy.notStored)
     ]
 
     var body: some View {

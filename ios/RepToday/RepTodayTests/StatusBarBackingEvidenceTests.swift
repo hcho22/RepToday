@@ -100,14 +100,34 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
         }
     }
 
-    /// Profile only scrolls once large text makes it taller than the screen, so the default size has
-    /// nothing to scroll under the status bar and is not a case.
+    /// Profile only scrolls once large text makes it taller than the screen. Since the Coach left it for
+    /// its own tab (M4) its two rows fit an iPhone SE even at the largest size, so nothing can pass behind
+    /// the band and there is no scrolled render to read; it keeps the backing, and the moment a row makes
+    /// it taller than the screen this checks the band like every other tab.
     func testProfileTabKeepsTheStatusBarClearWhenScrolled() throws {
         for look in [Look.largestLight, .largestDark] {
-            try assertStatusBarClear(
-                ProfileTabView().environment(\.services, ServiceContainer.mock()), look: look,
-                named: "profile-\(look.name)"
+            let profile = ProfileTabView().environment(\.services, ServiceContainer.mock())
+            window?.isHidden = true
+            let (_, hostedWindow) = HostedSurface.host(
+                profile.environment(\.dynamicTypeSize, look.dynamicTypeSize),
+                size: Self.screen, style: look.style, emulatingSafeArea: Self.insets
             )
+            window = hostedWindow
+            let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
+            let scrollView = try XCTUnwrap(primaryScrollView(in: root), "the Profile tab has no scroll view")
+            let overflow = scrollView.contentSize.height + scrollView.adjustedContentInset.top
+                + scrollView.adjustedContentInset.bottom - scrollView.bounds.height
+            if overflow > 0.5 {
+                try assertStatusBarClear(profile, look: look, named: "profile-\(look.name)")
+            } else {
+                try EvidenceOutput.write(HostedSurface.capture(root, size: Self.screen, afterScreenUpdates: true),
+                                         named: "profile-\(look.name)-top.png", for: EvidenceOutput.Story.statusBarBacking)
+                let screenSpace = try XCTUnwrap(root.window?.screen.coordinateSpace)
+                let underBand = AccessibilityTree.elements(in: root).filter { element in
+                    root.convert(element.accessibilityFrame, from: screenSpace).minY < Self.insets.top
+                }
+                XCTAssertTrue(underBand.isEmpty, "the Profile tab fits the screen but draws \(underBand.count) elements under the status bar")
+            }
         }
     }
 

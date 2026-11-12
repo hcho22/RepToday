@@ -3,275 +3,159 @@ import SwiftUI
 import UIKit
 @testable import RepToday
 
-/// Reviewer-visible evidence for US-AC02, the talking coach: a chat surface where the user asks
-/// free-text questions and the coach answers, grounded in their real history, and degrading to a
-/// clear non-blocking state on failure.
+/// Evidence for the Coach tab (M4, US-CA06): the production `CoachTabView` hosted in a real window over
+/// the shared `CoachFixture`, read through the accessibility tree and captured to PNGs.
 ///
-/// This drives the *production* `CoachView` in a real key window, over a view model backed by a stub
-/// transport (no live proxy), and asserts the load-bearing surface on the live accessibility tree -
-/// the user's question and the coach's grounded answer both rendered as distinct turns, the input
-/// control present, the graceful retryable failure banner, and the non-retryable safety outcome.
-/// The story's evidence screens are captured under `artifacts/reports/US-AC02/`.
+/// It covers a Premium conversation with a proposal card of each kind and a Custom Workout card, the
+/// free preview with its paywall entry, the not-in-this-build and offline states - in light and dark, at
+/// the largest accessibility text size and on a 375x667 screen. Behavior is proved in
+/// `CoachViewModelTests`; this suite proves what the user sees and what VoiceOver says. PNGs go to
+/// `EvidenceOutput`'s folder for "US-CA06".
 @MainActor
 final class CoachViewEvidenceTests: XCTestCase {
 
-    private var window: UIWindow?
-    private let story = "US-AC02"
+    private var windows: [UIWindow] = []
+    private let story = "US-CA06"
+    private static let phone = CGSize(width: 393, height: 852)
+    private static let small = CGSize(width: 375, height: 667)
 
     override func tearDown() {
-        window = nil
+        windows.forEach(HostedSurface.dismantle)
+        windows = []
         super.tearDown()
     }
 
-    // MARK: - Stub transport
+    private func host<V: View>(
+        _ view: V, size: CGSize = CoachViewEvidenceTests.phone, style: UIUserInterfaceStyle = .light,
+        textSize: DynamicTypeSize = .large
+    ) -> UIView {
+        let (host, window) = HostedSurface.host(
+            view
+                .environment(\.services, ServiceContainer.mock())
+                .environment(\.dynamicTypeSize, textSize),
+            size: size,
+            style: style
+        )
+        windows.append(window)
+        return host.view
+    }
 
-    private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
-        enum Outcome {
-            case success(reply: String)
-            case safetyRefusal
-            case failure
-            case status(Int)
-        }
-        var outcome: Outcome
-        private(set) var callCount = 0
-        init(_ outcome: Outcome) { self.outcome = outcome }
+    private func spoken(_ root: UIView) -> String {
+        AccessibilityTree.spokenStrings(in: root).joined(separator: " • ")
+    }
 
-        func post(
-            to url: URL,
-            jsonBody: Data,
-            headers: [String: String],
-            timeoutSeconds: Double
-        ) async throws -> (data: Data, statusCode: Int) {
-            callCount += 1
-            switch outcome {
-            case let .success(reply):
-                return (Data(#"{"reply":"\#(reply)"}"#.utf8), 200)
-            case .safetyRefusal:
-                return (Data(#"{"outcome":"safety_refusal"}"#.utf8), 200)
-            case .failure:
-                throw URLError(.notConnectedToInternet)
-            case let .status(code):
-                return (Data(), code)
+    private func capture(_ root: UIView, _ name: String, size: CGSize = CoachViewEvidenceTests.phone) throws {
+        let path = try EvidenceOutput.write(HostedSurface.capture(root, size: size), named: name, for: story)
+        print("US-CA06 EVIDENCE: \(name) -> \(path)")
+    }
+
+    /// A conversation where the Coach has proposed one of each action and a Custom Workout.
+    private func conversationFixture() async -> CoachFixture {
+        let proposals: [CoachProposal] = [
+            CoachFixture.proposal(.outsideActivity(type: .run, minutes: 30, distanceMeters: 5000, day: .today)),
+            CoachFixture.proposal(.todayLength(minutes: 10)),
+            CoachFixture.proposal(.reminder(hour: 7, minute: 30, weekdays: [2, 3, 4, 5, 6])),
+        ]
+        let fixture = CoachFixture(coach: MockCoachService(now: { CoachFixture.now }) { message in
+            message.contains("workout")
+                ? ("Here's a short workout built around your recent sessions. Look it over, then accept it to play.",
+                   [CoachFixture.proposal(.customWorkout(CoachFixture.draft))])
+                : ("Nice work getting that run in. I've put a few things below for you to confirm.", proposals)
+        })
+        await fixture.viewModel.load()
+        fixture.viewModel.draft = "I ran 5k this morning, keep today short and remind me on weekdays"
+        await fixture.viewModel.send()
+        fixture.viewModel.draft = "Write me a workout for a hotel room"
+        await fixture.viewModel.send()
+        return fixture
+    }
+
+    func testPremiumConversationShowsProposalCardsAndTheCustomWorkoutCard() async throws {
+        let fixture = await conversationFixture()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let root = host(CoachTabView(viewModel: fixture.viewModel), size: CGSize(width: 393, height: 2200), style: style)
+            let spoken = spoken(root)
+            XCTAssertTrue(spoken.contains("You said: I ran 5k this morning"), spoken)
+            XCTAssertTrue(spoken.contains("Coach said: Nice work getting that run in"), spoken)
+            XCTAssertTrue(spoken.contains("Log a 30-minute run"), spoken)
+            XCTAssertTrue(spoken.contains("Make today 10 minutes"), spoken)
+            XCTAssertTrue(spoken.contains("Remind me at"), spoken)
+            XCTAssertTrue(spoken.contains("Desk Reset"), spoken)
+            XCTAssertTrue(spoken.contains("Incline Push-Up, 3 sets of 10 reps"), spoken)
+            XCTAssertTrue(spoken.contains("Doorway Chest Opener") && spoken.contains("text only, no picture"), spoken)
+            XCTAssertNotNil(AccessibilityTree.element(labeled: CoachProposalCopy.confirm, in: root))
+            XCTAssertNotNil(AccessibilityTree.element(labeled: "Review and accept", in: root))
+            for chip in CoachViewModel.quickActions.prefix(2) {
+                XCTAssertNotNil(AccessibilityTree.element(labeled: chip.title, in: root), "chip \(chip.title)")
             }
+            try capture(root, "01-conversation-\(style == .dark ? "dark" : "light").png", size: CGSize(width: 393, height: 2200))
         }
     }
 
-    private func makeViewModel(transport: any CoachProxyTransport) -> CoachViewModel {
-        var user = MockPersistence.sampleUser
-        user.phase = .discipline
-        let viewModel = CoachViewModel(
-            client: CoachProxyClient(
-                endpoint: URL(string: "https://coach.reptoday.app/coach")!,
-                safetyIdentifier: testCoachSafetyIdentifier,
-                transport: transport
+    func testConversationAtTheLargestTextSizeAndOnASmallScreen() async throws {
+        let fixture = await conversationFixture()
+        let large = host(CoachTabView(viewModel: fixture.viewModel), size: CGSize(width: 393, height: 4000), textSize: .accessibility5)
+        XCTAssertTrue(spoken(large).contains("Log a 30-minute run"))
+        try capture(large, "02-conversation-largest-text.png", size: CGSize(width: 393, height: 4000))
+
+        let small = host(CoachTabView(viewModel: fixture.viewModel), size: Self.small)
+        XCTAssertNotNil(AccessibilityTree.element(labeled: "Send", in: small), "the input stays reachable on a 375x667 screen")
+        try capture(small, "03-conversation-375x667.png", size: Self.small)
+    }
+
+    func testAppliedProposalShowsDoneAndUndo() async throws {
+        let fixture = await conversationFixture()
+        let message = try XCTUnwrap(fixture.viewModel.messages.first { !$0.proposals.isEmpty })
+        await fixture.viewModel.apply(message.proposals[0], in: message)
+        let root = host(CoachTabView(viewModel: fixture.viewModel), size: CGSize(width: 393, height: 2200))
+        XCTAssertNotNil(AccessibilityTree.element(labeled: CoachProposalCopy.undo, in: root), spoken(root))
+        XCTAssertTrue(spoken(root).contains(CoachProposalCopy.applied))
+        try capture(root, "04-applied-with-undo.png", size: CGSize(width: 393, height: 2200))
+    }
+
+    func testFreeUserSeesThePreviewAndThePaywallEntry() async throws {
+        let fixture = CoachFixture(premium: false)
+        await fixture.viewModel.load()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let root = host(CoachTabView(viewModel: fixture.viewModel), style: style)
+            let spoken = spoken(root)
+            XCTAssertTrue(spoken.contains(CoachCopy.previewTitle), spoken)
+            XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.unlock, in: root))
+            XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.restore, in: root))
+            XCTAssertNil(AccessibilityTree.element(labeled: "Message to the coach", in: root), "a free user gets no chat")
+            try capture(root, "05-free-preview-\(style == .dark ? "dark" : "light").png")
+        }
+        let large = host(CoachTabView(viewModel: fixture.viewModel), size: CGSize(width: 393, height: 2400), textSize: .accessibility5)
+        XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.unlock, in: large))
+        try capture(large, "06-free-preview-largest-text.png", size: CGSize(width: 393, height: 2400))
+        let sent = await fixture.coach.sent
+        XCTAssertTrue(sent.isEmpty, "the preview never talks to the Coach")
+    }
+
+    func testUnavailableAndOfflineStatesAreCalm() async throws {
+        let unavailable = CoachViewModel(
+            coach: nil,
+            entitlements: nil,
+            subscriptionService: MockSubscriptionService(),
+            premiumAuthority: PremiumSessionAuthority(),
+            applier: CoachProposalApplier(
+                userService: MockUserService(),
+                outsideActivityService: InMemoryOutsideActivityService(),
+                todayChoices: InMemoryTodayChoicesStore(),
+                reminders: CoachFixture().reminders,
+                customWorkouts: InMemoryCustomWorkoutService(),
+                planInputsChanged: {}
             ),
-            userService: MockUserService(user: user),
-            workoutLogService: MockWorkoutLogService(),
-            exerciseService: try! MockExerciseService()
+            today: CoachTodayReader(services: ServiceContainer.mock()),
+            customWorkouts: InMemoryCustomWorkoutService(),
+            userService: MockUserService(),
+            exerciseService: try MockExerciseService()
         )
-        // These US-AC02 evidence surfaces exercise the answered conversation, so consent to the US-AC04
-        // data disclosure is granted; the disclosure itself has its own evidence in US-AC04.
-        viewModel.grantDataSharingConsent()
-        return viewModel
-    }
-
-    private func labels() -> [String] {
-        guard let root = window?.rootViewController?.view else { return [] }
-        return AccessibilityTree.labels(in: root)
-    }
-
-    private func labelsContain(_ needle: String) -> Bool {
-        labels().contains { $0.localizedCaseInsensitiveContains(needle) }
-    }
-
-    private func capture(named fileName: String, size: CGSize) throws {
-        guard let root = window?.rootViewController?.view else { return XCTFail("no hosted surface") }
-        let image = HostedSurface.capture(root, size: size)
-        let path = try EvidenceOutput.write(image, named: fileName, for: story)
-        print("US-AC02 EVIDENCE: \(fileName) -> \(path)")
-    }
-
-    // MARK: - Evidence
-
-    /// A grounded answered conversation: the user asks why they got squats, the coach answers, and
-    /// both turns render as distinct, VoiceOver-legible bubbles.
-    func testCoachAnswersAQuestionAsDistinctTurns() async throws {
-        let transport = StubTransport(.success(
-            reply: "Squats came up because they were your stalest movement pattern this week."
-        ))
-        let viewModel = makeViewModel(transport: transport)
-
-        viewModel.draft = "Why did I get squats today?"
-        await viewModel.send()
-
-        XCTAssertEqual(viewModel.messages.count, 2)
-
-        let size = CGSize(width: 393, height: 852)
-        let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
-        window = hostedWindow
-
-        XCTAssertTrue(labelsContain("You said: Why did I get squats today?"),
-                      "the user's turn should be a distinct labelled bubble; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Coach said: Squats came up because they were your stalest"),
-                      "the coach's grounded answer should render; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Message to the coach"), "the input control is present")
-        XCTAssertTrue(labelsContain("Send"), "the send control is present")
-
-        try capture(named: "01-coach-answered-conversation.png", size: size)
-        _ = host
-    }
-
-    /// Graceful failure: a transport error becomes a clear, non-blocking, retryable banner - the
-    /// user's question survives and the workout is explicitly said to be unaffected.
-    func testCoachFailureIsGracefulAndRetryable() async throws {
-        let transport = StubTransport(.failure)
-        let viewModel = makeViewModel(transport: transport)
-
-        viewModel.draft = "How do I do a pistol squat?"
-        await viewModel.send()
-
-        XCTAssertNotNil(viewModel.errorMessage)
-        XCTAssertTrue(viewModel.canRetry)
-
-        let size = CGSize(width: 393, height: 852)
-        let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
-        window = hostedWindow
-
-        XCTAssertTrue(labelsContain("You said: How do I do a pistol squat?"),
-                      "the question survives a failure; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("workout isn't affected"),
-                      "the failure copy reassures the core loop is unaffected; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Try again"), "the failure is retryable; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Message to the coach"))
-        XCTAssertFalse(labelsContain("Coach is not enabled in this build"))
-        XCTAssertEqual(viewModel.localAvailability, .enabled)
-
-        try capture(named: "02-coach-graceful-failure.png", size: size)
-        _ = host
-    }
-
-    func testSafetyRefusalShowsOwnedMessageWithoutRetryControl() async {
-        let viewModel = makeViewModel(transport: StubTransport(.safetyRefusal))
-
-        viewModel.draft = "Unsafe request"
-        await viewModel.send()
-
-        let size = CGSize(width: 393, height: 852)
-        let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
-        window = hostedWindow
-
-        XCTAssertTrue(labelsContain(CoachViewModel.safetyRefusalMessage),
-                      "the app shows only its stable safety message; tree reads \(labels())")
-        XCTAssertFalse(labelsContain("Try again"),
-                       "the refusal must not offer to resend the same request; tree reads \(labels())")
-        _ = host
-    }
-
-    /// The unconfigured build: no proxy origin set, so the surface shows a calm "unavailable" state
-    /// rather than an error, including ordinary Debug and invalid configurations.
-    func testUnavailableStateWhenUnconfigured() async throws {
-        let viewModel = CoachViewModel(
-            client: nil,
-            userService: MockUserService(user: MockPersistence.sampleUser),
-            workoutLogService: MockWorkoutLogService(),
-            exerciseService: try! MockExerciseService()
-        )
-
-        let size = CGSize(width: 393, height: 852)
-        let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
-        window = hostedWindow
-
-        XCTAssertTrue(labelsContain("Coach is not enabled in this build"),
-                      "the unconfigured build shows a calm unavailable state; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Contact Rep Today support about a Coach-enabled build"))
-        XCTAssertFalse(labelsContain("Try again"))
-        XCTAssertFalse(labelsContain("Message to the coach"))
-        XCTAssertTrue(labelsContain("workouts are unaffected"),
-                      "the unavailable copy reassures the core loop is unaffected; tree reads \(labels())")
-
-        try capture(named: "03-coach-unavailable.png", size: size)
-        _ = host
-    }
-
-    // Trusted device/proof doubles exercise the real runtime transport's failure paths. They do
-    // not mint or verify Apple evidence, and no HTTP request leaves this process.
-    private struct Attester: CoachAppAttesting {
-        let isSupported: Bool
-        func generateKey() async throws -> String { throw CoachAuthenticationError.unavailable }
-        func attest(key: String, hash: Data) async throws -> Data { throw CoachAuthenticationError.unavailable }
-        func assertion(key: String, hash: Data) async throws -> Data { throw CoachAuthenticationError.unavailable }
-    }
-
-    private actor MissingProof: CoachPurchaseProofProviding {
-        private(set) var callCount = 0
-        func appStorePremiumProof() async throws -> String {
-            callCount += 1
-            throw CoachAuthenticationError.unavailable
-        }
-    }
-
-    private struct EmptyKeys: CoachAuthenticationKeyStoring {
-        func load() -> String? { nil }
-        func save(_ key: String?) {}
-    }
-
-    func testDeviceAndPurchaseProofFailuresKeepConversationAndRetry() async throws {
-        for supported in [false, true] {
-            let http = StubTransport(.success(reply: "Must never be requested"))
-            let proof = MissingProof()
-            let runtime = RuntimeAuthenticatedCoachTransport(
-                attester: Attester(isSupported: supported), purchase: proof,
-                keys: EmptyKeys(), http: http
-            )
-            let viewModel = makeViewModel(transport: runtime)
-            viewModel.draft = "Why squats today?"
-            await viewModel.send()
-            assertFailedConversation(viewModel)
-            await viewModel.retryLastMessage()
-            assertFailedConversation(viewModel)
-            let proofCalls = await proof.callCount
-            XCTAssertEqual(proofCalls, supported ? 2 : 0, "only a supported device reaches the proof gate")
-            XCTAssertEqual(http.callCount, 0, "device/proof rejection happens before HTTP")
-        }
-    }
-
-    func testNetworkAndServiceFailuresKeepConversationAndCanRecoverThroughRetry() async throws {
-        for outcome: StubTransport.Outcome in [.failure, .status(401), .status(503)] {
-            let transport = StubTransport(outcome)
-            let viewModel = makeViewModel(transport: transport)
-            viewModel.draft = "Why squats today?"
-            await viewModel.send()
-            assertFailedConversation(viewModel)
-
-            // Hosted SwiftUI combines the banner without exposing a separately activatable
-            // retry button. Exercise the same production method used by CoachView.beginRetry;
-            // this proves retry behavior and the resulting UI, not a device tap.
-            transport.outcome = .success(reply: "They were your stalest movement pattern.")
-            await viewModel.retryLastMessage()
-            HostedSurface.pump(for: HostedSurface.settleInterval)
-            XCTAssertEqual(transport.callCount, 2)
-            XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
-            XCTAssertNil(viewModel.errorMessage)
-            XCTAssertEqual(viewModel.localAvailability, .enabled)
-            XCTAssertTrue(labelsContain("Message to the coach"))
-            XCTAssertTrue(labelsContain("Coach said: They were your stalest movement pattern"))
-            XCTAssertFalse(labelsContain("Coach is not enabled in this build"))
-        }
-    }
-
-    private func assertFailedConversation(_ viewModel: CoachViewModel,
-                                          file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertEqual(viewModel.localAvailability, .enabled, file: file, line: line)
-        XCTAssertTrue(viewModel.canRetry, file: file, line: line)
-        XCTAssertEqual(viewModel.messages.map(\.author), [.user], file: file, line: line)
-        window?.isHidden = true
-        let (_, hostedWindow) = HostedSurface.host(
-            NavigationStack { CoachView(viewModel: viewModel) }, size: CGSize(width: 393, height: 852)
-        )
-        window = hostedWindow
-        XCTAssertTrue(labelsContain("You said: Why squats today?"), file: file, line: line)
-        XCTAssertTrue(labelsContain("Message to the coach"), file: file, line: line)
-        XCTAssertTrue(labelsContain(CoachViewModel.genericFailureMessage), file: file, line: line)
-        XCTAssertFalse(labelsContain("Coach is not enabled in this build"), file: file, line: line)
+        await unavailable.load()
+        XCTAssertEqual(unavailable.access, .unavailable)
+        let root = host(CoachTabView(viewModel: unavailable))
+        XCTAssertTrue(spoken(root).contains(CoachCopy.unavailable), spoken(root))
+        try capture(root, "07-unavailable.png")
     }
 }

@@ -246,7 +246,6 @@ final class CoreDataServicesTests: XCTestCase {
         let services = ServiceContainer.live(
             context: context,
             installId: "test-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
             analyticsService: NoOpAnalyticsService()
         )
 
@@ -277,7 +276,6 @@ final class CoreDataServicesTests: XCTestCase {
         let services = ServiceContainer.live(
             context: context,
             installId: "test-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
             analyticsService: NoOpAnalyticsService()
         )
         let user = makeUser(id: "apple-user-1", score: 70)

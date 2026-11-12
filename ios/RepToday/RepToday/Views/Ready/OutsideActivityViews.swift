@@ -31,6 +31,37 @@ enum OutsideActivityCopy {
         }
     }
 
+    /// What a played Custom Workout did to the plan (decision 27, FR-8): it counts like an Outside Activity.
+    static func customWorkoutEffect(group: TrainingDay?) -> String {
+        switch group {
+        case .legs?: return "This Custom Workout worked your legs, so your next Legs Day waits a day. It counts as showing up."
+        case .pull?: return "This Custom Workout worked your pulling muscles, so your next Pull Day waits a day. It counts as showing up."
+        case .push?: return "This Custom Workout worked your pushing muscles, so your next Push Day waits a day. It counts as showing up."
+        case nil: return "This Custom Workout counts as showing up. Your Training Days stay as they are."
+        }
+    }
+
+    /// "Custom Workout: Desk Reset · 20 min", or the type summary for any other activity.
+    static func summary(of activity: OutsideActivity) -> String {
+        guard activity.isCustomWorkout else {
+            return summary(type: activity.type, durationMinutes: activity.durationMinutes, distanceMeters: activity.distanceMeters)
+        }
+        return [activity.label, "\(activity.durationMinutes) min"].joined(separator: " · ")
+    }
+
+    /// The spoken form of `summary(of:)`.
+    static func spokenSummary(of activity: OutsideActivity) -> String {
+        guard activity.isCustomWorkout else {
+            return spokenSummary(type: activity.type, durationMinutes: activity.durationMinutes, distanceMeters: activity.distanceMeters)
+        }
+        return [activity.label, CountWording.phrase(activity.durationMinutes, singular: "minute", plural: "minutes")].joined(separator: ", ")
+    }
+
+    /// The icon an activity row shows.
+    static func systemImage(of activity: OutsideActivity) -> String {
+        activity.isCustomWorkout ? "figure.strengthtraining.functional" : activity.type.systemImage
+    }
+
     /// "Run · 30 min · 3.1 mi"
     static func summary(type: OutsideActivityType, durationMinutes: Int, distanceMeters: Double?) -> String {
         var parts = [type.label, "\(durationMinutes) min"]
@@ -144,18 +175,14 @@ private struct OutsideActivityRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: Theme.Spacing.md) {
-                Image(systemName: activity.type.systemImage)
+                Image(systemName: OutsideActivityCopy.systemImage(of: activity))
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.accent)
                     .frame(width: iconColumnWidth)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(OutsideActivityCopy.summary(
-                        type: activity.type,
-                        durationMinutes: activity.durationMinutes,
-                        distanceMeters: activity.distanceMeters
-                    ))
+                    Text(OutsideActivityCopy.summary(of: activity))
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -175,11 +202,7 @@ private struct OutsideActivityRow: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            OutsideActivityCopy.spokenSummary(
-                type: activity.type,
-                durationMinutes: activity.durationMinutes,
-                distanceMeters: activity.distanceMeters
-            ) + ", " + OutsideActivityCopy.day(activity.date).lowercased()
+            OutsideActivityCopy.spokenSummary(of: activity) + ", " + OutsideActivityCopy.day(activity.date).lowercased()
         )
         .accessibilityHint("Edit or delete this activity")
         .accessibilityAddTraits(.isButton)
@@ -328,19 +351,39 @@ struct OutsideActivitySheet: View {
             Form {
                 // One row per kind of workout rather than a menu, so the choice is one tap and its name
                 // never truncates at the larger text sizes.
-                Section {
-                    ForEach(OutsideActivityType.allCases) { option in
-                        typeRow(option)
+                if let existing, existing.isCustomWorkout {
+                    // A played Custom Workout keeps what it was: only its time and length can change.
+                    Section {
+                        Label(existing.label, systemImage: OutsideActivityCopy.systemImage(of: existing))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    } header: {
+                        Text("Activity")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    } footer: {
+                        Text(OutsideActivityCopy.customWorkoutEffect(group: existing.customWorkoutGroup))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                } header: {
-                    Text("Activity")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                } footer: {
-                    Text(OutsideActivityCopy.effect(of: type))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Section {
+                        ForEach(OutsideActivityType.allCases) { option in
+                            typeRow(option)
+                        }
+                    } header: {
+                        Text("Activity")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    } footer: {
+                        Text(OutsideActivityCopy.effect(of: type))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Section {
@@ -366,7 +409,7 @@ struct OutsideActivitySheet: View {
                         @unknown default: break
                         }
                     }
-                    if type.hasDistance {
+                    if type.hasDistance && existing?.isCustomWorkout != true {
                         labeledValue("Distance") {
                             HStack(spacing: Theme.Spacing.sm) {
                                 TextField("Optional", text: $distanceText)
@@ -527,8 +570,13 @@ struct OutsideActivitySheet: View {
             type: type,
             date: min(date, Date()),
             durationMinutes: durationMinutes,
-            distanceMeters: type.hasDistance ? parsedDistance.map(DistanceFormatting.meters(fromValue:)) : nil,
-            healthWorkoutId: existing?.healthWorkoutId
+            distanceMeters: type.hasDistance && existing?.isCustomWorkout != true
+                ? parsedDistance.map(DistanceFormatting.meters(fromValue:))
+                : nil,
+            healthWorkoutId: existing?.healthWorkoutId,
+            customWorkoutId: existing?.customWorkoutId,
+            customWorkoutTitle: existing?.customWorkoutTitle,
+            customWorkoutGroup: existing?.customWorkoutGroup
         )
         Task {
             let saved = await onSave(activity)

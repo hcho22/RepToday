@@ -4,9 +4,10 @@ import UIKit
 @testable import RepToday
 
 /// Reviewer-visible evidence that the Profile tab's rows line their titles up: the production
-/// `ProfileTabView` (Account, Coach, Settings) rendered at the default text size and at the largest
-/// accessibility size, in light and dark, under `artifacts/reports/profile-row-alignment/` - plus the
-/// largest size on an iPhone SE, where the tab scrolls rather than squeezing anything to fit.
+/// `ProfileTabView` (Account, Settings; the Coach has its own tab since M4) rendered at the default
+/// text size and at the largest accessibility size, in light and dark, under
+/// `artifacts/reports/profile-row-alignment/` - plus the
+/// largest size on an iPhone SE, where nothing is squeezed to fit and every row stays reachable.
 ///
 /// Every row's title starts at the same x because its glyph sits in a fixed-width column. That is read
 /// off the rendered rows themselves, and the column only holds the promise while every glyph fits
@@ -43,7 +44,7 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
         let size = CGSize(width: 393, height: dynamicTypeSize.isAccessibilitySize ? 1100 : 852)
         let root = try hostProfile(dynamicTypeSize: dynamicTypeSize, size: size, style: style)
 
-        for title in ["Account", "Coach", "Settings"] {
+        for title in ["Account", "Settings"] {
             XCTAssertNotNil(AccessibilityTree.element(labeled: title, in: root),
                             "the Profile tab should offer the \(title) row; tree reads \(AccessibilityTree.labels(in: root))")
         }
@@ -154,9 +155,10 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
     }
 
     /// On an iPhone SE (375x667 pt: a 20 pt status bar above, a 49 pt tab bar below) at the largest text
-    /// size the Profile tab is taller than the screen. Nothing in it is squeezed to fit - every element
-    /// keeps the height it has with unlimited room - and every element, the last row included, can be
-    /// scrolled fully into view between the status bar and the tab bar.
+    /// size nothing in the Profile tab is squeezed to fit - every element keeps the height it has with
+    /// unlimited room - and every element, the last row included, sits (or scrolls) fully into view
+    /// between the status bar and the tab bar. With two rows it fits the screen today; a row added later
+    /// makes it scroll, and this still holds.
     private func assertProfileScrollsOnAnIPhoneSE(style: UIUserInterfaceStyle, named name: String) throws {
         let screen = CGSize(width: 375, height: 667)
         let insets = UIEdgeInsets(top: 20, left: 0, bottom: 49, right: 0)
@@ -170,7 +172,7 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
         let elements = AccessibilityTree.elements(in: root)
         XCTAssertEqual(elements.map(\.accessibilityLabel), natural.map(\.0),
                        "the iPhone SE tab should carry the same elements as the unlimited one")
-        for title in ["Account", "Coach", "Settings"] {
+        for title in ["Account", "Settings"] {
             XCTAssertTrue(elements.contains { $0.accessibilityLabel == title }, "the Profile tab should offer the \(title) row")
         }
         for (element, (label, height)) in zip(elements, natural) {

@@ -56,7 +56,7 @@ final class CoachInjuryRoutingTests: XCTestCase {
 
     // MARK: - Not signals (the false-positive bar)
 
-    /// The bar `CoachIntentMapper` set and this must hold too: a movement question that mentions a body
+    /// The bar this must hold: a movement question that mentions a body
     /// part is not a health signal.
     func testFormQuestionsNeverRoute() {
         let messages = [

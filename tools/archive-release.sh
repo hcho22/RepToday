@@ -79,7 +79,7 @@ fi
 
 python3 "$repo_root/tools/validate-app-bundle-metadata.py" --release "$archive_plist"
 
-python3 "$repo_root/tools/inspect-coach-qa-build.py" \
+python3 "$repo_root/tools/inspect-release-build.py" \
     --app "$archive_path/Products/Applications/RepToday.app" \
     --configuration Release \
     --scheme "$repo_root/ios/RepToday/RepToday.xcodeproj/xcshareddata/xcschemes/RepToday.xcscheme"

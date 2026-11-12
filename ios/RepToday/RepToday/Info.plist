@@ -33,21 +33,6 @@
 	     inside the binary and is extractable by anyone who unpacks the app. See `convex/README.md`. -->
 	<key>RepTodayAnalyticsSecret</key>
 	<string>$(REPTODAY_ANALYTICS_SECRET)</string>
-	<!-- The premium coach proxy's `POST /coach` origin (US-AC02), expanded from the per-configuration
-	     `REPTODAY_COACH_ENDPOINT` build setting exactly like the analytics endpoint above. See
-	     `docs/coach-runtime-authentication.md` for configuration and deployment status. An
-	     empty/missing/mistyped value makes `CoachProxyClient.configured(...)` return nil, leaving the
-	     coach inert (the chat surface shows a clear "coach unavailable" state) rather than pointing at a
-	     wrong destination. Production app configuration requires `app-attest-storekit-v1` and no shared
-	     secret; the operator bearer remains confined to separate native QA. -->
-	<key>RepTodayCoachEndpoint</key>
-	<string>$(REPTODAY_COACH_ENDPOINT)</string>
-	<!-- The coach client shared secret (US-AC02), expanded from `REPTODAY_COACH_SECRET`, is available
-	     only to explicit DEBUG non-production configuration. Ordinary Debug and Release values stay
-	     empty. The approved production origin rejects a nonempty value because shipped authentication
-	     uses App Attest/StoreKit; the operator bearer must never be distributed in an app binary. -->
-	<key>RepTodayCoachSecret</key>
-	<string>$(REPTODAY_COACH_SECRET)</string>
 	<!-- The account backend (M3, ADR-0016), expanded from the per-configuration
 	     `REPTODAY_CLERK_PUBLISHABLE_KEY` and `REPTODAY_CONVEX_URL` build settings in
 	     `ios/RepToday/project.yml`. The publishable key is Clerk's public identifier for the instance
@@ -60,10 +45,6 @@
 	<string>$(REPTODAY_CONVEX_URL)</string>
 	<key>RepTodayBuildConfiguration</key>
 	<string>$(CONFIGURATION)</string>
-	<key>RepTodayCoachSyntheticQA</key>
-	<string>$(REPTODAY_COACH_SYNTHETIC_QA)</string>
-	<key>RepTodayCoachAuthMode</key>
-	<string>$(REPTODAY_COACH_AUTH_MODE)</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today saves your completed sessions as workouts in Health so your movement counts where you already track it.</string>
 	<key>NSHealthShareUsageDescription</key>

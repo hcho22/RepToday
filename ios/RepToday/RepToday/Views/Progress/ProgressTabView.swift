@@ -23,6 +23,8 @@ struct ProgressTabView: View {
     /// Optional so the tab still renders when hosted without an `AppState` (previews, evidence suites);
     /// with none, the note is simply never raised.
     @Environment(AppState.self) private var appState: AppState?
+    /// For the paywall's account link (M4, US-CA02): a purchase made here also unlocks the Coach.
+    @Environment(\.services) private var services
 
     /// The subscription service the paywall (US-N04) purchases through. Held separately from the view
     /// model so the upsell can present the paywall sheet; the mock keeps previews rendering.
@@ -87,7 +89,8 @@ struct ProgressTabView: View {
                 subscriptionService: subscriptionService,
                 premiumSessionAuthority: premiumSessionAuthority,
                 analyticsService: analyticsService,
-                entryPoint: .progressUpsell
+                entryPoint: .progressUpsell,
+                entitlements: services.premiumEntitlements
             ) { _ in
                 Task { await viewModel.load() }
             }

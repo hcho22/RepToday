@@ -174,32 +174,6 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         )
     }
 
-    private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
-        let fails: Bool
-        init(fails: Bool) { self.fails = fails }
-        func post(
-            to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double
-        ) async throws -> (data: Data, statusCode: Int) {
-            if fails { throw URLError(.notConnectedToInternet) }
-            return (Data(#"{"reply":"Squats came up because they were your stalest pattern this week."}"#.utf8), 200)
-        }
-    }
-
-    private func coachViewModel(fails: Bool) -> CoachViewModel {
-        let viewModel = CoachViewModel(
-            client: CoachProxyClient(
-                endpoint: URL(string: "https://coach.reptoday.app/coach")!,
-                safetyIdentifier: testCoachSafetyIdentifier,
-                transport: StubTransport(fails: fails)
-            ),
-            userService: MockUserService(user: MockPersistence.sampleUser),
-            workoutLogService: MockWorkoutLogService(),
-            exerciseService: try! MockExerciseService()
-        )
-        viewModel.grantDataSharingConsent()
-        return viewModel
-    }
-
     // MARK: - Filled accent controls
 
     /// Onboarding's duration step: the selected duration chip and the "Continue" button that leads to
@@ -259,13 +233,25 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
 
     /// The coach: the user's bubble on the fill, and the failure banner's accent "Try again".
     func testCoachBubbleAndRetry() async throws {
-        let viewModel = coachViewModel(fails: true)
-        viewModel.draft = "Why did I get squats today?"
-        await viewModel.send()
-        XCTAssertTrue(viewModel.canRetry)
-        host(NavigationStack { CoachView(viewModel: viewModel) })
+        let fixture = CoachFixture()
+        await fixture.coach.setReply { _ in throw CoachServiceError.offline }
+        await fixture.viewModel.load()
+        fixture.viewModel.draft = "Why did I get squats today?"
+        await fixture.viewModel.send()
+        XCTAssertTrue(fixture.viewModel.canRetry)
+        host(CoachTabView(viewModel: fixture.viewModel))
         XCTAssertTrue(labels().contains { $0.hasPrefix("You said:") }, "\(labels())")
         try capture("06-coach-bubble-and-retry")
+    }
+
+    /// The Coach tab's free preview: "See Premium plans" on the filled accent.
+    func testCoachPreviewUnlockFilledButton() async throws {
+        let fixture = CoachFixture(premium: false)
+        await fixture.viewModel.load()
+        host(CoachTabView(viewModel: fixture.viewModel))
+        XCTAssertTrue(pump(until: { self.labels().contains(CoachCopy.unlock) }), "\(labels())")
+        let image = try capture("06b-coach-preview-unlock")
+        try assertAccentFill(of: CoachCopy.unlock, in: image)
     }
 
     /// The coach's in-flow decisions use the filled button.
@@ -282,22 +268,20 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
 
     // MARK: - The three spots that already fell short
 
-    /// The Profile tab's "Premium" badge on its (now 8%) accent wash.
-    func testProfilePremiumBadge() async throws {
-        let gate = CoachGateViewModel(subscriptionService: MockSubscriptionService(subscription: .free))
-        await gate.load()
+    /// The Profile row's "Premium" badge on its (now 8%) accent wash.
+    func testProfilePremiumBadge() throws {
         host(
             NavigationStack {
                 ZStack {
                     Theme.Colors.background.ignoresSafeArea()
-                    VStack { CoachEntryRow(viewModel: gate) }.padding(.horizontal, Theme.Spacing.lg)
+                    VStack { ProfileRowLabel(icon: .settings, title: "Settings", badge: "Premium") }
+                        .padding(.horizontal, Theme.Spacing.lg)
                 }
             },
             size: CGSize(width: 393, height: 300)
         )
-        // The row reads as one "Coach" element; the badge is visual, so the capture is the evidence and
-        // `AccentContrastTests` pins its ratio.
-        XCTAssertTrue(labels().contains("Coach"), "\(labels())")
+        // The badge is visual, so the capture is the evidence and `AccentContrastTests` pins its ratio.
+        XCTAssertTrue(labels().contains("Settings"), "\(labels())")
         try capture("08-profile-premium-badge", size: CGSize(width: 393, height: 300))
     }
 

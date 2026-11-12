@@ -90,6 +90,7 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
             try self.deleteAll(CDSessionPolicy.fetchRequest())
             try self.deleteAll(CDWorkoutLog.fetchRequest())
             try self.deleteAll(CDOutsideActivity.fetchRequest())
+            try self.deleteAll(CDCustomWorkout.fetchRequest())
             try self.deleteAll(CDSyncChange.fetchRequest())
             if self.context.hasChanges {
                 try self.context.save()
@@ -124,6 +125,11 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
             for activity in try self.context.fetch(CDOutsideActivity.fetchRequest()) {
                 guard let id = activity.id else { continue }
                 try CDSyncChange.markChanged(.outsideActivity, recordId: id.uuidString, changedAt: changedAt, in: self.context)
+                queued += 1
+            }
+            for workout in try self.context.fetch(CDCustomWorkout.fetchRequest()) {
+                guard let id = workout.id else { continue }
+                try CDSyncChange.markChanged(.customWorkout, recordId: id.uuidString, changedAt: changedAt, in: self.context)
                 queued += 1
             }
             if self.context.hasChanges {
@@ -177,6 +183,14 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
                 return .outsideActivity(payload: try SyncPayloadCoder.encode(activity), date: activity.date)
             } catch {
                 Self.log.error("A stored outside activity could not be read for sync and was skipped: \(String(describing: error), privacy: .public)")
+                return nil
+            }
+        case .customWorkout:
+            guard let uuid = UUID(uuidString: recordId), let record = try fetchCustomWorkout(id: uuid) else { return .deleted }
+            do {
+                return .customWorkout(payload: try SyncPayloadCoder.encode(try record.toCustomWorkout()))
+            } catch {
+                Self.log.error("A stored custom workout could not be read for sync and was skipped: \(String(describing: error), privacy: .public)")
                 return nil
             }
         }
@@ -267,6 +281,21 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
             context.delete(stored)
             return true
 
+        case (.customWorkout, .customWorkout(let payload)):
+            guard try takesPrecedence(record, over: .customWorkout, recordId: record.recordId) else { return false }
+            let workout = try SyncPayloadCoder.decode(CustomWorkout.self, from: payload)
+            let existing = try fetchCustomWorkout(id: workout.id)
+            if let current = try? existing?.toCustomWorkout(), current == workout { return false }
+            try (existing ?? CDCustomWorkout(context: context)).update(from: workout)
+            return true
+
+        case (.customWorkout, .deleted):
+            guard try takesPrecedence(record, over: .customWorkout, recordId: record.recordId),
+                  let uuid = UUID(uuidString: record.recordId),
+                  let stored = try fetchCustomWorkout(id: uuid) else { return false }
+            context.delete(stored)
+            return true
+
         default:
             Self.log.error("A pulled record's content did not match its type \(record.type.rawValue, privacy: .public)")
             return false
@@ -302,6 +331,13 @@ final class CoreDataSyncStore: SyncStore, @unchecked Sendable {
 
     private func fetchLog(id: UUID) throws -> CDWorkoutLog? {
         let request = CDWorkoutLog.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try context.fetch(request).first
+    }
+
+    private func fetchCustomWorkout(id: UUID) throws -> CDCustomWorkout? {
+        let request = CDCustomWorkout.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         request.fetchLimit = 1
         return try context.fetch(request).first

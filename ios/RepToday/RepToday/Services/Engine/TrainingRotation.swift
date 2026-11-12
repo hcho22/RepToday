@@ -41,6 +41,9 @@ enum RestReason: Equatable {
     /// off. `groups` are those groups in Rotation order; `today` is true when today's own activities
     /// worked all of them.
     case workedOutside(groups: [TrainingDay], today: Bool)
+    /// The user chose to rest on a Training Day (M4, the Coach's "rest today", `TodayChoices`). Never
+    /// produced by the Rotation: resting is a session-free day, which skips no group.
+    case chosen
 }
 
 // MARK: - TrainingRotation
@@ -225,7 +228,9 @@ enum TrainingRotation {
         switch today {
         case .rest(_, reason: .cycleComplete):
             steps.append(CycleStep(.rest, .today))
-        case .rest(_, reason: .early):
+        case .rest(_, reason: .early), .rest(_, reason: .chosen):
+            // `.chosen` never comes from the Rotation (it is a choice applied on top, `TodayChoices`); it is
+            // drawn as a rest today with every group still ahead.
             steps.append(CycleStep(.rest, .today))
             steps += upcoming.map { CycleStep(.day($0), .upcoming) }
         case let .rest(_, reason: .workedOutside(offGroups, workedToday)):
