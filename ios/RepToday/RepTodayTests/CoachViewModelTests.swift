@@ -84,6 +84,18 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertNil(fixture.viewModel.restoreNote, "the note answers the tap, and a later visit starts clean")
     }
 
+    func testARestoreThatCouldNotReachTheAppStoreSaysSoRatherThanNothingWasFound() async {
+        // The App Store sync was cancelled or had no connection: nothing was looked up, so the preview
+        // must not state that this Apple ID has no subscription.
+        let fixture = CoachFixture(premium: false, restoreFails: true)
+        await fixture.viewModel.load()
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        XCTAssertEqual(fixture.viewModel.restoreNote, CoachCopy.couldNotRestore)
+        let linked = await fixture.entitlements.linked
+        XCTAssertTrue(linked.isEmpty, "nothing is sent to the account")
+    }
+
     func testARestoreThatFindsTheSubscriptionLinksItAndOpensTheCoach() async {
         let fixture = CoachFixture(premium: false)
         await fixture.viewModel.load()

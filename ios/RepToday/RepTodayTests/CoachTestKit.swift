@@ -39,6 +39,7 @@ struct CoachFixture {
         subscription: Subscription = .free,
         signedTransactions: [String]? = nil,
         simulatesPurchase: Bool = true,
+        restoreFails: Bool = false,
         user: User? = MockPersistence.sampleUser,
         notifications: NotificationPermission = .notDetermined,
         grantsNotifications: Bool = true,
@@ -47,7 +48,10 @@ struct CoachFixture {
         self.coach = coach
         entitlements = MockPremiumEntitlementService(premium: premium)
         self.subscription = MockSubscriptionService(
-            subscription: subscription, simulatesPurchase: simulatesPurchase, signedTransactions: signedTransactions
+            subscription: subscription,
+            simulatesPurchase: simulatesPurchase,
+            signedTransactions: signedTransactions,
+            restoreFails: restoreFails
         )
         authority = PremiumSessionAuthority()
         userService = MockUserService(user: user)

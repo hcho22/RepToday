@@ -1909,4 +1909,4 @@ The server's linking was correct throughout and is unchanged.
 
 - **`RepToday Sandbox` scheme.** The same app target and Debug configuration with no StoreKit configuration (`ios/RepToday/project.yml`), so device Sandbox checks reach the Sandbox; the Simulator keeps the local store through `RepToday`.
 - **Coach restore dead end.** The Coach offered "Restore purchases to link it" whenever the phone showed Premium, even when StoreKit held no signed transaction to send, so Restore led straight back to the same notice.
-  With nothing to send it now shows the free preview with "No active Premium subscription was found for this Apple ID." (`CoachViewModel.restoreNote`), and a Restore that leaves the account free says the same instead of returning silently.
+  With nothing to send it now shows the free preview with "No active Premium subscription was found for this Apple ID." (`CoachViewModel.restoreNote`), and a Restore that leaves the account free says the same instead of returning silently; a Restore whose App Store sync failed or was cancelled says "We couldn't restore right now. Please try again." instead, since nothing was looked up.

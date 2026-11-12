@@ -462,7 +462,8 @@ struct CoachNotice: View {
 /// What a free user sees on the Coach tab (decision 28): a preview of the Coach at work and the
 /// paywall's entry, framed as what Premium adds - never as something taken away.
 struct CoachPreviewView: View {
-    /// What the last Restore found, when it found nothing to link.
+    /// The answer to a Restore: nothing this phone can link (on every visit while StoreKit here shows
+    /// Premium with no signed transaction, or after a restore found nothing), or that it could not run.
     var note: String?
     let onUnlock: () -> Void
     let onRestore: () -> Void

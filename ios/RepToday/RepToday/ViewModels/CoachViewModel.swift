@@ -39,8 +39,9 @@ final class CoachViewModel {
     }
 
     private(set) var access: Access = .loading
-    /// Shown on the free preview after a restore found nothing this phone can link: StoreKit here holds
-    /// no signed Premium transaction for this Apple ID, so there is nothing to send the account.
+    /// A line on the free preview answering a Restore: on every load while StoreKit here shows Premium
+    /// but holds no signed transaction to send the account, after a restore that left the account free,
+    /// or, when the App Store could not be reached, that the restore did not happen.
     private(set) var restoreNote: String?
     private(set) var messages: [CoachMessage] = []
     private(set) var isLoadingHistory = false
@@ -175,10 +176,11 @@ final class CoachViewModel {
 
     /// Decides what the tab shows and, for a Premium account, loads the conversation.
     func load() async {
-        await load(afterRestore: false)
+        await load(freeNote: nil)
     }
 
-    private func load(afterRestore: Bool) async {
+    /// `freeNote` is what the preview says when the account turns out free.
+    private func load(freeNote: String?) async {
         restoreNote = nil
         guard let coach, let entitlements else {
             access = .unavailable
@@ -214,7 +216,7 @@ final class CoachViewModel {
             }
             guard status.premium else {
                 access = .free
-                if afterRestore { restoreNote = CoachCopy.noSubscriptionFound }
+                restoreNote = freeNote
                 return
             }
             access = .premium
@@ -229,11 +231,12 @@ final class CoachViewModel {
     }
 
     /// Restore Purchases, from the preview or the "not confirmed" state: StoreKit sync, then link, then
-    /// re-check. A restore that leaves the account free says nothing was found (`restoreNote`).
+    /// re-check. A restore that leaves the account free says nothing was found (`restoreNote`); one
+    /// that never reached the App Store says so instead.
     func restorePurchases() async {
         access = .loading
-        _ = try? await subscriptionService.restorePurchaseGrant()
-        await load(afterRestore: true)
+        let restored = (try? await subscriptionService.restorePurchaseGrant()) != nil
+        await load(freeNote: restored ? CoachCopy.noSubscriptionFound : CoachCopy.couldNotRestore)
     }
 
     private func hasLocalPremium() async -> Bool {
@@ -499,6 +502,7 @@ enum CoachCopy {
     static let couldNotUndo = "That couldn't be undone just now. Try again."
     static let unconfirmed = "Your Premium subscription isn't on your Rep Today account yet. Restore purchases to link it."
     static let noSubscriptionFound = "No active Premium subscription was found for this Apple ID."
+    static let couldNotRestore = "We couldn't restore right now. Please try again."
     static let linkedToOtherAccount = "This Apple ID's Premium subscription belongs to another Rep Today account, so the coach stays with that account."
     static let offline = "The coach needs a connection. Your sessions work offline as always."
     static let unavailable = "The coach isn't available in this build. Your workouts are unaffected."
