@@ -1,5 +1,9 @@
 # Coach server proof-only QA preparation
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> The proof-only probe and its iOS sources and tools named below were removed with the Cloudflare client. Kept as a historical record.
+
 This source prepares a bounded, hidden device-to-server verification exchange. **It has not been
 executed on a genuine device. The probe does not enable TestFlight Coach.** Deployment status,
 subscription verification policy and ordinary Release configuration are owned by the

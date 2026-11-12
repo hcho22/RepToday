@@ -1,7 +1,7 @@
 {
   "about": [
     "Words that must not be in what the Coach model is given or told to say, because the app never shows them to a user in that sense.",
-    "This is the one list. proxy/test/worker.test.js holds the Coach instructions and the summary the Worker hands the model to it; ios/RepToday/RepTodayTests/CoachRequestVocabularyTests.swift holds the app's side to it.",
+    "This is the one list. convex/coachPrompt.test.ts holds the Convex Coach's instructions and the context it writes out to it (M4); proxy/test/worker.test.js holds the Worker's Coach instructions and summary to it; ios/RepToday/RepTodayTests/CoachRequestVocabularyTests.swift holds the app's side to it.",
     "'tier' is deliberately not here: the Progress tab shows 'Tier 2 of 4 - next tier in reach', so it is the app's own word.",
     "forms: each form is a run of whole words, matched case-insensitively after splitting camelCase and punctuation, so 'chainPositions' matches 'chain' and 'discipline' does not match 'line'.",
     "say: what the instructions tell the Coach to say instead. null means the word is only kept out of what the Coach is given, without naming it to the model.",
@@ -19,13 +19,13 @@
       "word": "deterministic",
       "forms": ["deterministic"],
       "say": "'Rep Today' or 'the app'",
-      "proof": "No string in the app contains it; the hidden Coach QA screen (CoachSyntheticQAView) says 'Your offline workout remains available.'"
+      "proof": "No string in the app contains it."
     },
     {
       "word": "stalest",
       "forms": ["stalest", "stale", "staleness"],
       "say": "'the area you've gone longest without'",
-      "proof": "No string in the app contains it; the canned reply for SwiftUI previews (CoachView) says 'the area you've gone longest without'."
+      "proof": "No string in the app contains it."
     },
     {
       "word": "chain",
@@ -37,7 +37,7 @@
       "word": "frontier",
       "forms": ["frontier", "frontiers"],
       "say": "'your current movement'",
-      "proof": "No string in the app contains it; the hidden Coach QA screen and its fixed QA prompts say 'current squat movement'. The Progress tab says 'Your current movement in each foundation.'"
+      "proof": "No string in the app contains it. The Progress tab says 'Your current movement in each foundation.'"
     },
     {
       "word": "consistency signal",
@@ -68,7 +68,7 @@
       "word": "bundle",
       "forms": ["bundle", "bundles"],
       "say": null,
-      "proof": "Only developer-facing strings contain it (a catalog load error and the hidden QA probe's labels)."
+      "proof": "Only developer-facing strings contain it (a catalog load error)."
     },
     {
       "word": "horizontal",

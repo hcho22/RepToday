@@ -5,6 +5,11 @@ model call runs **without shipping an API key in the app**, and so the app never
 client enforces its own short timeout and degrades cleanly on any failure, timeout, or absence of
 this proxy.
 
+> **Since M4 (ADR-0017, 2026-11-11) the app no longer calls `POST /coach`.**
+> The Coach runs as Convex actions on the account backend (`convex/README.md`), and the app's Worker client, its App Attest/StoreKit authentication, its QA lanes and their iOS-side tools (`tools/validate-coach-live.sh`, `tools/test-coach-live-qa.sh` and others named below) were removed.
+> This Worker, its routes and its operator tooling are unchanged and were not redeployed; retiring the Coach route and its OpenAI secret is a release step in `artifacts/reports/coach-agent-m4/validation.md`.
+> `POST /variety-language` never used the Coach's authentication and is unaffected.
+
 The codebase supports two language routes:
 
 - **`POST /variety-language`** (US-N05) remains a deferred Anthropic-backed day-one note. It is
