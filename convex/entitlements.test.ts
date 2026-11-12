@@ -270,6 +270,34 @@ describe("linkTransaction: purchase and Restore Purchases link a subscription to
     expect(await entitlementRows(t)).toHaveLength(1);
   });
 
+  test("restored on a newer account: a renewal-created, ownerless subscription links to the account that restores it", async () => {
+    // The device-test shape: the subscription was bought without any account's token before this account
+    // existed, so its renewal notification created a row with no owner, signed after the phone's copy of
+    // the same transaction. Restore on the new account claims it and keeps the notification's facts.
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const yearly = { productId: "com.reptoday.app.premium.yearly", transactionId: "2000000002" };
+    await post(t, await notification("DID_RENEW", transaction({ ...yearly, expiresDate: now + DAY, signedDate: now - 1000 })));
+    expect((await entitlementRows(t))[0].ownerId).toBeUndefined();
+    await token(t, BOB);
+    expect(await premium(t, BOB)).toBe(false);
+    const restored = await t.withIdentity(BOB).action(api.entitlements.linkTransaction, {
+      jws: await signJws(transaction({ ...yearly, expiresDate: now + DAY, signedDate: now - 60_000 }), chain),
+    });
+    expect(restored.premium).toBe(true);
+    expect(await premium(t, BOB)).toBe(true);
+    const [row] = await entitlementRows(t);
+    expect(row.lastSignedAt).toBe(now - 1000);
+    // One live account per subscription: a different account on the same Apple ID is refused.
+    await expectRefusal(
+      t.withIdentity(ALICE).action(api.entitlements.linkTransaction, {
+        jws: await signJws(transaction({ ...yearly, expiresDate: now + DAY, signedDate: now - 100 }), chain),
+      }),
+      "linked_to_other_account",
+    );
+    expect(await premium(t, ALICE)).toBe(false);
+  });
+
   test("a refunded subscription replayed through its older signed transaction stays revoked", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
