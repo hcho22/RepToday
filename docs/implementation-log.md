@@ -1900,3 +1900,13 @@ Built against the development Clerk instance and the dev deployment `courteous-d
   The Coach's view of today dropped a swapped-out movement without its substitute; Today and the Coach now apply swaps through one function.
   Reminder switches were all labelled "Reminder on".
   The Profile tab now fits an iPhone SE at the largest text size, so its status-bar case checks that nothing can reach the band instead of scrolling.
+
+## Restore Purchases on a device (M4 follow-up, 2026-11-12)
+
+On an iPhone, Restore Purchases did not link a Sandbox subscription to the account, and the app sent no transaction to `entitlements:linkTransaction` at all.
+The generated `RepToday` scheme attaches the local StoreKit configuration (US-N04), and a run Xcode launches with it - on a device as well as the Simulator - uses Xcode's local StoreKit store, which cannot see a Sandbox subscription.
+The server's linking was correct throughout and is unchanged.
+
+- **`RepToday Sandbox` scheme.** The same app target and Debug configuration with no StoreKit configuration (`ios/RepToday/project.yml`), so device Sandbox checks reach the Sandbox; the Simulator keeps the local store through `RepToday`.
+- **Coach restore dead end.** The Coach offered "Restore purchases to link it" whenever the phone showed Premium, even when StoreKit held no signed transaction to send, so Restore led straight back to the same notice.
+  With nothing to send it now shows the free preview with "No active Premium subscription was found for this Apple ID." (`CoachViewModel.restoreNote`), and a Restore that leaves the account free says the same instead of returning silently.

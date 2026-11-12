@@ -133,6 +133,26 @@ final class CoachViewEvidenceTests: XCTestCase {
         XCTAssertTrue(sent.isEmpty, "the preview never talks to the Coach")
     }
 
+    func testARestoreWithNothingToLinkSaysSoOnThePreview() async throws {
+        // The phone shows Premium but holds no signed transaction to send, as an Xcode StoreKit run does
+        // for a Sandbox subscription: the preview says nothing was found instead of asking for Restore again.
+        let premium = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
+        let fixture = CoachFixture(premium: false, subscription: premium, signedTransactions: [])
+        await fixture.viewModel.restorePurchases()
+        XCTAssertEqual(fixture.viewModel.access, .free)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let root = host(CoachTabView(viewModel: fixture.viewModel), style: style)
+            let spoken = spoken(root)
+            XCTAssertTrue(spoken.contains(CoachCopy.noSubscriptionFound), spoken)
+            XCTAssertFalse(spoken.contains(CoachCopy.unconfirmed), "no Restore that can only lead back here")
+            XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.unlock, in: root))
+            try capture(root, "08-restore-found-nothing-\(style == .dark ? "dark" : "light").png")
+        }
+        let small = host(CoachTabView(viewModel: fixture.viewModel), size: Self.small)
+        XCTAssertTrue(spoken(small).contains(CoachCopy.noSubscriptionFound))
+        try capture(small, "09-restore-found-nothing-small.png", size: Self.small)
+    }
+
     func testUnavailableAndOfflineStatesAreCalm() async throws {
         let unavailable = CoachViewModel(
             coach: nil,

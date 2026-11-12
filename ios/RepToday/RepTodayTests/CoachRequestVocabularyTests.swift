@@ -57,7 +57,7 @@ final class CoachRequestVocabularyTests: XCTestCase {
         let listed = try Self.listedForms()
         let copy = [
             CoachCopy.emptyTitle, CoachCopy.emptyBody, CoachCopy.couldNotAnswer, CoachCopy.limitReached,
-            CoachCopy.unconfirmed, CoachCopy.linkedToOtherAccount, CoachCopy.offline, CoachCopy.unavailable,
+            CoachCopy.unconfirmed, CoachCopy.noSubscriptionFound, CoachCopy.linkedToOtherAccount, CoachCopy.offline, CoachCopy.unavailable,
             CoachCopy.previewTitle, CoachCopy.previewBody, CoachCopy.unlock,
             CoachDataDisclosureCopy.intro, CoachDataDisclosureCopy.whatIsSent, CoachDataDisclosureCopy.leavesDevice,
             CoachDataDisclosureCopy.notStored, CoachDataDisclosureCopy.settingsFooter,

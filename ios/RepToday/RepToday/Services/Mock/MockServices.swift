@@ -180,15 +180,20 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
     private var subscription: Subscription
     private let plans: [SubscriptionPlan]
     private let simulatesPurchase: Bool
+    private let signedTransactions: [String]?
 
+    /// `signedTransactions` overrides what `premiumTransactionJWS()` returns, for a phone whose Premium
+    /// state and signed transactions disagree.
     init(
         subscription: Subscription = .free,
         plans: [SubscriptionPlan] = SubscriptionPlan.samples,
-        simulatesPurchase: Bool = true
+        simulatesPurchase: Bool = true,
+        signedTransactions: [String]? = nil
     ) {
         self.subscription = subscription
         self.plans = plans
         self.simulatesPurchase = simulatesPurchase
+        self.signedTransactions = signedTransactions
     }
 
     func currentSubscription() async throws -> Subscription {
@@ -220,7 +225,8 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
 
     /// A stand-in signed transaction while Premium, so the account-link path (M4) has something to send.
     func premiumTransactionJWS() async -> [String] {
-        subscription.tier == .premium ? ["mock.premium.transaction"] : []
+        if let signedTransactions { return signedTransactions }
+        return subscription.tier == .premium ? ["mock.premium.transaction"] : []
     }
 
     private func grantIfSimulating() {

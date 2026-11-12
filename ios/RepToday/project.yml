@@ -208,3 +208,21 @@ schemes:
         REPTODAY_E2E_EXISTING_USER: "$(REPTODAY_E2E_EXISTING_USER)"
         # Opt-in M4 walks against the development backend and the real Coach model (`CoachEndToEndUITests`).
         REPTODAY_E2E_COACH: "$(REPTODAY_E2E_COACH)"
+  # Device checks against the App Store Sandbox. The generated `RepToday` scheme attaches the local
+  # StoreKit configuration, and a run Xcode launches with it - on an iPhone as well as the Simulator -
+  # talks to Xcode's local StoreKit store, which cannot see a Sandbox purchase, so Restore Purchases
+  # finds nothing to link (M4, US-CA02). This scheme runs the same app and Debug configuration with no
+  # StoreKit configuration, so a device run reaches the Sandbox; the Simulator keeps the local store
+  # through `RepToday`.
+  RepToday Sandbox:
+    build:
+      targets:
+        RepToday: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
