@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Every enum here is backed by a stable `String` raw value. Those raw values are a
 /// persistence contract: they are written into CoreData (as JSON-encoded `Data`) and
-/// synced to CloudKit, so **renaming a case's raw value silently breaks already-stored
+/// synced to the user's account, so **renaming a case's raw value silently breaks already-stored
 /// data**. The case *names* may be refactored freely; the raw *values* must not change.
 /// `EnumsTests` pins every raw value for exactly this reason.
 ///

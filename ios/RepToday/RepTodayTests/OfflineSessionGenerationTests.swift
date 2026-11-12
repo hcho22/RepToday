@@ -165,12 +165,11 @@ final class OfflineSessionGenerationTests: XCTestCase {
         return viewModel
     }
 
-    /// The onboarding flow as `OnboardingView` wires it, skipping the optional Sign in with Apple.
+    /// The onboarding flow as `OnboardingView` wires it, finishing the plan on the phone.
     private func onboard(through services: ServiceContainer, minutes: Int) async throws {
         let onboarding = OnboardingViewModel(
             userService: services.userService,
             sessionPolicyService: services.sessionPolicyService,
-            authService: services.authService,
             analytics: services.analyticsService
         )
         onboarding.onboardingStarted()

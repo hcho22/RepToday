@@ -40,6 +40,7 @@ enum EvidenceOutput {
         static let profileRowAlignment = "profile-row-alignment"
         static let statusBarBacking = "status-bar-backing"
         static let differentWorkout = "different-workout"
+        static let accounts = "us-au02-accounts"
     }
 
     /// The directory `story`'s evidence is written to for this run.

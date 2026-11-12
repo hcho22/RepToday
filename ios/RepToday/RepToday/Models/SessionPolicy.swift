@@ -452,6 +452,44 @@ extension SessionPolicy {
         self.reentry = try container.decodeIfPresent(Reentry.self, forKey: .reentry)
         self.note = try container.decodeIfPresent(Note.self, forKey: .note)
     }
+
+    /// Encodes the policy exactly as the synthesized encoder did, except that the two enum-keyed maps
+    /// are written in key order. Swift writes a dictionary with non-`String` keys as a flat
+    /// `[key, value, key, value]` array in hash order, which differs between processes and even
+    /// between two equal dictionaries built differently - so the same policy could encode to two
+    /// strings, and the account backend could not tell a replayed upload from a change (M3). Sorting
+    /// keeps the identical array format, so every policy stored before still decodes.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(updatedBy, forKey: .updatedBy)
+        try container.encode(progressionRate, forKey: .progressionRate)
+        try container.encode(KeyOrderedMap(pillarWeighting), forKey: .pillarWeighting)
+        try container.encode(varietyWindow, forKey: .varietyWindow)
+        try container.encode(KeyOrderedMap(patternEmphasis), forKey: .patternEmphasis)
+        try container.encodeIfPresent(coldStartContract, forKey: .coldStartContract)
+        try container.encodeIfPresent(reentry, forKey: .reentry)
+        try container.encodeIfPresent(note, forKey: .note)
+    }
+}
+
+/// An enum-keyed map written the way `Dictionary` writes one - a flat `[key, value, ...]` array - but
+/// in key order, so equal maps always encode the same.
+private struct KeyOrderedMap<Key: RawRepresentable & Encodable & Hashable, Value: Encodable>: Encodable where Key.RawValue: Comparable {
+    let entries: [(Key, Value)]
+
+    init(_ map: [Key: Value]) {
+        entries = map.sorted { $0.key.rawValue < $1.key.rawValue }.map { ($0.key, $0.value) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        for (key, value) in entries {
+            try container.encode(key)
+            try container.encode(value)
+        }
+    }
 }
 
 // MARK: - Cold-start seeding (US-G01/US-G02)

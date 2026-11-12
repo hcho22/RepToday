@@ -8,6 +8,14 @@ options:
   generateEmptyDirectories: true
   defaultConfig: Debug
 
+# Clerk's official iOS SDK (M3, ADR-0016). Only its `ClerkKit` core target is linked - the sign-in
+# screen is the app's own - and ClerkKit itself depends on no other package. Pinned to one exact
+# version so every build compiles the same SDK. It requires Swift tools 6.2 (Xcode 26 or later).
+packages:
+  Clerk:
+    url: https://github.com/clerk/clerk-ios
+    exactVersion: 1.7.1
+
 configs:
   Debug: debug
   Release: release
@@ -55,6 +63,9 @@ targets:
           - $(SRCROOT)/RepToday/Resources/Assets.xcassets
         basedOnDependencyAnalysis: false
         showEnvVars: false
+    dependencies:
+      - package: Clerk
+        product: ClerkKit
     # Each supplies one value from an untracked local file that no other configuration reads:
     # CoachStaging its REPTODAY_COACH_STAGING_SUBDOMAIN, Debug the dev REPTODAY_ANALYTICS_SECRET.
     configFiles:
@@ -74,14 +85,14 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # A partial Info.plist merged with the keys Xcode generates. It carries the CloudKit
-        # remote-notification background mode (US-N02) and the HealthKit write and bounded-read usage
-        # descriptions (US-N03). Rep Today requests no general Health read authorization, but its
+        # remote-notification background mode (US-N02, kept only for a pre-account user's one-time
+        # iCloud import, M3) and the HealthKit write and bounded-read usage descriptions (US-N03). Rep Today requests no general Health read authorization, but its
         # metadata-filtered duplicate check still requires NSHealthShareUsageDescription.
         INFOPLIST_FILE: RepToday/Info.plist
-        # CloudKit sync (US-N02), Sign in with Apple (US-N01), and HealthKit (US-N03) are all
-        # additive: the store degrades to local-only, the sign-in falls back gracefully, and the
-        # Health integration is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
-        # with no provisioning), so the core loop is never gated.
+        # The iCloud container (read only by a pre-account user's one-time import, M3), Sign in with
+        # Apple (through Clerk since M3), and HealthKit (US-N03). The iCloud mirror degrades to
+        # local-only and the Health integration is best-effort/skipped when unavailable (e.g. an
+        # unsigned Simulator build with no provisioning), so the core loop is never gated.
         CODE_SIGN_ENTITLEMENTS: RepToday/RepToday.entitlements
       # The anonymous-telemetry deployment origin (US-T04), split per configuration and expanded
       # into `Info.plist`'s `RepTodayAnalyticsEndpoint` key. Debug points at the *development*
@@ -110,8 +121,17 @@ targets:
       # secret. Debug stays inert; CoachDeviceQA retains its separate synthetic preparation lane.
       # Deployment confirmation is separate from genuine-device/model QA; see
       # docs/coach-runtime-authentication.md.
+      # The account backend (M3, ADR-0016): the Clerk publishable key and the Convex deployment the
+      # app syncs to, expanded into `Info.plist`'s `RepTodayClerkPublishableKey` and
+      # `RepTodayConvexURL`. A publishable key is a public identifier, safe in a public repository; the
+      # Clerk secret key lives only on the Convex deployment (`npx convex env set`). Debug and the two
+      # Coach QA lanes use the Clerk development instance and the dev deployment. Release stays empty
+      # until the production Clerk instance and backend are released, and `tools/archive-release.sh`
+      # refuses to archive without both, because a Release build that cannot sign in cannot be used.
       configs:
         Debug:
+          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_test_ZGVhci1mbG91bmRlci03NzM1LmNsZXJrLmFjY291bnRzLmRldiQ
+          REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           # The secret key is absent here on purpose, not forgotten: see the comment above.
           REPTODAY_COACH_SYNTHETIC_QA: "0"
@@ -119,6 +139,8 @@ targets:
           REPTODAY_COACH_SECRET: ""
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         Release:
+          REPTODAY_CLERK_PUBLISHABLE_KEY: ""
+          REPTODAY_CONVEX_URL: ""
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
           REPTODAY_COACH_SYNTHETIC_QA: "0"
@@ -127,6 +149,8 @@ targets:
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         CoachDeviceQA:
           INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach QA"
+          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_test_ZGVhci1mbG91bmRlci03NzM1LmNsZXJrLmFjY291bnRzLmRldiQ
+          REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
           REPTODAY_ANALYTICS_ENDPOINT: ""
           REPTODAY_ANALYTICS_SECRET: ""
           REPTODAY_COACH_ENDPOINT: https://coach.reptoday.app/coach
@@ -137,6 +161,8 @@ targets:
         # client accepts only this exact workers.dev URL and only when compiled with COACH_STAGING.
         CoachStaging:
           INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach Staging"
+          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_test_ZGVhci1mbG91bmRlci03NzM1LmNsZXJrLmFjY291bnRzLmRldiQ
+          REPTODAY_CONVEX_URL: https://courteous-dogfish-560.convex.cloud
           REPTODAY_ANALYTICS_ENDPOINT: ""
           REPTODAY_ANALYTICS_SECRET: ""
           REPTODAY_COACH_ENDPOINT: "https://reptoday-coach-staging.$(REPTODAY_COACH_STAGING_SUBDOMAIN).workers.dev/coach"
@@ -253,3 +279,6 @@ schemes:
       environmentVariables:
         REPTODAY_WRITE_EVIDENCE: "$(REPTODAY_WRITE_EVIDENCE)"
         REPTODAY_EVIDENCE_DIR: "$(REPTODAY_EVIDENCE_DIR)"
+        # Opt-in M3 walks against the development Clerk instance and backend (`AccountEndToEndUITests`).
+        REPTODAY_E2E_ACCOUNTS: "$(REPTODAY_E2E_ACCOUNTS)"
+        REPTODAY_E2E_EXISTING_USER: "$(REPTODAY_E2E_EXISTING_USER)"

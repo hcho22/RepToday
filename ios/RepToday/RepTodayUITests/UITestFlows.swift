@@ -5,6 +5,43 @@ import XCTest
 /// past a launch that has no profile to show.
 extension XCTestCase {
 
+    /// Walks the onboarding flow from wherever it is to "Save your plan" on the primary button, then
+    /// signs in there with an email code - the stub sign-in every XCUITest launch uses accepts the one
+    /// code it advertises, and so does a Clerk development test address - which finishes onboarding
+    /// (US-AU02).
+    func finishOnboardingThroughSaveYourPlan(
+        in app: TestApp,
+        email: String = "uitest@example.com",
+        code: String = "424242",
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let saveYourPlan = app.staticTexts["Save your plan"]
+        for _ in 0..<12 where !saveYourPlan.exists {
+            guard app.buttons["Continue"].waitForExistence(timeout: 5) else { break }
+            app.buttons["Continue"].tap()
+        }
+        XCTAssertTrue(saveYourPlan.waitForExistence(timeout: 5), "onboarding never reached Save your plan", file: file, line: line)
+        // A session left on the device (the Keychain outlives an uninstall) is offered back first.
+        let differentAccount = app.buttons["Use a different account"]
+        if differentAccount.waitForExistence(timeout: 2) {
+            differentAccount.tap()
+        }
+        let continueWithEmail = app.buttons["Continue with email"]
+        XCTAssertTrue(continueWithEmail.waitForExistence(timeout: 10), "Save your plan never offered email sign-in", file: file, line: line)
+        continueWithEmail.tap()
+        let address = app.textFields["Email address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5), file: file, line: line)
+        address.tap()
+        address.typeText(email)
+        app.buttons["Send code"].tap()
+        let codeField = app.textFields["Code from your email"]
+        XCTAssertTrue(codeField.waitForExistence(timeout: 20), "the code screen never appeared", file: file, line: line)
+        codeField.tap()
+        codeField.typeText(code)
+        app.buttons["Sign in"].tap()
+    }
+
     /// Drags the screen upward until `element` exists and is reachable by a finger. Lazy lists keep
     /// rows below the fold out of the tree entirely, so existence alone is not enough to wait on.
     func scrollUntilHittable(_ element: XCUIElement, in app: TestApp, maxSwipes: Int = 10) {

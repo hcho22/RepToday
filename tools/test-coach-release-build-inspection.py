@@ -144,13 +144,18 @@ class ArchiveOverrideTests(unittest.TestCase):
                          'REPTODAY_COACH_AUTH_MODE=bearer',
                          'REPTODAY_COACH_SYNTHETIC_QA=1',
                          'INFOPLIST_KEY_RepTodayCoachSecret=NONSECRET_TEST_FIXTURE',
-                         'INFOPLIST_KEY_RepTodayBuildConfiguration=Debug']:
+                         'INFOPLIST_KEY_RepTodayBuildConfiguration=Debug',
+                         'REPTODAY_CLERK_PUBLISHABLE_KEY=pk_test_fixture',
+                         'REPTODAY_CONVEX_URL=https://fixture-1.convex.cloud',
+                         'REPTODAY_CONVEX_URL[sdk=iphoneos*]=https://fixture-1.convex.cloud',
+                         'INFOPLIST_KEY_RepTodayClerkPublishableKey=pk_test_fixture',
+                         'INFOPLIST_KEY_RepTodayConvexURL=https://fixture-1.convex.cloud']:
             result = subprocess.run(['bash', str(ROOT / 'tools/archive-release.sh'),
                                      str(ARCHIVE), argument], cwd=ROOT,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
             self.assertEqual(result.returncode, 64)
             self.assertEqual(result.stdout, b'')
-            self.assertEqual(result.stderr, b'error: additional arguments cannot override the archive, telemetry or Coach configuration\n')
+            self.assertEqual(result.stderr, b'error: additional arguments cannot override the archive, telemetry, Coach or account configuration\n')
 
 
 if __name__ == '__main__':

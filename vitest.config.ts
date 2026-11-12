@@ -10,7 +10,7 @@ import { defineConfig } from "vitest/config";
  * any of the behaviour three review rounds established.
  *
  * This is `convex/`'s toolchain only - `npm run test` here has nothing to do with the iOS suites,
- * which run under `xcodebuild`. The iOS app carries **no** third-party Swift package.
+ * which run under `xcodebuild`.
  */
 export default defineConfig({
   test: {

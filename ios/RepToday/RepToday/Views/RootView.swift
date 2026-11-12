@@ -5,6 +5,9 @@ import UIKit
 struct RootView: View {
     @Environment(\.services) private var services
     @Environment(AppState.self) private var appState
+    /// Keeps the device's data flowing to the account (M3). Optional so hosted test surfaces that build
+    /// `RootView` without one still render; the app always provides it.
+    @Environment(AccountSyncCoordinator.self) private var syncCoordinator: AccountSyncCoordinator?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Drives the one-time Strength-Phase graduation reveal (US-SP06): the graduating user's fitness
@@ -22,7 +25,14 @@ struct RootView: View {
 
         ZStack {
             Group {
-                if appState.isOnboarded {
+                if appState.isOnboarded && appState.needsAccountSignIn {
+                    // A user who onboarded before accounts signs in once before anything else (US-AU04).
+                    // Their data is untouched until then, and moves to the account afterwards.
+                    AccountRequiredView(auth: services.accountAuthService) { identity in
+                        try linkAccount(identity)
+                    }
+                    .transition(.opacity)
+                } else if appState.isOnboarded {
                     if appOpenReconciliationComplete {
                         // Built behind the Welcome Page on a cold launch, so Today loads while the user
                         // reads it (US-HO01).
@@ -34,10 +44,13 @@ struct RootView: View {
                             .accessibilityLabel("Preparing today’s session")
                     }
                 } else {
-                    // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
-                    // user and seeded the cold-start policy, so the router only flips into the main app.
-                    // A freshly onboarded user lands on Today: the Welcome Page is for cold launches.
-                    OnboardingView(services: services) {
+                    // The minimal v6 onboarding flow (US-I01), ending at "Save your plan" (US-AU02). On
+                    // completion the signed-in account's plan is already on the phone, so the router links
+                    // the account - before marking the user onboarded, so they are never mistaken for a
+                    // pre-account user - and flips into the main app. A freshly onboarded user lands on
+                    // Today: the Welcome Page is for cold launches.
+                    OnboardingView(services: services) { identity in
+                        try linkAccount(identity)
                         appOpenReconciliationComplete = false
                         appState.markWelcomeSeen()
                         appState.isOnboarded = true
@@ -49,7 +62,7 @@ struct RootView: View {
             // The Welcome Page (US-HO01, decision 19) on every cold launch after onboarding. It replaces
             // the launch spinner: the app-open reconciliation and Today's load run behind it, and "Let's
             // go" waits only for the shell to be ready.
-            if appState.isOnboarded && appState.isWelcomePending {
+            if appState.isOnboarded && !appState.needsAccountSignIn && appState.isWelcomePending {
                 WelcomePageView(
                     viewModel: WelcomeViewModel(services: services),
                     isReady: appOpenReconciliationComplete,
@@ -79,32 +92,70 @@ struct RootView: View {
         .onChange(of: appState.isWelcomePending) { _, pending in
             if !pending { presentGraduationIfReady() }
         }
+        .onChange(of: appState.needsAccountSignIn) { _, needed in
+            if !needed { presentGraduationIfReady() }
+        }
         // Debug-only, and inert unless the US-T06 probe launch argument is set: the HUD an
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
         .telemetryProbeHUD()
-        // US-AD05: the post-deletion Apple-ID guidance. Hosted here, at the router, because account
-        // deletion routes back to onboarding and tears down the Settings screen that triggered it -
-        // so the alert has to live above that transition to survive it. Shown only when the deleted
-        // account used Sign in with Apple (`AccountDeletionViewModel` arms the flag only in that case,
-        // and only on a successful teardown). Option (a): on-device guidance, no token revoke.
-        .alert("One more step", isPresented: $appState.showAppleSignOutGuidance) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
+        // US-AD05: the post-deletion Apple-ID guidance, and (US-AU05) the note that the server is still
+        // removing the sign-in when Clerk could not be reached. Hosted here, at the router, because
+        // account deletion routes back to onboarding and tears down the Settings screen that triggered
+        // it - so the alert has to live above that transition to survive it. The Apple guidance shows
+        // only when the deleted account used Sign in with Apple (`AccountDeletionViewModel` arms the flag
+        // only in that case, and only on a successful teardown). Option (a): on-device guidance, no
+        // token revoke.
+        .alert(
+            Self.deletionNoticeTitle(appleGuidance: appState.showAppleSignOutGuidance),
+            isPresented: Binding(
+                get: { appState.showAppleSignOutGuidance || appState.showAccountDeletionUnderWay },
+                set: { presented in
+                    if !presented {
+                        appState.showAppleSignOutGuidance = false
+                        appState.showAccountDeletionUnderWay = false
+                    }
                 }
-                appState.showAppleSignOutGuidance = false
+            )
+        ) {
+            if appState.showAppleSignOutGuidance {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    appState.showAppleSignOutGuidance = false
+                    appState.showAccountDeletionUnderWay = false
+                }
             }
             Button("Done", role: .cancel) {
                 appState.showAppleSignOutGuidance = false
+                appState.showAccountDeletionUnderWay = false
             }
         } message: {
-            Text(
-                "Your Rep Today data is deleted. To also stop using your Apple ID with Rep Today, "
+            Text(Self.deletionNoticeMessage(
+                appleGuidance: appState.showAppleSignOutGuidance,
+                deletionUnderWay: appState.showAccountDeletionUnderWay
+            ))
+        }
+    }
+
+    static func deletionNoticeTitle(appleGuidance: Bool) -> String {
+        appleGuidance ? "One more step" : "Deletion under way"
+    }
+
+    /// What the post-deletion alert says: that the data is deleted, or - when the server has not
+    /// confirmed the deletion complete - that it is gone from this phone and the account's deletion
+    /// finishes on its own; and the Apple ID step when it applies.
+    static func deletionNoticeMessage(appleGuidance: Bool, deletionUnderWay: Bool) -> String {
+        var message = deletionUnderWay
+            ? "Your Rep Today data is deleted from this phone. Your account is being deleted, and that finishes on its own - there's nothing more you need to do."
+            : "Your Rep Today data is deleted."
+        if appleGuidance {
+            message += " To also stop using your Apple ID with Rep Today, "
                 + "open Settings, tap your name, then Sign-In & Security \u{2192} Sign in with Apple, "
                 + "and choose Rep Today."
-            )
         }
+        return message
     }
 
     /// Reconcile the persisted earned phase before phase-dependent tabs are constructed, then reveal
@@ -130,9 +181,18 @@ struct RootView: View {
         presentGraduationIfReady()
     }
 
+    /// Links the account the user just signed in to, through the sync coordinator when there is one.
+    private func linkAccount(_ identity: AccountIdentity) throws {
+        if let syncCoordinator {
+            try syncCoordinator.linkAccount(identity)
+        } else {
+            try appState.linkAccount(identity)
+        }
+    }
+
     /// Shows a decided graduation reveal once nothing else is on top: the Welcome Page goes first.
     private func presentGraduationIfReady() {
-        guard let level = pendingGraduationLevel, !appState.isWelcomePending else { return }
+        guard let level = pendingGraduationLevel, !appState.isWelcomePending, !appState.needsAccountSignIn else { return }
         pendingGraduationLevel = nil
         // Ratchet the celebrated phase as it is presented, so the reveal can never re-fire even if the
         // user force-quits while it is up.
@@ -249,12 +309,12 @@ struct ProfileTabView: View {
 
             VStack(spacing: Theme.Spacing.md) {
                 NavigationLink {
-                    AccountView(authService: services.authService)
+                    AccountView()
                 } label: {
                     ProfileRowLabel(icon: .account, title: "Account")
                 }
                 .accessibilityLabel("Account")
-                .accessibilityHint("Sign in with Apple or view your sign-in status")
+                .accessibilityHint("Your account and what is saved to it")
 
                 // US-AC03: the premium gate + upsell entry point for the talking coach
                 // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap

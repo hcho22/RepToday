@@ -15,6 +15,8 @@ VALIDATOR = ROOT / 'tools/validate-app-bundle-metadata.py'
 
 def passing_info():
     return {
+        'RepTodayClerkPublishableKey': 'pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk',
+        'RepTodayConvexURL': 'https://example-dev-123.convex.cloud',
         'NSHealthShareUsageDescription': 'Checks prior Rep Today workouts to avoid duplicates.',
         'NSHealthUpdateUsageDescription': 'Saves completed Rep Today workouts.',
         'UIDeviceFamily': [1, 2],
@@ -29,13 +31,13 @@ def passing_info():
 
 
 class AppBundleMetadataValidationTests(unittest.TestCase):
-    def validate(self, info):
+    def validate(self, info, release=False):
         with tempfile.TemporaryDirectory() as directory:
             plist = Path(directory) / 'Info.plist'
             with plist.open('wb') as stream:
                 plistlib.dump(info, stream)
             return subprocess.run(
-                [sys.executable, str(VALIDATOR), str(plist)],
+                [sys.executable, str(VALIDATOR), str(plist)] + (['--release'] if release else []),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -46,6 +48,34 @@ class AppBundleMetadataValidationTests(unittest.TestCase):
         result = self.validate(info)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(field, result.stderr)
+
+    def test_missing_or_unexpanded_account_configuration_is_rejected(self):
+        for key in ['RepTodayClerkPublishableKey', 'RepTodayConvexURL']:
+            info = passing_info()
+            del info[key]
+            self.assert_rejected(info, key)
+            info[key] = ''
+            self.assert_rejected(info, key)
+            info[key] = '$(REPTODAY_CLERK_PUBLISHABLE_KEY)'
+            self.assert_rejected(info, key)
+
+    def test_a_secret_key_or_a_wrong_backend_is_rejected(self):
+        info = passing_info()
+        info['RepTodayClerkPublishableKey'] = 'sk_test_never_ship_this'
+        self.assert_rejected(info, 'RepTodayClerkPublishableKey')
+        info = passing_info()
+        info['RepTodayConvexURL'] = 'https://example-dev-123.convex.site'
+        self.assert_rejected(info, 'RepTodayConvexURL')
+
+    def test_a_release_requires_the_production_clerk_instance(self):
+        result = self.validate(passing_info(), release=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('production instance key', result.stderr)
+        info = passing_info()
+        info['RepTodayClerkPublishableKey'] = 'pk_live_Y2xlcmsucmVwdG9kYXkuYXBwJA'
+        result = self.validate(info, release=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('the production account configuration', result.stdout)
 
     def test_passing_universal_bundle_metadata_is_accepted(self):
         result = self.validate(passing_info())

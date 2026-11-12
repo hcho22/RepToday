@@ -2,7 +2,8 @@ import CoreData
 import Foundation
 
 /// The CoreData-backed `WorkoutLogServiceProtocol` (US-N02), so completed sessions survive
-/// relaunch and sync through CloudKit (the `Cloud` configuration) across the user's devices.
+/// relaunch. Every save and delete also records the change in the sync outbox (`CDSyncChange`), in
+/// the same save, so it reaches the user's account (M3, US-AU03).
 ///
 /// Logs are queried by `completedAt` range - the window the engine's staleness steps, the
 /// Consistency Score, and the Progress tab all read - and saved by `id` as an upsert so
@@ -47,6 +48,7 @@ final class CoreDataWorkoutLogService: WorkoutLogServiceProtocol, @unchecked Sen
             request.fetchLimit = 1
             let record = try self.context.fetch(request).first ?? CDWorkoutLog(context: self.context)
             try record.update(from: log)
+            try CDSyncChange.markChanged(.workoutLog, recordId: log.id.uuidString, in: self.context)
             if self.context.hasChanges {
                 try self.context.save()
             }
@@ -60,6 +62,8 @@ final class CoreDataWorkoutLogService: WorkoutLogServiceProtocol, @unchecked Sen
             for record in try self.context.fetch(request) {
                 self.context.delete(record)
             }
+            // A record that is gone uploads as a deletion.
+            try CDSyncChange.markChanged(.workoutLog, recordId: id.uuidString, in: self.context)
             if self.context.hasChanges {
                 try self.context.save()
             }
@@ -70,9 +74,8 @@ final class CoreDataWorkoutLogService: WorkoutLogServiceProtocol, @unchecked Sen
         // Rep Today has one local user and `CDWorkoutLog` carries no owner column (US-A04), so the
         // whole history is this user's history: account deletion (US-AD02/US-AD03) clears every
         // record. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the change
-        // flows through the view context and CloudKit mirroring the same way `deleteLog(id:)` does -
-        // a batch delete goes straight to the store and would leave the merged history and the
-        // CloudKit mirror to reconcile out of band.
+        // flows through the view context the same way `deleteLog(id:)` does. It records nothing in
+        // the sync outbox: account deletion removes the account's server data itself.
         try await context.perform {
             for record in try self.context.fetch(CDWorkoutLog.fetchRequest()) {
                 self.context.delete(record)

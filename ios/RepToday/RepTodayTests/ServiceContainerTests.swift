@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            18,
+            24,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -48,6 +48,17 @@ final class ServiceContainerTests: XCTestCase {
         let coachPolicy = try XCTUnwrap(services.coachPolicyService)
         let noOp = try await coachPolicy.applyProposal(CoachPolicyProposal(), for: user, asOf: Date())
         XCTAssertNil(noOp, "an empty proposal moves no lever, so nothing is written")
+        // The account (M3): the mock container signs in on the device only and never syncs.
+        XCTAssertFalse(services.accountAuthService.isConfigured)
+        let token = try await services.accountAuthService.sessionToken()
+        XCTAssertNil(token, "no session token, so nothing can be uploaded")
+        let pending = try await services.syncStore.pendingCount()
+        XCTAssertEqual(pending, 0)
+        XCTAssertEqual(services.syncCursorStore.cursor(), 0)
+        XCTAssertNil(services.syncRemote, "no account backend in the mock container")
+        XCTAssertNil(services.syncEngine)
+        let importOutcome = await services.legacyICloudImport.waitForImport(timeout: .zero)
+        XCTAssertEqual(importOutcome, .nothingToImport)
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its

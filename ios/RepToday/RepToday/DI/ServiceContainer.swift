@@ -54,6 +54,21 @@ struct ServiceContainer {
     /// shared store; a container built without one simply cannot tune from the coach (the chat still talks),
     /// so it carries an initializer default like `coachClient`.
     let coachPolicyService: (any CoachPolicyServiceProtocol)?
+    /// Signs the user in to their Rep Today account (M3, ADR-0016): Clerk in a configured build, the
+    /// on-device stub in tests, previews and a Debug build without a Clerk key.
+    let accountAuthService: any AccountAuthServiceProtocol
+    /// The on-device side of sync: the outbox and the records it names (`CoreDataSyncStore` in the
+    /// live container).
+    let syncStore: any SyncStore
+    /// Where the device last pulled the account's changes up to.
+    let syncCursorStore: any SyncCursorStore
+    /// The account backend (`ConvexSyncRemote`), or `nil` when this build has none: then nothing
+    /// syncs and the data stays on the device.
+    let syncRemote: (any SyncRemote)?
+    /// Runs sync cycles over `syncStore` and `syncRemote`; `nil` exactly when `syncRemote` is.
+    let syncEngine: SyncEngine?
+    /// Reports when a migrating user's iCloud import has settled (US-AU04).
+    let legacyICloudImport: any LegacyICloudImporting
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -73,7 +88,13 @@ struct ServiceContainer {
         accountDeletionService: any AccountDeletionServiceProtocol,
         coachClient: CoachProxyClient? = nil,
         coachPolicyService: (any CoachPolicyServiceProtocol)? = nil,
-        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService()
+        outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService(),
+        accountAuthService: any AccountAuthServiceProtocol = StubAccountAuthService(),
+        syncStore: any SyncStore = NoOpSyncStore(),
+        syncCursorStore: any SyncCursorStore = InMemorySyncCursorStore(),
+        syncRemote: (any SyncRemote)? = nil,
+        syncEngine: SyncEngine? = nil,
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport)
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -93,6 +114,12 @@ struct ServiceContainer {
         self.accountDeletionService = accountDeletionService
         self.coachClient = coachClient
         self.coachPolicyService = coachPolicyService
+        self.accountAuthService = accountAuthService
+        self.syncStore = syncStore
+        self.syncCursorStore = syncCursorStore
+        self.syncRemote = syncRemote
+        self.syncEngine = syncEngine
+        self.legacyICloudImport = legacyICloudImport
     }
 
     static func mock() -> ServiceContainer {
@@ -124,6 +151,9 @@ struct ServiceContainer {
         let authService = MockAuthService()
         // One Outside Activity store, read by Today and torn down by account deletion.
         let outsideActivityService = InMemoryOutsideActivityService()
+        // On-device account sign-in with no backend: the mock container never syncs.
+        let accountAuthService = StubAccountAuthService()
+        let syncCursorStore = InMemorySyncCursorStore()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
@@ -172,19 +202,27 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
-                outsideActivityService: outsideActivityService
+                outsideActivityService: outsideActivityService,
+                account: AccountDeletionService.AccountTeardown(
+                    remote: nil,
+                    auth: accountAuthService,
+                    syncStore: NoOpSyncStore(),
+                    cursorStore: syncCursorStore
+                )
             ),
             // The coach's bounded policy-write path (US-AC07), over the same shared in-memory policy store
             // as the deterministic Programmer above, so both writers share one in-force policy.
             coachPolicyService: CoachSessionPolicyService(store: policyStore),
-            outsideActivityService: outsideActivityService
+            outsideActivityService: outsideActivityService,
+            accountAuthService: accountAuthService,
+            syncCursorStore: syncCursorStore
         )
     }
 
     /// Production wiring (US-N02): the same real services as `mock()`, but backed by the
-    /// CloudKit-enabled CoreData stack rather than in-memory stores, so the user, their
-    /// history, and the in-force policy persist across relaunch and sync across devices, while
-    /// the transient active session stays on-device (the `Local` store configuration).
+    /// on-device CoreData stack rather than in-memory stores, so the user, their history, and the
+    /// in-force policy persist across relaunch and, through the sync outbox, reach the user's account
+    /// (M3), while the transient active session stays on-device (the `Local` store configuration).
     ///
     /// The one shared `context` (the app's `viewContext`) backs every CoreData store, and a
     /// single `CoreDataSessionPolicyStore` / user / log / consistency service is shared between
@@ -247,6 +285,12 @@ struct ServiceContainer {
     ///     rows capture it so a later re-enable cannot revive work from before the opt-out.
     ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
     ///     pseudonym at request time so account deletion rotates an already-configured client.
+    ///   - linkedAccountUserId: Reads the Clerk user id of the account this device is linked to, so the
+    ///     account backend only ever receives that account's session token. Bound to `AppState`'s store
+    ///     the same way `analyticsGate` is.
+    ///   - legacyICloudErasure: Deletes the Rep Today data in the user's iCloud from before accounts
+    ///     during account deletion. `nil` by default, so a test building this container never reaches
+    ///     CloudKit.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
@@ -255,14 +299,19 @@ struct ServiceContainer {
         analyticsConfiguration: Bundle = .main,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
-        analyticsService: (any AnalyticsServiceProtocol)? = nil
+        analyticsService: (any AnalyticsServiceProtocol)? = nil,
+        accountConfiguration: Bundle = .main,
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport),
+        linkedAccountUserId: @escaping @Sendable () -> String? = AppState.linkedAccountUserId(),
+        legacyICloudErasure: LegacyICloudErasure? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
         let exerciseService = try! MockExerciseService()
         let userService = CoreDataUserService(context: context)
         let workoutLogService = CoreDataWorkoutLogService(context: context)
-        // Logged Outside Activities (US-HO04), in the on-device `Local` store; they never sync to iCloud.
+        // Logged Outside Activities (US-HO04), in the on-device `Local` store: never in iCloud, synced to
+        // the account through the outbox like every other record.
         let outsideActivityService = CoreDataOutsideActivityService(context: context)
         // One policy store shared by the Programmer (re-programs) and the completion recorder
         // (the cold-start handoff's reconciled policy, US-G04).
@@ -280,6 +329,26 @@ struct ServiceContainer {
         // row in the device-local store and the Keychain item that outlives a reinstall.
         let activeSessionStore = CoreDataActiveSessionStore(context: context)
         let authService = AppleAuthService.live()
+        // The account (M3): sign-in, the outbox over the same context, and the backend when this build
+        // has one. The sync remote exists only when sign-in is real, so a stub sign-in never sends a
+        // request.
+        let accountAuthService = resolveAccountAuthService(bundle: accountConfiguration)
+        let syncStore = CoreDataSyncStore(context: context)
+        let syncCursorStore = DefaultsSyncCursorStore()
+        let syncSession: URLSession
+        #if DEBUG
+        syncSession = SyncOfflineSimulation.isActive ? SyncOfflineSimulation.offlineSession() : .shared
+        #else
+        syncSession = .shared
+        #endif
+        let syncRemote: (any SyncRemote)? = accountAuthService.isConfigured
+            ? AccountBackendConfiguration.convexURL(bundle: accountConfiguration).map { url in
+                ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url, session: syncSession) {
+                    try await accountAuthService.sessionToken(forLinkedAccount: linkedAccountUserId())
+                })
+            }
+            : nil
+        let syncEngine = syncRemote.map { SyncEngine(store: syncStore, remote: $0, cursorStore: syncCursorStore) }
         // The telemetry transport keeps its own session and durable outbox in every ordinary build.
         // Debug probe launches use the counting in-process interceptor; an in-process XCTest host uses
         // a silent interceptor. Both pair interception with volatile storage and no UIKit background
@@ -383,8 +452,8 @@ struct ServiceContainer {
             analyticsService: resolvedAnalyticsService,
             // The account-deletion orchestrator (US-AD03), over the same CoreData user/log/policy and
             // device-local active-session stores plus the Keychain-backed auth this container wires -
-            // so a delete tombstones the CloudKit-mirrored records, drops the local active session,
-            // and clears the reinstall-surviving Keychain identifier in one pass.
+            // so a delete removes the account on the server first, then the device's records, the local
+            // active session, the outbox and the reinstall-surviving Keychain identifier in one pass.
             accountDeletionService: AccountDeletionService(
                 userService: userService,
                 workoutLogService: workoutLogService,
@@ -392,7 +461,15 @@ struct ServiceContainer {
                 activeSessionStore: activeSessionStore,
                 authService: authService,
                 coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() },
-                outsideActivityService: outsideActivityService
+                outsideActivityService: outsideActivityService,
+                account: AccountDeletionService.AccountTeardown(
+                    remote: syncRemote,
+                    auth: accountAuthService,
+                    syncStore: syncStore,
+                    cursorStore: syncCursorStore,
+                    engine: syncEngine
+                ),
+                legacyICloud: legacyICloudErasure
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,
@@ -400,8 +477,36 @@ struct ServiceContainer {
             // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
             // in-force policy and the engine reads whichever landed last on the next open.
             coachPolicyService: CoachSessionPolicyService(store: policyStore),
-            outsideActivityService: outsideActivityService
+            outsideActivityService: outsideActivityService,
+            accountAuthService: accountAuthService,
+            syncStore: syncStore,
+            syncCursorStore: syncCursorStore,
+            syncRemote: syncRemote,
+            syncEngine: syncEngine,
+            legacyICloudImport: legacyICloudImport
         )
+    }
+
+    /// The account sign-in for this build: Clerk when the build carries a publishable key. Without
+    /// one, a Debug build signs in on the device only (so onboarding can finish) and a Release build
+    /// cannot sign in at all. An XCTest host and an XCUITest launch (`-RepTodayAccountStub YES`) always
+    /// get the on-device stub, so no test talks to Clerk.
+    static func resolveAccountAuthService(bundle: Bundle = .main) -> any AccountAuthServiceProtocol {
+        #if DEBUG
+        let isTestLaunch = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || UserDefaults.standard.bool(forKey: "RepTodayAccountStub")
+        if isTestLaunch {
+            return StubAccountAuthService()
+        }
+        #endif
+        if let clerk = ClerkAccountAuthService.configured(bundle: bundle) {
+            return clerk
+        }
+        #if DEBUG
+        return StubAccountAuthService()
+        #else
+        return UnavailableAccountAuthService()
+        #endif
     }
 
     static func resolveCoachAuthentication(

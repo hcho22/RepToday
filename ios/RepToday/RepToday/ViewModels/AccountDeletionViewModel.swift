@@ -28,6 +28,9 @@ final class AccountDeletionViewModel {
     /// left with a silently dismissed confirmation. The teardown is idempotent, so retrying is safe.
     var isFailureAlertPresented = false
 
+    /// The failure body for the last attempt, or `nil` for the generic one (`SettingsView`).
+    private(set) var failureMessage: String?
+
     private let accountDeletionService: any AccountDeletionServiceProtocol
     private let authService: any AuthServiceProtocol
     private let credentialStateProvider: any AppleCredentialStateProviding
@@ -67,6 +70,12 @@ final class AccountDeletionViewModel {
                 appState.showAppleSignOutGuidance = true
             }
         } catch {
+            switch error as? AccountDeletionError {
+            case .needsConnection: failureMessage = SettingsView.deleteNeedsConnectionMessage
+            case .needsSignIn: failureMessage = SettingsView.deleteNeedsSignInMessage
+            case .unavailable: failureMessage = SettingsView.deleteUnavailableMessage
+            case nil: failureMessage = nil
+            }
             // The teardown deletes durable records first and saves each step, and the routing reset is
             // its last step - so a throw leaves the user on Settings still onboarded, but a late-step
             // throw may already have deleted some records. The teardown is idempotent, so a retry
@@ -77,11 +86,14 @@ final class AccountDeletionViewModel {
         }
     }
 
-    /// Was Sign in with Apple used? True only when a stored Apple identifier exists **and** Apple still
-    /// has a record of the pairing (US-AD05): the local-UUID user (no stored identifier) and a pairing
-    /// Apple reports as `.notFound` both resolve to `false`, so the guidance shows only in the genuine
-    /// Apple-credential case.
+    /// Was Sign in with Apple used? True when the account signs in with Apple (M3), or - for an
+    /// identifier kept from before accounts - when a stored Apple identifier exists **and** Apple still
+    /// has a record of the pairing (US-AD05). Otherwise `false`, so the guidance shows only in the
+    /// genuine Apple-credential case.
     private func resolveUsedAppleCredential() async -> Bool {
+        if appState.account?.method == .apple {
+            return true
+        }
         guard let appleUserId = try? await authService.currentUserIdentifier(),
               !appleUserId.isEmpty else {
             return false

@@ -18,11 +18,7 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         app.textFields.firstMatch.tap()
         app.textFields.firstMatch.typeText("Riley\n")
-        for _ in 0..<6 where !app.buttons["Start moving"].exists {
-            app.buttons["Continue"].tap()
-        }
-        XCTAssertTrue(app.buttons["Start moving"].waitForExistence(timeout: 5))
-        app.buttons["Start moving"].tap()
+        finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
         XCTAssertTrue(advanceToTrainingDay("Pull Day", in: app), "Today never reached a Pull Day")
         XCTAssertTrue(app.buttons["60 minute session"].waitForExistence(timeout: 15))
@@ -111,12 +107,7 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         app.textFields.firstMatch.tap()
         app.textFields.firstMatch.typeText("Riley\n")
-        for _ in 0..<6 where !app.buttons["Start moving"].exists {
-            XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 5))
-            app.buttons["Continue"].tap()
-        }
-        XCTAssertTrue(app.buttons["Start moving"].waitForExistence(timeout: 5))
-        app.buttons["Start moving"].tap()
+        finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
         XCTAssertTrue(app.tabBars.buttons["Progress"].waitForExistence(timeout: 20))
         app.tabBars.buttons["Progress"].tap()

@@ -153,7 +153,7 @@ final class InjuryFlagsViewModel {
     ///
     /// The write lands on the *freshest* aggregate, not the snapshot this screen opened with. `User`
     /// carries consistency, cold-start, duration, phase and subscription beside the profile, and the
-    /// user service saves the whole record - so a CloudKit merge or a background policy/duration write
+    /// user service saves the whole record - so a change pulled from the account or a background policy/duration write
     /// landing while this screen was open would otherwise be rolled back by an injury save. Same
     /// re-read `SessionCompletionService` does before its write. What the injuries array itself
     /// becomes is decided in one place, `injuriesToWrite(staged:mergingOnto:)`.

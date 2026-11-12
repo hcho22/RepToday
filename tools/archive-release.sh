@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # Archive Rep Today with the production telemetry abuse-deterrence token injected from the
-# captain-owned macOS login Keychain. The token never appears in source, the generated Xcode
+# captain-owned macOS login Keychain, and refuse an archive that cannot sign in: since accounts (M3,
+# ADR-0016) sign-in is required, so the archived app must carry the production Clerk publishable key
+# (`pk_live_`) and the Convex URL it syncs to (`REPTODAY_CLERK_PUBLISHABLE_KEY` and
+# `REPTODAY_CONVEX_URL` in `ios/RepToday/project.yml`, set when the production backend is released). The token never appears in source, the generated Xcode
 # project, a committed xcconfig, or this command's arguments: xcodebuild receives only the path to
 # a mode-600 temporary xcconfig, which is removed on every exit.
 
@@ -22,8 +25,8 @@ shift
 
 for argument in "$@"; do
     case "$argument" in
-        -configuration|-configuration=*|-xcconfig|-xcconfig=*|-project|-project=*|-scheme|-scheme=*|-destination|-destination=*|-archivePath|-archivePath=*|-showBuildSettings|-showBuildSettingsForIndex|REPTODAY_ANALYTICS_ENDPOINT=*|REPTODAY_ANALYTICS_ENDPOINT\[*|REPTODAY_ANALYTICS_SECRET=*|REPTODAY_ANALYTICS_SECRET\[*|INFOPLIST_KEY_RepTodayAnalyticsEndpoint=*|INFOPLIST_KEY_RepTodayAnalyticsSecret=*|REPTODAY_COACH_*=*|REPTODAY_COACH_*\[*|INFOPLIST_KEY_RepTodayCoach*=*|INFOPLIST_KEY_RepTodayBuildConfiguration=*)
-            echo "error: additional arguments cannot override the archive, telemetry or Coach configuration" >&2
+        -configuration|-configuration=*|-xcconfig|-xcconfig=*|-project|-project=*|-scheme|-scheme=*|-destination|-destination=*|-archivePath|-archivePath=*|-showBuildSettings|-showBuildSettingsForIndex|REPTODAY_ANALYTICS_ENDPOINT=*|REPTODAY_ANALYTICS_ENDPOINT\[*|REPTODAY_ANALYTICS_SECRET=*|REPTODAY_ANALYTICS_SECRET\[*|INFOPLIST_KEY_RepTodayAnalyticsEndpoint=*|INFOPLIST_KEY_RepTodayAnalyticsSecret=*|REPTODAY_COACH_*=*|REPTODAY_COACH_*\[*|INFOPLIST_KEY_RepTodayCoach*=*|INFOPLIST_KEY_RepTodayBuildConfiguration=*|REPTODAY_CLERK_*=*|REPTODAY_CLERK_*\[*|REPTODAY_CONVEX_*=*|REPTODAY_CONVEX_*\[*|INFOPLIST_KEY_RepTodayClerk*=*|INFOPLIST_KEY_RepTodayConvex*=*)
+            echo "error: additional arguments cannot override the archive, telemetry, Coach or account configuration" >&2
             exit 64
             ;;
     esac
@@ -74,7 +77,7 @@ if [[ ! -f "$archive_plist" ]]; then
     exit 1
 fi
 
-python3 "$repo_root/tools/validate-app-bundle-metadata.py" "$archive_plist"
+python3 "$repo_root/tools/validate-app-bundle-metadata.py" --release "$archive_plist"
 
 python3 "$repo_root/tools/inspect-coach-qa-build.py" \
     --app "$archive_path/Products/Applications/RepToday.app" \

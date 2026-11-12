@@ -202,14 +202,15 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
 
     // MARK: - Filled accent controls
 
-    /// Onboarding's last step: the selected duration chip and the "Start moving" button.
+    /// Onboarding's duration step: the selected duration chip and the "Continue" button that leads to
+    /// "Save your plan".
     func testOnboardingFilledControls() throws {
         let viewModel = OnboardingViewModel(userService: MockUserService(), sessionPolicyService: MockSessionPolicyService())
         while viewModel.step != .duration { viewModel.advance() }
         host(OnboardingView(viewModel: viewModel))
-        XCTAssertTrue(pump(until: { self.labels().contains("Start moving") }), "\(labels())")
+        XCTAssertTrue(pump(until: { self.labels().contains("Continue") }), "\(labels())")
         let image = try capture("01-onboarding-duration")
-        try assertAccentFill(of: "Start moving", in: image)
+        try assertAccentFill(of: "Continue", in: image)
     }
 
     /// The Ready Screen: the selected duration chip and the pinned Start button.

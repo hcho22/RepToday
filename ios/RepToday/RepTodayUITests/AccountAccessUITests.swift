@@ -1,8 +1,8 @@
 import XCTest
 
-/// Exercises post-onboarding navigation without starting Apple's authorization ceremony.
+/// Profile -> Account after onboarding (M3): the signed-in account and where its data stands.
 final class AccountAccessUITests: XCTestCase {
-    func testProfileReachesOptionalAppleSignInAfterOnboarding() {
+    func testProfileReachesTheAccountScreenAfterOnboarding() {
         continueAfterFailure = false
         let app = TestApp(self)
         app.terminate()
@@ -17,16 +17,15 @@ final class AccountAccessUITests: XCTestCase {
         XCTAssertTrue(account.isHittable)
         account.tap()
 
-        let signIn = app.buttons["Sign in with Apple"]
-        XCTAssertTrue(signIn.waitForExistence(timeout: 10))
-        XCTAssertTrue(signIn.isHittable)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+        let note = app.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@", "Premium purchases and restores use your App Store account"
-        )).firstMatch.exists)
+        )).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Sign in with Apple"].exists, "signing in is no longer optional, so nothing offers it here")
         XCTAssertFalse(app.staticTexts["Welcome to Rep Today"].exists)
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        attachment.name = "profile-account-optional-apple-sign-in"
+        attachment.name = "profile-account-status"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

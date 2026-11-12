@@ -32,12 +32,7 @@ final class TrainingDayUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Riley\n")
-        let startMoving = app.buttons["Start moving"]
-        for _ in 0..<20 where !startMoving.exists {
-            if app.buttons["Continue"].waitForExistence(timeout: 5) { app.buttons["Continue"].tap() }
-        }
-        XCTAssertTrue(startMoving.waitForExistence(timeout: 5), "onboarding never reached its last step")
-        startMoving.tap()
+        finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
 
         let title = firstLabel(containing: " Day: ", timeout: 20)

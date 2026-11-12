@@ -69,6 +69,11 @@ final class AppState {
     /// `false` on every launch. It gates emission of nothing and cohorts nothing.
     var showAppleSignOutGuidance: Bool = false
 
+    /// One-shot, never-persisted UI flag set by account deletion (US-AU05) when the account's data is
+    /// deleted but Clerk has not yet confirmed its sign-in is removed: the server finishes that on its
+    /// own, and `RootView` says so over the onboarding screen the deletion routed to.
+    var showAccountDeletionUnderWay: Bool = false
+
     /// Bumped every time the user confirms a change in the injury control (US-AC08), from either
     /// entry point - Settings or the coach's route.
     ///
@@ -332,6 +337,90 @@ final class AppState {
         rotateCoachSafetyIdentifier()
     }
 
+    // MARK: - Account (M3, ADR-0016)
+
+    /// The Rep Today account this device's data syncs to, or `nil` before the user has signed in.
+    /// Persisted, and read with no network, so an account the user signed in to keeps the app open
+    /// offline: the session's freshness only decides whether sync runs, never whether the app does.
+    private(set) var account: AccountIdentity? {
+        didSet {
+            if let account {
+                userDefaults.set(account.userId, forKey: Keys.accountUserId)
+                userDefaults.set(account.email, forKey: Keys.accountEmail)
+                userDefaults.set(account.method.rawValue, forKey: Keys.accountMethod)
+            } else {
+                userDefaults.removeObject(forKey: Keys.accountUserId)
+                userDefaults.removeObject(forKey: Keys.accountEmail)
+                userDefaults.removeObject(forKey: Keys.accountMethod)
+            }
+        }
+    }
+
+    /// The one-time move to an account of a user who onboarded before accounts (US-AU04), or `nil`
+    /// for a user who signed in during onboarding. `PersistenceController` reads the same value at
+    /// launch (`LegacyAccountMigrationStage.resolved(in:)`).
+    private(set) var legacyMigrationStage: LegacyAccountMigrationStage? {
+        didSet {
+            userDefaults.set(legacyMigrationStage?.rawValue, forKey: LegacyAccountMigrationStage.defaultsKey)
+        }
+    }
+
+    /// True while account deletion runs (US-AU05), so sync uploads nothing to an account that is going
+    /// away. Transient: a relaunch never resumes a deletion half-way, and sync simply runs again.
+    var isAccountDeletionInProgress = false
+
+    /// Whether the app must ask for the one-time sign-in before anything else (decision 23): an
+    /// onboarded user with no account yet, which after M3 only ever means someone who onboarded before
+    /// accounts existed.
+    var needsAccountSignIn: Bool { isOnboarded && account == nil }
+
+    /// Links the device to the account the user just signed in to. For a user who onboarded before
+    /// accounts - the only onboarded user who can be unlinked, since onboarding now ends by signing
+    /// in - the first link starts the move of their history (`importingFromICloud`). Signing in again
+    /// is never a migration.
+    ///
+    /// - Throws: `AccountLinkError.belongsToAnotherAccount` when the device is already linked to a
+    ///   different account. Two accounts' data never mix: the device's data stays with the account it
+    ///   is linked to until it is erased (`AccountDeletionServiceProtocol.eraseThisDevice`).
+    func linkAccount(_ identity: AccountIdentity) throws {
+        if let account, account.userId != identity.userId {
+            throw AccountLinkError.belongsToAnotherAccount(linked: account)
+        }
+        let wasUnlinked = account == nil
+        account = identity
+        if legacyMigrationStage == .awaitingSignIn || (isOnboarded && wasUnlinked && legacyMigrationStage == nil) {
+            legacyMigrationStage = .importingFromICloud
+        }
+    }
+
+    /// Records the next stage of the one-time move. Stages only move forward.
+    func advanceLegacyMigration(to stage: LegacyAccountMigrationStage) {
+        guard let current = legacyMigrationStage,
+              let currentIndex = LegacyAccountMigrationStage.allCases.firstIndex(of: current),
+              let nextIndex = LegacyAccountMigrationStage.allCases.firstIndex(of: stage),
+              nextIndex > currentIndex else { return }
+        legacyMigrationStage = stage
+    }
+
+    /// Forgets the account on this device, at the end of account deletion.
+    func unlinkAccount() {
+        account = nil
+        legacyMigrationStage = nil
+        userDefaults.removeObject(forKey: Keys.linkedAccountBeingDeleted)
+    }
+
+    /// Whether the linked account has answered that it is being deleted (from another device). Kept
+    /// until this phone is unlinked, because once the deletion finishes the account can no longer
+    /// answer at all, and inviting a sign-in to it could only be refused.
+    var isLinkedAccountBeingDeleted: Bool {
+        userDefaults.bool(forKey: Keys.linkedAccountBeingDeleted)
+    }
+
+    /// Records that the linked account answered that it is being deleted.
+    func markLinkedAccountBeingDeleted() {
+        userDefaults.set(true, forKey: Keys.linkedAccountBeingDeleted)
+    }
+
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
@@ -465,6 +554,14 @@ final class AppState {
         return userDefaults.bool(forKey: analyticsEnabledKey)
     }
 
+    /// A reader for the Clerk user id of the linked account, bound to the store `AppState` writes, for
+    /// the account backend's token: a session token is sent only for the account this device is linked
+    /// to (`AccountAuthServiceProtocol.sessionToken(forLinkedAccount:)`).
+    static func linkedAccountUserId(in userDefaults: UserDefaults = .standard) -> @Sendable () -> String? {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { store.wrapped.string(forKey: Keys.accountUserId) }
+    }
+
     /// The opt-out gate as `LiveAnalyticsService` holds it: a closure re-read on every emission, so
     /// turning telemetry off in Settings takes effect on the next event rather than the next launch.
     ///
@@ -495,6 +592,9 @@ final class AppState {
     /// flag to. This is what production hands the container, so the toggle the user sees and the
     /// gate the transport asks cannot read different stores.
     var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
+
+    /// The linked account's Clerk user id reader, bound to this `AppState`'s store.
+    var linkedAccountUserIdProvider: @Sendable () -> String? { AppState.linkedAccountUserId(in: userDefaults) }
 
     /// The generation provider paired with `analyticsGate`, bound to the same persisted store.
     var analyticsConsentGenerationProvider: @Sendable () -> Int {
@@ -560,6 +660,19 @@ final class AppState {
         // the earned phase first crosses into `.strength` (US-SP06).
         lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
             .flatMap(Phase.init(rawValue:)) ?? .discipline
+
+        account = userDefaults.string(forKey: Keys.accountUserId).flatMap { userId in
+            userId.isEmpty ? nil : AccountIdentity(
+                userId: userId,
+                email: userDefaults.string(forKey: Keys.accountEmail),
+                method: userDefaults.string(forKey: Keys.accountMethod).flatMap(AccountSignInMethod.init(rawValue:)) ?? .email
+            )
+        }
+        // An install onboarded before accounts starts its one-time move here; `didSet` does not fire
+        // during `init`, so a newly resolved stage is written through.
+        let stage = LegacyAccountMigrationStage.resolved(in: userDefaults)
+        legacyMigrationStage = stage
+        userDefaults.set(stage?.rawValue, forKey: LegacyAccountMigrationStage.defaultsKey)
 
         acknowledgedCoachDataSharingDisclosureVersion =
             userDefaults.object(forKey: Keys.hasAcknowledgedCoachDataSharing) == nil
@@ -632,8 +745,8 @@ final class AppState {
 
     /// The persisted keys. The opt-out flag's key is deliberately *not* here - it is
     /// `AppState.analyticsEnabledKey`, non-private because the telemetry gate and the XCUITest
-    /// launch argument both name it.
-    private enum Keys {
+    /// launch argument both name it. Internal so `LegacyAccountMigrationStage` reads the same keys.
+    enum Keys {
         static let isOnboarded = "AppState.isOnboarded"
         static let selectedTab = "AppState.selectedTab"
         static let installId = "AppState.installId"
@@ -650,6 +763,10 @@ final class AppState {
         static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
         static let healthWorkoutSuggestionsEnabled = "AppState.healthWorkoutSuggestionsEnabled"
         static let dismissedHealthWorkoutIds = "AppState.dismissedHealthWorkoutIds"
+        static let accountUserId = "AppState.accountUserId"
+        static let accountEmail = "AppState.accountEmail"
+        static let accountMethod = "AppState.accountMethod"
+        static let linkedAccountBeingDeleted = "AppState.linkedAccountBeingDeleted"
     }
 }
 

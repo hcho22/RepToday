@@ -283,19 +283,9 @@ final class OnboardingImperialUITests: XCTestCase {
         attach(screenshot: XCUIScreen.main.screenshot(), named: "live-basics-prd-values.png")
 
         // Every remaining step answers itself with a usable default, so the flow is walked the way a
-        // user in a hurry walks it - straight through on the primary button. Bounded by the flow's
-        // own length, so a step that stops advancing fails here rather than spinning.
-        let startMoving = app.buttons["Start moving"]
-        for _ in 0..<OnboardingStepBudget.remainingAfterBasics where !startMoving.exists {
-            let advance = app.buttons["Continue"]
-            XCTAssertTrue(advance.waitForExistence(timeout: 5), "onboarding stopped advancing")
-            advance.tap()
-        }
-        XCTAssertTrue(
-            startMoving.waitForExistence(timeout: 5),
-            "the imperial answers never reached the last onboarding step"
-        )
-        startMoving.tap()
+        // user in a hurry walks it - straight through on the primary button - and ends by signing in
+        // at "Save your plan" (US-AU02).
+        finishOnboardingThroughSaveYourPlan(in: app)
 
         let greeting = app.staticTexts["Ready when you are, Riley."]
         XCTAssertTrue(
@@ -308,12 +298,6 @@ final class OnboardingImperialUITests: XCTestCase {
         app.answerHealthPromptIfPresented()
         waitUntilMainTabsAreUncovered()
         attach(screenshot: XCUIScreen.main.screenshot(), named: "live-ready-after-imperial-onboarding.png")
-    }
-
-    /// Steps left after `.basics` in the seven-step flow, named so the walk above reads as a bound
-    /// rather than a magic number.
-    private enum OnboardingStepBudget {
-        static let remainingAfterBasics = 5
     }
 
     // MARK: - Helpers
