@@ -275,7 +275,7 @@ describe("tools become proposals; safety-owned moves are unreachable", () => {
         { name: "schedule_reminder", arguments: { time: "07:30", days: ["mon", "fri", "mon"] } },
       ]);
     const second = await send(t, ALICE, "rest, glutes and abs, remind me");
-    expect(second.coach.text).toBe("I've put that below for you to confirm.");
+    expect(second.coach.text).toBe("I've put those below for you to confirm.");
     expect(second.coach.proposals).toEqual([
       expect.objectContaining({ kind: "restChoice", choice: "restToday" }),
       expect.objectContaining({ kind: "focusAreas", areas: ["abs", "glutes"] }),
@@ -423,6 +423,13 @@ describe("limits and configuration", () => {
     const result = await send(t, ALICE, "I went for a run");
     expect(result.coach.proposals[0]).toMatchObject({ kind: "outsideActivity", activityType: "run" });
     expect(modelCalls).toHaveLength(0);
+
+    // A tool call with no text gets a line naming what the card does, never that anything is done.
+    delete process.env.COACH_MODEL_STUB;
+    process.env.OPENAI_API_KEY = "sk-test-placeholder";
+    nextResponse = () => modelReply("", [{ name: "change_today_length", arguments: { minutes: 15 } }]);
+    expect((await send(t, ALICE, "15 minutes today")).coach.text).toBe("Confirm below to make today's session 15 minutes.");
+    expect(modelCalls).toHaveLength(1);
   });
 
   test("a refusal from the model is stored as a calm reply", async () => {

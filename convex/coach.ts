@@ -6,7 +6,7 @@ import { accountError, findAccount, requireOwner, writableAccount } from "./owne
 import { premiumState } from "./entitlements";
 import { catalogMessage, COACH_INSTRUCTIONS, contextMessage, type TodaySnapshot } from "./coachPrompt";
 import { coachModelConfigured, runCoachModel, type ModelInputMessage } from "./coachModel";
-import { parseToolCalls, type CoachProposal, type ProposalStatus } from "./coachTools";
+import { parseToolCalls, proposalReply, type CoachProposal, type ProposalStatus } from "./coachTools";
 import { ageGroup, DIET_DECLINE_REPLY, isDietTopic, mayDiscussDiet, replyMentionsDiet } from "./coachSafety";
 
 /**
@@ -42,8 +42,6 @@ const USAGE_RETENTION_DAYS = 3;
 
 /** The reply stored when the model refuses a request. */
 export const REFUSAL_REPLY = "I can't help with that one. Ask me about your training, a movement, or your sessions.";
-/** The reply stored when the model only called tools. */
-export const PROPOSAL_ONLY_REPLY = "I've put that below for you to confirm.";
 
 /** A message as the app receives it. */
 export type CoachMessage = {
@@ -155,7 +153,7 @@ export const send = action({
         reply = REFUSAL_REPLY;
       } else {
         proposals = parseToolCalls(outcome.toolCalls, today?.movements ?? [], () => crypto.randomUUID().toLowerCase());
-        reply = outcome.text.length > 0 ? outcome.text : proposals.length > 0 ? PROPOSAL_ONLY_REPLY : "";
+        reply = outcome.text.length > 0 ? outcome.text : proposals.length > 0 ? proposalReply(proposals) : "";
         if (reply.length === 0) {
           throw accountError("coach_unavailable", "The Coach couldn't answer just now.");
         }

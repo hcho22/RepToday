@@ -15,6 +15,7 @@ import type * as appStoreNotifications from "../appStoreNotifications.js";
 import type * as appleRoots from "../appleRoots.js";
 import type * as coach from "../coach.js";
 import type * as coachCatalog from "../coachCatalog.js";
+import type * as coachEval from "../coachEval.js";
 import type * as coachModel from "../coachModel.js";
 import type * as coachPrompt from "../coachPrompt.js";
 import type * as coachSafety from "../coachSafety.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   appleRoots: typeof appleRoots;
   coach: typeof coach;
   coachCatalog: typeof coachCatalog;
+  coachEval: typeof coachEval;
   coachModel: typeof coachModel;
   coachPrompt: typeof coachPrompt;
   coachSafety: typeof coachSafety;

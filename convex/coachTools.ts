@@ -323,3 +323,32 @@ function text(value: unknown, maximum: number): string | undefined {
   if (trimmed.length === 0) return undefined;
   return trimmed.length > maximum ? `${trimmed.slice(0, maximum - 1).trimEnd()}…` : trimmed;
 }
+
+/**
+ * The reply stored when the model called tools but wrote no text, which models often do: one plain line
+ * per kind of proposal, saying what the card below does - never that anything is done.
+ */
+export function proposalReply(proposals: CoachProposal[]): string {
+  if (proposals.length !== 1) {
+    return "I've put those below for you to confirm.";
+  }
+  const [proposal] = proposals;
+  switch (proposal.kind) {
+    case "outsideActivity":
+      return "Nice work getting that in. Confirm below to log it.";
+    case "restChoice":
+      return proposal.choice === "restToday"
+        ? "Rest is part of the plan. Confirm below to rest today."
+        : "Confirm below to train today instead of resting.";
+    case "todayLength":
+      return `Confirm below to make today's session ${proposal.minutes} minutes.`;
+    case "swapMovement":
+      return `Confirm below and Rep Today will swap ${proposal.exerciseName} for the closest alternative.`;
+    case "focusAreas":
+      return "Confirm below to update your Focus Areas.";
+    case "reminder":
+      return "Confirm below to set that reminder.";
+    case "customWorkout":
+      return "Here's a workout for you. Look it over, change anything you like, then accept it to play.";
+  }
+}
