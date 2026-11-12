@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            24,
+            27,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -39,15 +39,15 @@ final class ServiceContainerTests: XCTestCase {
         // Resolved but not exercised: running it would tear down the container's stores and mutate an
         // AppState. Its teardown is covered by `AccountDeletionServiceTests`.
         _ = services.accountDeletionService
-        // The premium coach transport (US-AC02): `nil` in the mock container (no proxy configured),
-        // which is the coach's "inert, never fatal" state - the chat surface shows "unavailable".
-        XCTAssertNil(services.coachClient)
-        // The coach's bounded policy-write path (US-AC07): wired over the same shared policy store as
-        // the deterministic Programmer, so applying a no-op proposal reads the default in force and writes
-        // nothing (returns nil) - resolved and exercised without mutating the container.
-        let coachPolicy = try XCTUnwrap(services.coachPolicyService)
-        let noOp = try await coachPolicy.applyProposal(CoachPolicyProposal(), for: user, asOf: Date())
-        XCTAssertNil(noOp, "an empty proposal moves no lever, so nothing is written")
+        // The Coach agent (M4): a scripted Coach and a free account in the mock container - no network,
+        // no model - plus its on-device state, empty.
+        let history = try await XCTUnwrap(services.coachService).history()
+        XCTAssertEqual(history, [])
+        let status = try await XCTUnwrap(services.premiumEntitlements).status()
+        XCTAssertFalse(status.premium)
+        let workouts = try await services.customWorkoutService.workouts()
+        XCTAssertEqual(workouts, [])
+        XCTAssertTrue(services.todayChoices.choices(on: "2026-11-11").isEmpty)
         // The account (M3): the mock container signs in on the device only and never syncs.
         XCTAssertFalse(services.accountAuthService.isConfigured)
         let token = try await services.accountAuthService.sessionToken()

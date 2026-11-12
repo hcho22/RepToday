@@ -379,17 +379,6 @@ final class StapleMovementsTests: XCTestCase {
                 + [analytics.personalBests.bestReps?.exerciseId, analytics.personalBests.bestHold?.exerciseId].compactMap { $0 }
             XCTAssertTrue(Set(named).isDisjoint(with: withdrawn), "\(level): a surface named a retired movement")
             XCTAssertEqual(analytics.personalBests.bestReps?.exerciseId, "push_standard")
-
-            // And the Coach's derived bundle, built from those same values, is clean as well.
-            let bundle = CoachContextBundle.make(
-                phase: .discipline, requestedMinutes: 15, chainPositions: analytics.chainPositions,
-                consistencyTrend: [], recentLogs: logs, strengthJourney: analytics.deep.strengthJourney,
-                asOf: asOf, calendar: calendar
-            )
-            let encoded = String(data: try JSONEncoder().encode(bundle), encoding: .utf8)?.lowercased() ?? ""
-            for term in ["gorilla", "lizard", "underswitch"] {
-                XCTAssertFalse(encoded.contains(term), "\(level): the Coach bundle names \(term)")
-            }
         }
     }
 
@@ -661,7 +650,7 @@ final class StapleMovementsTests: XCTestCase {
     }
 
     /// An existing beginner who did Wall Sit ten weeks ago and Sumo Squat every week since is served
-    /// Bodyweight Squat, which they have never worked. The strength journey and the Coach agree with that:
+    /// Bodyweight Squat, which they have never worked. The strength journey agrees with that:
     /// both past rungs stay in the timeline as history, the served rung is never reported as reached,
     /// and nine weeks on Sumo Squat are not read as a stall on Bodyweight Squat. Once they work it, it
     /// becomes their current milestone and the climb from Wall Sit reads as a recent advancement.
@@ -674,9 +663,6 @@ final class StapleMovementsTests: XCTestCase {
             let analytics = ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
             return (analytics, try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .squat }))
         }
-        func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
-            CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
-        }
 
         let (beginner, squat) = try journey(history, level: .beginner)
         XCTAssertEqual(beginner.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_bodyweight")
@@ -688,15 +674,6 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertNil(squat.currentMilestone, "Bodyweight Squat is never reported as reached before it is worked")
         XCTAssertFalse(squat.hasAdvanced)
         XCTAssertNil(squat.weeksClimbed)
-        XCTAssertFalse(trends(beginner).contains { $0.pattern == .squat }, "no stall is read off the rung they were moved to")
-        let bundle = CoachContextBundle.make(
-            phase: .discipline, requestedMinutes: 15, chainPositions: beginner.chainPositions,
-            consistencyTrend: [], recentLogs: history, strengthJourney: beginner.deep.strengthJourney,
-            asOf: asOf, calendar: calendar
-        )
-        XCTAssertFalse(bundle.strengthJourney.contains { $0.pattern == "squat" })
-        XCTAssertEqual(bundle.chainPositions.first { $0.pattern == "squat" }?.currentExercise, "Bodyweight Squat")
-        XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(beginner)), "the Coach raises no stall offer for squat")
 
         // Working the served rung makes it the current milestone: a fresh climb from Wall Sit, not a stall.
         let (workedAnalytics, worked) = try journey(
@@ -707,7 +684,6 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(worked.currentMilestone?.firstReachedAt, date(daysAgo: 0))
         XCTAssertEqual(worked.startMilestone?.exerciseId, "squat_wall_sit")
         XCTAssertTrue(worked.hasAdvanced)
-        XCTAssertEqual(trends(workedAnalytics).first { $0.pattern == .squat }?.trend, .climbing)
 
         // The same history for an intermediate, who still gets Sumo Squat, sits on Sumo Squat everywhere.
         let (intermediate, intermediateSquat) = try journey(history, level: .intermediate)
@@ -719,7 +695,7 @@ final class StapleMovementsTests: XCTestCase {
     /// An existing beginner who did Bird Dog from ten to six weeks ago, then Dead Bug weekly until
     /// yesterday, is moved back down to Bird Dog - a rung they worked before climbing past it. The weeks
     /// on Dead Bug are not read as weeks on Bird Dog: until they work Bird Dog again it has no current
-    /// milestone and no Coach trend, and once they do it is current from that session, a fresh start
+    /// milestone, and once they do it is current from that session, a fresh start
     /// rather than a ten-week stall. Both rungs keep the dates they were first reached as history.
     func testExistingBeginnerMovedBackToBirdDogIsNotReadAsAStall() async throws {
         let library = try await offeredLibrary()
@@ -732,9 +708,6 @@ final class StapleMovementsTests: XCTestCase {
         func core(_ analytics: ProgressAnalytics) throws -> ChainJourney {
             try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .core })
         }
-        func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
-            CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
-        }
 
         let moved = analytics(history)
         XCTAssertEqual(moved.chainPositions.first { $0.pattern == .core }?.currentExercise?.id, "core_bird_dog")
@@ -745,17 +718,12 @@ final class StapleMovementsTests: XCTestCase {
                        "both rungs keep the date they were first reached")
         XCTAssertNil(journey.currentMilestone, "Bird Dog is not current again until it is worked after Dead Bug")
         XCTAssertFalse(journey.hasAdvanced)
-        XCTAssertFalse(trends(moved).contains { $0.pattern == .core }, "weeks on Dead Bug are not read as a stall on Bird Dog")
-        XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(moved)), "the Coach raises no stall offer for core")
 
         let returned = analytics(history + [workLog("core_bird_dog", pattern: .core, reps: 10, daysAgo: 0)])
         let returnedJourney = try core(returned)
         XCTAssertEqual(returnedJourney.currentMilestone?.exerciseId, "core_bird_dog")
         XCTAssertEqual(returnedJourney.currentMilestone?.firstReachedAt, date(daysAgo: 0), "current from the first session back on it")
         XCTAssertEqual(returnedJourney.milestones.first?.firstReachedAt, date(daysAgo: 70))
-        let coreTrend = try XCTUnwrap(trends(returned).first { $0.pattern == .core })
-        XCTAssertEqual(coreTrend.trend, .steady)
-        XCTAssertEqual(coreTrend.weeksAtCurrentTier, 0)
 
         // An intermediate still gets Dead Bug and has genuinely sat on it for five weeks.
         let intermediate = try core(analytics(history, level: .intermediate))
@@ -766,7 +734,7 @@ final class StapleMovementsTests: XCTestCase {
     /// An existing intermediate or advanced user who climbed the old squat ladder - Wall Sit, then Sumo
     /// Squat, then Bodyweight Squat until yesterday - is served Sumo Squat now that it sits above
     /// Bodyweight Squat. The five weeks on Bodyweight Squat are time on a rung they moved on to, so they
-    /// are not read as a ten-week stall on Sumo Squat: it has no current milestone or Coach trend until
+    /// are not read as a ten-week stall on Sumo Squat: it has no current milestone until
     /// they work it again, and then reads as a climb from Wall Sit.
     func testReorderedSquatClimbIsNotReadAsAStallOnSumoSquat() async throws {
         let library = try await offeredLibrary()
@@ -778,9 +746,6 @@ final class StapleMovementsTests: XCTestCase {
             func analytics(_ logs: [WorkoutLog]) -> ProgressAnalytics {
                 ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
             }
-            func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
-                CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
-            }
 
             let reordered = analytics(history)
             XCTAssertEqual(reordered.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_sumo", "\(level)")
@@ -790,21 +755,18 @@ final class StapleMovementsTests: XCTestCase {
                            "\(level): every rung keeps the date it was first reached")
             XCTAssertNil(squat.currentMilestone, "\(level): weeks on Bodyweight Squat are not weeks on Sumo Squat")
             XCTAssertFalse(squat.hasAdvanced, "\(level)")
-            XCTAssertFalse(trends(reordered).contains { $0.pattern == .squat }, "\(level): no stall is read on squat")
-            XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(reordered)), "\(level): the Coach raises no stall offer")
 
             let returned = analytics(history + [workLog("squat_sumo", pattern: .squat, reps: 20, daysAgo: 0)])
             let returnedSquat = try XCTUnwrap(returned.deep.strengthJourney.chains.first { $0.pattern == .squat })
             XCTAssertEqual(returnedSquat.currentMilestone?.exerciseId, "squat_sumo", "\(level)")
             XCTAssertEqual(returnedSquat.currentMilestone?.firstReachedAt, date(daysAgo: 0), "\(level)")
             XCTAssertEqual(returnedSquat.startMilestone?.exerciseId, "squat_wall_sit", "\(level)")
-            XCTAssertEqual(trends(returned).first { $0.pattern == .squat }?.trend, .climbing, "\(level)")
         }
     }
 
     /// A session back on a rung the user reached earlier does not interrupt a real stall: an intermediate
-    /// on Sumo Squat every week for ten weeks, with one Wall Sit session in between, still reads as flat
-    /// on Sumo Squat, and the Coach can offer to lean toward squat.
+    /// on Sumo Squat every week for ten weeks, with one Wall Sit session in between, is still current on
+    /// Sumo Squat from the day they first reached it.
     func testASessionOnAnEarlierRungDoesNotHideARealStall() async throws {
         let library = try await offeredLibrary()
         let logs = [workLog("squat_wall_sit", pattern: .squat, seconds: 45, daysAgo: 77)]
@@ -814,12 +776,6 @@ final class StapleMovementsTests: XCTestCase {
         let squat = try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .squat })
         XCTAssertEqual(squat.currentMilestone?.exerciseId, "squat_sumo")
         XCTAssertEqual(squat.currentMilestone?.firstReachedAt, date(daysAgo: 70))
-
-        let trends = CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
-        let squatTrend = try XCTUnwrap(trends.first { $0.pattern == .squat })
-        XCTAssertEqual(squatTrend.trend, .flat)
-        XCTAssertEqual(squatTrend.weeksAtCurrentTier, 10)
-        XCTAssertEqual(CoachAnalyticsInsight.offer(from: trends)?.stalledPattern, .squat)
     }
 
     func testDeadBugUserKeepsItAsAnIntermediateAndMovesToBirdDogAsABeginner() async throws {

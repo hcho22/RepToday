@@ -43,7 +43,7 @@
           },
           "localizations" : [
             {
-              "description" : "The deeper view - pattern balance, weekly volume, and how your sessions have felt.",
+              "description" : "The coach and the deeper view - pattern balance, weekly volume, and how your sessions have felt.",
               "displayName" : "Premium Monthly",
               "locale" : "en_US"
             }
@@ -67,7 +67,7 @@
           "internalID" : "9A5B2C10-1002-4A00-9000-REPTODAYYR01",
           "localizations" : [
             {
-              "description" : "The deeper view, billed yearly - pattern balance, weekly volume, and difficulty mix.",
+              "description" : "The coach and the deeper view, billed yearly - pattern balance, weekly volume, and difficulty mix.",
               "displayName" : "Premium Yearly",
               "locale" : "en_US"
             }

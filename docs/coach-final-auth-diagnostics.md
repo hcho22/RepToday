@@ -1,5 +1,9 @@
 # Final Coach authentication diagnostics and bounded operation
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> These diagnostics concern the Worker's App Attest authentication, which no app build now uses; the Worker-side tooling still exists. Kept as a historical record.
+
 This is code-only preparation for a final `401 unauthorized`. It is not a Coach repair,
 proof of the live cause, deployment approval, or a replacement for the
 [runtime owner](coach-runtime-authentication.md#local-validation-and-migration-plan).

@@ -137,12 +137,10 @@ Live since 2026-10-21: the spec, which tracks what has landed, is `.claude/agent
 
 ## Two-Writer Policy Safety
 
-`SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).
-**Safety > preference, structurally:** a coach write is a *safety-sovereign overlay* - it re-reads the freshest in-force policy from the shared `SessionPolicyStore` and overlays only its own levers (`SessionPolicy.applyingCoachProposal`), and every coach-touchable lever is either **disjoint** from the safety moves (`patternEmphasis`) or **only-downward** (`progressionRate` eased down only; `varietyWindow` narrowed only), so a coach write can never clobber a de-load / Re-entry / cold-start.
-The change is a closed `CoachPolicyProposal` (no safety field is expressible), clamped to the engine's rails before it is accepted, tagged `updatedBy == .llm`, noted honestly (`PolicyNote.coachTemplated`), applied on the next open, and reversible.
-The decision is recorded as [ADR-0005](docs/adr/0005-two-writer-policy-safety.md); the owning code is `SessionPolicy`, `CoachSessionPolicyService`, `CoachPolicyProposal`, and the closed proposal producers `CoachIntentMapper` (free-text tuning, US-AC07) and `CoachAnalyticsInsight` (a strength-journey stall offer, US-AN02).
-
-**Planned note ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md), 2026-11-10):** a Coach **Custom Workout** is a separate, user-accepted artifact, not a policy write, so this structure is unchanged by it.
+`SessionPolicy`'s writer is the deterministic Programmer (`DeterministicSessionPolicyService`), which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start.
+From US-AC07 to M4 the premium Coach was a second writer that could only nudge the **preference** levers, as a *safety-sovereign overlay* ([ADR-0005](docs/adr/0005-two-writer-policy-safety.md)): every lever it touched was either disjoint from the safety moves or only-downward, so it could never clobber a de-load, Re-entry or cold-start.
+**Since M4 the Coach writes no policy at all** ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)): its keyword tuning and its stall offer were retired with the agent, whose closed tools name only today's choices, Outside Activities, Focus Areas, reminders and **Custom Workouts** - each a user-confirmed change through the app's own paths, none a `SessionPolicy` write, and none able to express a safety move.
+`SessionPolicy.easingProgressionRate` stays as the one seam any future coach-sourced pace change would have to use (US-AC06).
 
 ## discipline-first
 
@@ -173,6 +171,7 @@ Any day without a session after Legs counts as the rest; a user may "train anywa
 Today shows a Rest Day card with an optional mobility-only **Recovery** flow, which neither advances the Rotation nor counts as a session (`WorkoutLog.isRecovery`).
 Anonymous telemetry still counts a Recovery flow like any session (`session_started`, `session_completed`, `week_active`), by the captain's decision of 2026-11-10.
 A Rest Day never lowers the Consistency Score.
+Since M4 the user can also choose to rest on a Training Day (the Coach's "rest today"): Today shows the same card (`RestReason.chosen`), and the day is simply session-free, so it skips no group; "train anyway" takes the choice back. Both choices last for the day (`TodayChoices`).
 
 ## Core Sprinkle
 
@@ -206,12 +205,17 @@ Run, bike and hike work Legs; swim, row and climb work Pull; anything else works
 The group it worked gets at least a day off: it swaps behind the next group, or, when it is the last group left in the Cycle, the Rest Day comes early: the next day, if that day has no activity of its own.
 Any other day it keeps without a Training Day is a Day Off, not the Cycle's Rest Day (`RestReason`).
 It counts as showing up for the Consistency Score, though not toward earning the Strength Phase, and never completes a group.
+A played **Custom Workout** is recorded as one, carrying the workout's id and the group its own movements worked.
 The owning code is `Models/OutsideActivity.swift` (stored on-device as `CDOutsideActivity` in the never-iCloud Local store, and synced to the **Account** since M3), `Services/Engine/TrainingRotation.swift` and `Services/Health/HealthWorkoutSuggestions.swift`, which never suggests Rep Today's own workouts back.
 
-## Custom Workout (planned)
+## Custom Workout
 
-A workout written by the **Coach** that the user reviews, edits and accepts before playing.
-It counts like an Outside Activity and never advances progression ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)).
+A workout written by the **Coach** from the user's workout history, status and injury areas, which the user reviews, edits (swap, remove, reorder, change sets, reps, time or rest) and accepts before it plays ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)).
+It is a separate artifact, never a `SessionPolicy` write: a proposal lives only in the Coach conversation, and only an accepted Custom Workout is saved (on the device, in the Local store, and synced to the **Account**) or played (FR-11).
+Any bodyweight movement is allowed: a catalog movement shows its Trainer art, any other step is text only and never tracked.
+It plays in the hands-free player, and a played one is recorded as an **Outside Activity**, never a session, so it counts as showing up and never advances progression, Earned Reps or a Foundation.
+The group it gives at least a day off is the one with strictly the most sets among its catalog steps (squat and hinge count as Legs); a tie, or no grouped catalog step, names no group (FR-8).
+The owning code is `Models/CustomWorkout.swift`, `Services/Coach/CustomWorkoutService.swift` and `CustomWorkoutCompletionRecorder` (`Services/Coach/CoachProposalApplier.swift`).
 
 ## Focus Area
 
@@ -239,6 +243,10 @@ The owning code is `Services/Account/`, `Services/Sync/`, `Persistence/CoreDataS
 
 ## Coach
 
-The premium AI conversation partner, distinct from the **Trainer**.
-Today it is a stateless chat that may only nudge preference levers (see Two-Writer Policy Safety).
-**Planned change ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md), 2026-11-10, not yet implemented):** the Coach becomes an agent with its own tab that remembers the user, acts through confirmed tools, writes **Custom Workouts**, gives general diet guidance to adults only, and sets reminders.
+The premium AI agent on its own tab (Today / Coach / Progress / Profile), distinct from the **Trainer** ([ADR-0017](docs/adr/0017-coach-agent-on-convex.md)).
+A turn runs on Rep Today's Convex backend, authenticated by the **Account**: the server reads the user's own records (sessions, Outside Activities, Custom Workouts, profile and injury areas, Focus Areas) and the conversation so far, checks the Premium entitlement App Store Server Notifications keep current, and asks the model once.
+It remembers: the conversation is kept with the account.
+It acts only through **proposals**: logging an Outside Activity, resting today or training anyway, changing today's length, swapping a movement out of today's session, setting Focus Areas, scheduling a reminder, or writing a **Custom Workout** - each a card the user confirms (and can undo) or declines, applied on the phone through the same paths the user's own controls take; a de-load, a Return, the cold start, the pace, the phase and the injury flags are out of its reach.
+Diet guidance is general (protein, hydration, fewer refined carbs, less sugar, vegetables), only for users the server knows are 18 or over, and never medical.
+Reminders are notifications on the phone, listed and editable in Settings.
+The owning code is `convex/coach.ts`, `convex/coachTools.ts`, `convex/coachSafety.ts`, `convex/entitlements.ts`, `ViewModels/CoachViewModel.swift` and `Services/Coach/`.

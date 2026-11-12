@@ -134,10 +134,6 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         let facade = Facade(suspendsSync: true)
         let vm = model(facade)
         await vm.load()
-        #if COACH_IPHONE_QA
-        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
-        XCTAssertEqual(vm.restoreDiagnostic, .notAttempted)
-        #endif
         let restore = Task { await vm.restore() }
         let deadline = Date().addingTimeInterval(2)
         while !(await facade.calls).contains("sync"), Date() < deadline {
@@ -145,10 +141,6 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         }
         XCTAssertTrue(vm.isBusy)
         XCTAssertTrue(vm.isRestoring)
-        #if COACH_IPHONE_QA
-        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
-        XCTAssertEqual(vm.restoreDiagnostic, .inProgress)
-        #endif
         await vm.restore()
         await vm.load()
         await vm.purchase(try XCTUnwrap(vm.plans.first))
@@ -158,150 +150,15 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         await restore.value
         XCTAssertFalse(vm.isBusy)
         XCTAssertEqual(vm.message, "No active Premium subscription was found.")
-        #if COACH_IPHONE_QA
-        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
-        XCTAssertEqual(vm.restoreDiagnostic, .noCurrentEntitlement)
-        #endif
         let calls = await facade.calls
         XCTAssertEqual(calls, ["products", "sync", "history", "entitlements"])
     }
 
-    #if COACH_IPHONE_QA
-    private func projected(_ error: Error) throws -> StoreKitFailureDiagnostic {
-        guard case .diagnosticFailure(let diagnostic) = LiveStoreKitFacade.requestFailure(error) else {
-            XCTFail("QA must retain only the projected error fields")
-            throw NSError(domain: "Test", code: 1)
-        }
-        return diagnostic
-    }
-
-    func testTypedCancellationAndNetworkCategoryDoNotGuessFromDescriptions() throws {
-        XCTAssertEqual(try projected(StoreKitError.userCancelled).category, .cancelled)
-        XCTAssertEqual(try projected(SKError(.paymentCancelled)).category, .cancelled)
-        XCTAssertEqual(try projected(CancellationError()).category, .cancelled)
-        let diagnostic = try projected(StoreKitError.networkError(URLError(.notConnectedToInternet)))
-        XCTAssertEqual(diagnostic.category, .network)
-        XCTAssertEqual(diagnostic.underlying?.domain, .url)
-        XCTAssertEqual(diagnostic.underlying?.code, URLError.notConnectedToInternet.rawValue)
-        let misleading = NSError(domain: "ASDErrorDomain", code: 42,
-                                 userInfo: [NSLocalizedDescriptionKey: "user cancelled network error"])
-        XCTAssertEqual(try projected(misleading).category, .unclassified)
-    }
-
-    func testTypedSystemCauseIsRetainedWithoutRecursingOrExposingDescriptions() throws {
-        let nested = NSError(domain: "AMSErrorDomain", code: 999,
-                             userInfo: [NSLocalizedDescriptionKey: Self.privateText])
-        let cause = NSError(domain: "ASDErrorDomain", code: 17,
-                            userInfo: [NSUnderlyingErrorKey: nested,
-                                       NSLocalizedDescriptionKey: Self.privateText])
-        let diagnostic = try projected(StoreKitError.systemError(cause))
-        XCTAssertEqual(diagnostic.category, .system)
-        XCTAssertEqual(diagnostic.error.domain, .storeKit)
-        XCTAssertEqual(diagnostic.underlying?.domain, .appStore)
-        XCTAssertEqual(diagnostic.underlying?.code, 17)
-        XCTAssertFalse(diagnostic.summary.contains("999"))
-        XCTAssertFalse(String(reflecting: diagnostic).contains(Self.privateText))
-    }
-
-    func testNSErrorUnderlyingCodeAndUnknownDomainRedaction() throws {
-        let cause = NSError(domain: Self.privateText, code: 23,
-                            userInfo: [NSLocalizedDescriptionKey: Self.privateText])
-        let error = NSError(domain: "AMSErrorDomain", code: 18,
-                            userInfo: [NSUnderlyingErrorKey: cause,
-                                       NSLocalizedDescriptionKey: Self.privateText])
-        let diagnostic = try projected(error)
-        XCTAssertEqual(diagnostic.error.domain, .appleMediaServices)
-        XCTAssertEqual(diagnostic.error.code, 18)
-        XCTAssertEqual(diagnostic.underlying?.domain, .other)
-        XCTAssertEqual(diagnostic.underlying?.code, 23)
-        XCTAssertEqual(diagnostic.summary,
-                       "unclassified — AMSErrorDomain / 18; underlying other / 23")
-        XCTAssertEqual(try projected(cause).error.domain, .other)
-        XCTAssertFalse(String(reflecting: diagnostic).contains(Self.privateText))
-    }
-
-    func testProductAndRestoreErrorsRemainIndependentlyVisible() async throws {
-        let facade = Facade(catalog: .failure, failsSync: true)
-        let vm = model(facade)
-        XCTAssertEqual(vm.productsDiagnostic, .loading)
-        XCTAssertEqual(vm.restoreDiagnostic, .notAttempted)
-        await vm.load()
-        let products = vm.productsDiagnostic
-        XCTAssertEqual(products.summary, "unclassified — ASDErrorDomain / 101")
-        await vm.restore()
-        XCTAssertEqual(vm.productsDiagnostic, products)
-        XCTAssertEqual(vm.restoreDiagnostic.summary, "unclassified — AMSErrorDomain / 202")
-        // A subsequent catalog load likewise cannot erase the independent latest restore result.
-        let restore = vm.restoreDiagnostic
-        await vm.load()
-        XCTAssertEqual(vm.restoreDiagnostic, restore)
-    }
-
-    func testEmptyCatalogAndThrownCatalogHaveDistinctDiagnostics() async {
-        let empty = model(Facade(catalog: .empty))
-        let failed = model(Facade(catalog: .failure))
-        await empty.load()
-        await failed.load()
-        XCTAssertEqual(empty.productsDiagnostic, .noUsableProducts)
-        XCTAssertNotEqual(empty.productsDiagnostic, failed.productsDiagnostic)
-        XCTAssertEqual(empty.catalogMessage, failed.catalogMessage, "ordinary copy is deliberately unchanged")
-    }
-
-    func testSuccessfulSyncWithNoEntitlementDiffersFromThrownSync() async {
-        let empty = model(Facade(catalog: .empty))
-        let premium = model(Facade(catalog: .empty, ownsPremium: true))
-        let failed = model(Facade(failsSync: true))
-        await empty.restore()
-        await premium.restore()
-        await failed.restore()
-        XCTAssertEqual(empty.restoreDiagnostic, .noCurrentEntitlement)
-        XCTAssertEqual(premium.restoreDiagnostic, .premium)
-        XCTAssertNotEqual(failed.restoreDiagnostic, .noCurrentEntitlement)
-        XCTAssertTrue(premium.didUnlockPremium, "missing products cannot prevent a verified restore")
-    }
-
-    private final class UnprojectedService: SubscriptionServiceProtocol {
-        var catalogError: SubscriptionError = .failed("PRIVATE")
-        func currentSubscription() async throws -> Subscription { .free }
-        func refreshEntitlements() async throws -> Subscription { .free }
-        func premiumPlans() async throws -> [SubscriptionPlan] { throw catalogError }
-        func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome { .resolved(.free) }
-        func purchasePremium() async throws -> Subscription { .free }
-        func restorePurchases() async throws -> Subscription { throw SubscriptionError.failed("PRIVATE") }
-    }
-
-    func testRawEmptyLookupDiffersFromProductsRejectedBySubscriptionFilter() async {
-        for rawCount in [0, 2] {
-            let service = UnprojectedService()
-            service.catalogError = .diagnosticProductsUnavailable(rawProductCount: rawCount)
-            let vm = PaywallViewModel(subscriptionService: service)
-            await vm.load()
-            XCTAssertEqual(vm.productsDiagnostic, .lookupWithoutSubscriptions(rawCount))
-            XCTAssertEqual(vm.productsDiagnostic.summary,
-                           "lookup returned \(rawCount) products; 0 usable subscriptions")
-            await vm.restore()
-            XCTAssertEqual(vm.productsDiagnostic, .lookupWithoutSubscriptions(rawCount))
-            XCTAssertNotNil(vm.catalogMessage)
-        }
-    }
-
-    func testUnprojectedErrorsUseFixedTextAndNewPaywallHasNoOldDiagnostics() async {
-        let vm = PaywallViewModel(subscriptionService: UnprojectedService())
-        await vm.load()
-        await vm.restore()
-        XCTAssertEqual(vm.productsDiagnostic.summary, "unclassified failure")
-        XCTAssertEqual(vm.restoreDiagnostic.summary, "unclassified failure")
-        let fresh = PaywallViewModel(subscriptionService: UnprojectedService())
-        XCTAssertEqual(fresh.productsDiagnostic, .loading)
-        XCTAssertEqual(fresh.restoreDiagnostic, .notAttempted)
-    }
-    #else
     func testOrdinaryRequestFailurePreservesExistingWrapping() {
         let error = NSError(domain: "ASDErrorDomain", code: 101,
                             userInfo: [NSLocalizedDescriptionKey: Self.privateText])
         XCTAssertEqual(LiveStoreKitFacade.requestFailure(error), .failed(Self.privateText))
     }
-    #endif
 
     #if canImport(UIKit)
     func testHostedPaywallDiagnosticRowsFollowTheBuildConfiguration() async throws {
@@ -329,12 +186,6 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         try await Task.sleep(nanoseconds: 700_000_000)
         surface.host.view.setNeedsLayout()
         surface.host.view.layoutIfNeeded()
-        #if COACH_IPHONE_QA
-        try EvidenceOutput.write(
-            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
-            named: "qa-before-restore.png", for: "coach-storekit-diagnostics"
-        )
-        #endif
         let restore = try XCTUnwrap(AccessibilityTree.element(labeled: "Restore purchases", in: surface.host.view))
         XCTAssertTrue(restore.accessibilityActivate(), "Drive the actual Restore control")
         let restoreDeadline = Date().addingTimeInterval(2)
@@ -351,36 +202,10 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         XCTAssertTrue(labels.contains("We couldn't restore right now. Please try again later."))
         XCTAssertTrue(labels.contains("We couldn't load plans right now. Your workouts are always free - try again later."))
         XCTAssertNotNil(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
-        #if COACH_IPHONE_QA
-        XCTAssertTrue(labels.contains("Products: unclassified — ASDErrorDomain / 101"))
-        XCTAssertTrue(labels.contains("Restore: unclassified — AMSErrorDomain / 202"))
-        #else
         XCTAssertFalse(labels.contains { $0.hasPrefix("Products: ") || $0.hasPrefix("Restore: ") })
-        #endif
         XCTAssertFalse(labels.joined().contains("PRIVATE"))
         let calls = await facade.calls
         XCTAssertEqual(calls, ["products", "sync", "history"], "One user tap adds only the existing restore sequence")
-        #if COACH_IPHONE_QA
-        try EvidenceOutput.write(
-            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
-            named: "qa-after-restore.png", for: "coach-storekit-diagnostics"
-        )
-        // Render the same live state at an accessibility text size, without rehosting/reloading.
-        surface.host.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
-        surface.window.frame.size.height = 2800
-        surface.host.view.frame = surface.window.bounds
-        try await Task.sleep(nanoseconds: 700_000_000)
-        surface.host.view.setNeedsLayout()
-        surface.host.view.layoutIfNeeded()
-        HostedSurface.pump(for: 0.2)
-        let largeLabels = AccessibilityTree.labels(in: surface.host.view)
-        XCTAssertTrue(largeLabels.contains("Products: unclassified — ASDErrorDomain / 101"))
-        XCTAssertTrue(largeLabels.contains("Restore: unclassified — AMSErrorDomain / 202"))
-        try EvidenceOutput.write(
-            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
-            named: "qa-accessibility-after-restore.png", for: "coach-storekit-diagnostics"
-        )
-        #endif
         let retry = try XCTUnwrap(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
         XCTAssertTrue(retry.accessibilityActivate(), "Drive the actual accessible Retry control")
         let retryDeadline = Date().addingTimeInterval(2)

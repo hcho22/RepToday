@@ -1,5 +1,9 @@
 # Temporary Coach authentication guard diagnostics
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> These diagnostics concern the Worker's App Attest authentication, which no app build now uses. Kept as a historical record.
+
 Use only for the investigated assertion-challenge `401 unauthorized`, after normal source review,
 validation and explicit production authority. This does not repair authentication or prove which
 live guard failed. Existing generic HTTP responses, authentication predicates, namespace, security

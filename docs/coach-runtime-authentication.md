@@ -1,5 +1,9 @@
 # Coach runtime authentication and production migration
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> The iOS client this runbook describes (`CoachRuntimeAuthentication`, `CoachProxyClient`), its staging and QA lanes and their iOS tools were removed from the app. The Worker, its secrets and its operator tooling are unchanged and not redeployed; retiring the Worker's Coach route is a release step in the M4 validation record. Kept as the record of that work.
+
 Worker `reptoday-variety-language-proxy` serves `https://coach.reptoday.app/coach`.
 The operator confirmed deployment of Sandbox-capable revision `cad34528` on 2026-09-22.
 Revision `b1b1156` (the Worker/Durable Object clock-skew tolerance below) was deployed through

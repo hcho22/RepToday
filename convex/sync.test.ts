@@ -60,18 +60,32 @@ describe("ownership: every public account function checks the caller", () => {
     await expectRefusal(t.action(api.accounts.deleteAccount, {}), "unauthenticated");
   });
 
-  test("the public account API is exactly push, pull and deleteAccount", async () => {
-    // Each public function needs its own ownership check and a refusal test above. Custom workouts
-    // and coach memory have tables but no public function until M4; deletion's steps are internal.
+  test("the deployment's public API is exactly the account and Coach functions", async () => {
+    // Each public function needs its own ownership check and a refusal test (here, in
+    // `entitlements.test.ts` and in `coach.test.ts`). Every other function - deletion's steps, the
+    // Coach's reads and writes, the entitlement updates, the telemetry sink - is internal, and the
+    // telemetry routes are HTTP actions that never read an identity.
     const exported = await Promise.all(
-      ["./sync.ts", "./accounts.ts", "./ownership.ts"].map(async (path) => [path, await modules[path]()] as const),
+      Object.keys(modules)
+        .filter((path) => !path.includes("_generated"))
+        .map(async (path) => [path, await modules[path]()] as const),
     );
     const publicFunctions = exported.flatMap(([path, module]) =>
-      Object.entries(module)
+      Object.entries(module as Record<string, unknown>)
         .filter(([, value]) => (value as { isPublic?: boolean })?.isPublic === true)
         .map(([name]) => `${path.replace("./", "").replace(".ts", "")}:${name}`),
     );
-    expect(publicFunctions.sort()).toEqual(["accounts:deleteAccount", "sync:pull", "sync:push"]);
+    expect(publicFunctions.sort()).toEqual([
+      "accounts:deleteAccount",
+      "coach:history",
+      "coach:recordProposalOutcome",
+      "coach:send",
+      "entitlements:appAccountToken",
+      "entitlements:linkTransaction",
+      "entitlements:status",
+      "sync:pull",
+      "sync:push",
+    ]);
   });
 
   test("two users with the same record id never see or overwrite each other's rows", async () => {
@@ -153,6 +167,26 @@ describe("push: idempotent by record id, newest change wins", () => {
     expect(stored.payload).toBeUndefined();
     const pulled = await t.withIdentity(ALICE).query(api.sync.pull, { since: 0 });
     expect(pulled.changes).toEqual([{ table: "outsideActivity", recordId: "A1", serverSeq: 2, clientUpdatedAt: 2, deleted: true, date: 100 }]);
+  });
+
+  test("an accepted Custom Workout syncs like any other record, owner-scoped and deletable (M4)", async () => {
+    const t = convexTest(schema, modules);
+    const workout: SyncChange = { table: "customWorkout", recordId: "W1", clientUpdatedAt: 1, deleted: false, payload: '{"title":"Desk Reset"}' };
+    expect((await t.withIdentity(ALICE).mutation(api.sync.push, { changes: [workout] })).results[0].outcome).toBe("applied");
+    expect((await t.withIdentity(ALICE).mutation(api.sync.push, { changes: [workout] })).results[0].outcome).toBe("unchanged");
+    expect((await t.withIdentity(BOB).query(api.sync.pull, { since: 0 })).changes).toEqual([]);
+    expect((await t.withIdentity(ALICE).query(api.sync.pull, { since: 0 })).changes).toEqual([
+      { table: "customWorkout", recordId: "W1", serverSeq: 1, clientUpdatedAt: 1, deleted: false, payload: '{"title":"Desk Reset"}' },
+    ]);
+    await t.withIdentity(ALICE).mutation(api.sync.push, { changes: [{ table: "customWorkout", recordId: "W1", clientUpdatedAt: 2, deleted: true }] });
+    const stored = await t.run(async (ctx) => await ctx.db.query("customWorkouts").collect());
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ deleted: true, ownerId: ALICE.tokenIdentifier });
+    expect(stored[0].payload).toBeUndefined();
+    await expectRefusal(
+      t.withIdentity(ALICE).mutation(api.sync.push, { changes: [{ table: "customWorkout", recordId: "W2", clientUpdatedAt: 3, deleted: false }] }),
+      "invalid_change",
+    );
   });
 
   test("the profile and its Focus Areas are one change per owner", async () => {

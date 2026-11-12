@@ -1868,3 +1868,35 @@ Built and verified against the development Clerk instance and the dev Convex dep
   A `SessionPolicy` encoded its enum-keyed maps in hash order, so one policy could encode to two strings and defeat the backend's replay detection; it now writes them in key order in the identical array format, so every stored policy still decodes. The development Clerk instance required a password at sign-up, which an email-code sign-up can never supply; that was a dashboard setting, reported rather than worked around.
 - **CloudKit removal is deferred (captain-accepted).** US-AU03's "CloudKit container and sync removed" stays open: the iCloud mirror runs only for a pre-account user whose history has not finished uploading. Removing the CloudKit container (`NSPersistentCloudKitContainer`), the iCloud container entitlement and the `remote-notification` background mode moves to a later build, once the upload window has passed.
 - **CI.** ClerkKit needs Swift tools 6.2, so the `ios` lane builds with Xcode 26.3 on macos-15 and still runs the suite on an iOS 18 simulator.
+
+## The Coach agent on Convex (M4, US-CA01...US-CA08, 2026-11-11)
+
+M4 of the Push/Pull/Legs PRD (`.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`, decisions 25-30) turns the Coach into a Premium agent on the account backend; ADR-0017 records the decision and its implementation choices, and `CONTEXT.md` ("Coach", "Custom Workout") the vocabulary.
+Built against the development Clerk instance and the dev deployment `courteous-dogfish-560` and walked in the Simulator with the real model; the sandbox subscription, notifications and VoiceOver on hardware, and the release steps are owed (`artifacts/reports/coach-agent-m4/validation.md`).
+
+- **Coach on Convex (US-CA01).** `coach:send` is one Convex action per turn: it checks the caller owns the account and has Premium, counts the turn against a per-account and a deployment-wide daily limit (`coachUsage`), reads the user's own synced records and the conversation (`coachMemory`), and calls OpenAI's Responses API once with `store: false` and the seven tools in strict mode (`convex/coachModel.ts`, `convex/coachTools.ts`, `convex/coachPrompt.ts`).
+  A retry of a stored turn is answered from memory without a second model call.
+  The model is `gpt-5.6-luna` at low reasoning effort, chosen by `convex/coachEval.ts` (Open Question 3, ADR-0017).
+  The words-the-app-shows discipline carries over: `proxy/coach-internal-words.json` stays the one list, now checked by `convex/coachPrompt.test.ts`, and a reply's em dash is normalized to the app's spaced hyphen.
+  The app's Cloudflare Coach client, its App Attest/StoreKit runtime authentication, the synthetic and proof QA lanes, their schemes and build settings and their tools are removed; `tools/inspect-release-build.py` now fails an archive that carries any Coach configuration or retired Coach client string.
+  The Worker is not redeployed.
+- **Premium entitlement (US-CA02).** `POST /appStore/notifications` verifies each App Store Server Notification V2 against the pinned Apple roots (`convex/appStoreJws.ts`, pkijs on WebCrypto) and keeps `entitlements` current, idempotent by notification id and ordered by signed date (`convex/entitlements.ts`).
+  Purchases carry the account's `appAccountToken`, and a granted purchase or Restore sends its signed transaction to `entitlements:linkTransaction`; one subscription belongs to one live account, and a transaction signed before the row's newest update never undoes a refund or grace period.
+  The paywall's on-device unlock never waits on that link, and the Coach tab links a local Premium purchase before it opens.
+- **Tools and memory (US-CA03).** A tool call is never executed on the server: each becomes a proposal card (`CoachProposal`), and Confirm applies it on the phone through the same path the user's own control takes (`CoachProposalApplier`), so it saves locally first, syncs through M3's outbox and can be undone; the outcome is written back to the conversation.
+  An outcome the server has not stored stays on the phone, is resent on each open and shown over the reloaded history, so a proposal already acted on is never offered again; one the server refuses for good (`invalid_change`) is dropped and the server's status stands.
+  Rest today, train anyway, today's length and swaps are kept for the day in `TodayChoices`, which Today's own controls now write too; resting on a Training Day is a chosen Rest Day (`RestReason.chosen`) that skips no group.
+  No tool or action case can express a de-load, a Return, the cold start, the pace, the phase or an injury flag.
+- **Custom Workouts (US-CA04, US-CA05).** Only an accepted Custom Workout is stored (`CDCustomWorkout`, model version 4, Local configuration) and synced as `customWorkout`.
+  The editor swaps, removes, reorders and changes sets, reps, time and rest; catalog steps show the Trainer's start pose, others are text only.
+  A played one runs in the hands-free player and is recorded as an Outside Activity that names it, never a session, so it advances nothing; FR-8's group rule is ADR-0017's.
+- **Coach tab (US-CA06).** `CoachTabView` is the fourth tab: persistent history, quick-action chips, inline cards, the data disclosure before the first message, and for a free account a preview and the paywall (which now leads with the Coach).
+  The Profile Coach row is gone.
+- **Diet age rail (US-CA07).** The server reads the onboarding age from the synced profile; anyone not known to be 18 or over gets a fixed decline for a diet question before any model call, and a reply that drifts into diet is replaced (`convex/coachSafety.ts`).
+  The disclosure, the Settings mirror and `gtm/03-site/privacy.html` say that sessions, Outside Activities, Custom Workouts and flagged injury areas reach OpenAI and that the conversation is kept with the account; the disclosure version is 4.
+- **Reminders (US-CA08).** `CoachReminderService` schedules local notifications only, asks permission at the first save, and keeps the list on the device; Settings > Reminders edits, switches and deletes them, and account deletion clears them.
+- **Retired with the agent.** The Coach's keyword `SessionPolicy` tuning (US-AC07) and its strength-journey offer (US-AN02) are removed (captain's choice); the injury routing offer (US-AC08) stays.
+- **Found on the walks.** The conversation used a lazy stack, which hung the main thread re-placing rows when the keyboard opened on a conversation with history; it is now a plain stack (at most 200 messages) that scrolls to its end on opening, on each reply and when the keyboard opens, and Send puts the keyboard away.
+  The Coach's view of today dropped a swapped-out movement without its substitute; Today and the Coach now apply swaps through one function.
+  Reminder switches were all labelled "Reminder on".
+  The Profile tab now fits an iPhone SE at the largest text size, so its status-bar case checks that nothing can reach the band instead of scrolling.

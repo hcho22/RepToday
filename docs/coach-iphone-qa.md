@@ -1,5 +1,9 @@
 # Physical-iPhone Coach synthetic QA preparation
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> The synthetic device QA lane (`COACH_IPHONE_QA`, the `RepTodayCoachDeviceQA` scheme, `CoachSyntheticQAView`) and the iOS tools named below were removed with the Cloudflare client. Kept as a historical record.
+
 A separate [TestFlight proof-schema probe](coach-testflight-schema-probe.md) is prepared behind this
 dedicated QA surface. It requires its own concrete device/signing/Apple-operation approval, makes
 no model request and does not grant TestFlight Premium or consume the two-model-request budget.

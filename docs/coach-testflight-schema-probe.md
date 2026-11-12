@@ -1,5 +1,9 @@
 # TestFlight App Attest schema verification preparation
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> The schema probe and its iOS sources and tools named below were removed with the Cloudflare client. Kept as a historical record.
+
 This is an **unexecuted QA-only preparation**, not TestFlight Coach enablement. The assertion
 extension contract remains unresolved. It is no longer a prerequisite or input to the runtime
 subscription boundary: current source selects Production or Sandbox only from an Apple-verified

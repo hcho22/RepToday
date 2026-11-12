@@ -132,12 +132,21 @@ final class LiveStoreKitFacade: StoreKitFacade {
                 from: product, subscription: subscription, isEligibleForIntroOffer: isEligible
             ))
         }
-        #if COACH_IPHONE_QA
-        if subscriptions.isEmpty {
-            throw SubscriptionError.diagnosticProductsUnavailable(rawProductCount: products.count)
-        }
-        #endif
         return subscriptions
+    }
+
+    /// The signed transactions behind the user's current Premium entitlements (`jwsRepresentation`),
+    /// for the server to verify and link to the account (M4, US-CA02). Apple-signed, so the server
+    /// trusts the signature, never this device.
+    func premiumTransactionJWS() async -> [String] {
+        var result: [String] = []
+        for await verification in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = verification,
+                  SubscriptionPlan.ProductID.all.contains(transaction.productID),
+                  transaction.revocationDate == nil else { continue }
+            result.append(verification.jwsRepresentation)
+        }
+        return result
     }
 
     func currentEntitlements() async -> [StoreEntitlement] {
@@ -152,6 +161,12 @@ final class LiveStoreKitFacade: StoreKitFacade {
     }
 
     func purchase(productID: String) async throws -> StorePurchaseResult {
+        try await purchase(productID: productID, appAccountToken: nil)
+    }
+
+    /// The purchase flow with the signed-in account's App Store token attached (M4, US-CA02), so Apple
+    /// names the account in this subscription's notifications and the Coach's entitlement follows it.
+    func purchase(productID: String, appAccountToken: UUID?) async throws -> StorePurchaseResult {
         let products: [Product]
         do {
             products = try await Product.products(for: [productID])
@@ -162,7 +177,7 @@ final class LiveStoreKitFacade: StoreKitFacade {
 
         let result: Product.PurchaseResult
         do {
-            result = try await product.purchase()
+            result = try await product.purchase(options: appAccountToken.map { [.appAccountToken($0)] } ?? [])
         } catch {
             throw SubscriptionError.failed(error.localizedDescription)
         }
@@ -196,45 +211,10 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    /// Only the product-load and sync catches use this seam. Ordinary builds keep their existing
-    /// wrapping; QA projects bounded facts before the original error structure is discarded.
+    /// Only the product-load and sync catches use this seam: it wraps the failure for the paywall's
+    /// gentle message.
     static func requestFailure(_ error: Error) -> SubscriptionError {
-        #if COACH_IPHONE_QA
-        let category: StoreKitFailureDiagnostic.Category
-        var cause: Error?
-        switch error {
-        case let storeError as StoreKitError:
-            switch storeError {
-            case .userCancelled:
-                category = .cancelled
-            case .networkError(let underlying):
-                category = .network
-                cause = underlying
-            case .systemError(let underlying):
-                category = .system
-                cause = underlying
-            default:
-                category = .storeKit
-            }
-        case let storeError as SKError where storeError.code == .paymentCancelled:
-            category = .cancelled
-        case is CancellationError:
-            category = .cancelled
-        case is URLError:
-            category = .network
-        default:
-            category = .unclassified
-        }
-        let original = error as NSError
-        if cause == nil { cause = original.userInfo[NSUnderlyingErrorKey] as? Error }
-        return .diagnosticFailure(StoreKitFailureDiagnostic(
-            category: category,
-            error: .init(original),
-            underlying: cause.map { .init($0 as NSError) }
-        ))
-        #else
         return .failed(error.localizedDescription)
-        #endif
     }
 
     func transactionHistory() async -> StoreTransactionHistory {

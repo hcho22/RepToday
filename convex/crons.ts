@@ -19,4 +19,11 @@ crons.interval(
   {},
 );
 
+/**
+ * M4 account-side housekeeping: processed App Store notification ids past their retry window, and
+ * Coach turn counters for days that can no longer be counted against.
+ */
+crons.interval("reclaim processed App Store notifications", { hours: 6 }, internal.entitlements.reclaimNotifications, {});
+crons.interval("reclaim old Coach turn counters", { hours: 6 }, internal.coach.reclaimUsage, {});
+
 export default crons;

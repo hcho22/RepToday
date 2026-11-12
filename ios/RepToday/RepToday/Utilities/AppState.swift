@@ -1,9 +1,11 @@
 import Foundation
 import Observation
 
-/// The top-level app routes controlled by `AppState`.
+/// The top-level app routes controlled by `AppState`: Today, Coach (M4, decision 28), Progress and
+/// Profile, in tab-bar order.
 enum AppTab: String, CaseIterable, Identifiable {
     case home
+    case coach
     case progress
     case profile
 
@@ -11,7 +13,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 }
 
 /// Small, persisted app state for routing, anonymous install identity, telemetry consent, and the
-/// separate AI Coach abuse-prevention pseudonym.
+/// AI Coach data-disclosure acknowledgement.
 ///
 /// `isOnboarded` chooses between onboarding and the main tabs. `selectedTab` restores the
 /// user's last main-tab context. This uses the Observation framework (`@Observable`).
@@ -32,8 +34,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// with a new id. A successful account deletion also replaces the id before onboarding resumes,
 /// while preserving the original install date and the user's telemetry preference.
 ///
-/// The clock, calendar, and identifier generators are injected, so cohorting and pseudonym lifecycle
-/// behavior are pinnable in tests without reading the wall clock or device locale inline.
+/// The clock, calendar, and identifier generator are injected, so cohorting behavior is pinnable in
+/// tests without reading the wall clock or device locale inline.
 @Observable
 final class AppState {
     var isOnboarded: Bool {
@@ -267,7 +269,10 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
-    static let coachDataSharingDisclosureVersion = 3
+    /// The Coach data-disclosure contract in force. Version 4 (M4, US-CA07) covers the Coach agent on
+    /// Rep Today's servers: workout and injury history reaching the model provider, and the conversation
+    /// kept with the account. An acknowledgement of an earlier version does not cover it.
+    static let coachDataSharingDisclosureVersion = 4
 
     private(set) var acknowledgedCoachDataSharingDisclosureVersion: Int? {
         didSet {
@@ -287,8 +292,8 @@ final class AppState {
     ///
     /// It is deliberately its **own** state, completely independent of `analyticsEnabled`: the coach
     /// disclosure and the anonymous-telemetry opt-out are two different things (the coach sends *content*
-    /// - your message plus a training-context summary - in the moment of a call; telemetry is
-    /// anonymous, opt-out, and never carries content). Acknowledging the coach disclosure neither reads
+    /// - your message plus your training records - to the model provider in the moment of a turn;
+    /// telemetry is anonymous, opt-out, and never carries content). Acknowledging the coach disclosure neither reads
     /// nor writes the telemetry flag, and vice versa. Unlike the informational one-shots above, this
     /// gate is flipped only on the user's explicit acknowledgement, never merely on presentation, so a
     /// force-quit mid-disclosure re-shows it and nothing is ever sent without consent (US-AC04).
@@ -304,37 +309,12 @@ final class AppState {
         acknowledgedCoachDataSharingDisclosureVersion = Self.coachDataSharingDisclosureVersion
     }
 
-    /// The stable, random pseudonym sent with Coach requests for provider abuse prevention. It is
-    /// generated independently from `installId`, contains no account value, and is rotated at the
-    /// account-deletion boundary.
-    private(set) var coachSafetyIdentifier: CoachSafetyIdentifier {
-        didSet {
-            userDefaults.set(coachSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
-        }
-    }
-
-    /// A request-time reader for the persisted Coach pseudonym. Production injects this closure into
-    /// its long-lived `CoachProxyClient`, so account deletion rotates the identifier for the next
-    /// request without rebuilding the service container.
-    var coachSafetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier? {
-        let store = SendableUserDefaults(wrapped: userDefaults)
-        return {
-            store.wrapped.string(forKey: Keys.coachSafetyIdentifier)
-                .flatMap(CoachSafetyIdentifier.init(rawValue:))
-        }
-    }
-
-    /// Replaces the Coach pseudonym at the account-deletion boundary so a later account cannot
-    /// inherit the deleted account's provider safety history.
-    func rotateCoachSafetyIdentifier() {
-        coachSafetyIdentifier = coachSafetyIdentifierGenerator()
-    }
-
-    /// Clears the account-scoped Coach disclosure acknowledgement and rotates the separate provider
-    /// safety pseudonym. Called only after successful account deletion, before onboarding resumes.
+    /// Clears the account-scoped Coach disclosure acknowledgement. Called only after successful account
+    /// deletion, before onboarding resumes. Since M4 the provider's abuse-monitoring id is derived on the
+    /// server from the account (`convex/coach.ts`), so a new account gets a new one with nothing to rotate
+    /// on the device.
     func resetCoachAccountState() {
         acknowledgedCoachDataSharingDisclosureVersion = nil
-        rotateCoachSafetyIdentifier()
     }
 
     // MARK: - Account (M3, ADR-0016)
@@ -612,7 +592,6 @@ final class AppState {
 
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
-    @ObservationIgnored private let coachSafetyIdentifierGenerator: @Sendable () -> CoachSafetyIdentifier
     @ObservationIgnored private var analyticsConsentHandler: (() -> Void)?
 
     /// - Parameter userDefaults: The store this state reads and writes, and - through
@@ -627,12 +606,10 @@ final class AppState {
         userDefaults: UserDefaults = .standard,
         now: () -> Date = Date.init,
         calendar: Calendar = AppState.cohortCalendar,
-        newInstallId: () -> String = { UUID().uuidString },
-        newCoachSafetyIdentifier: @escaping @Sendable () -> CoachSafetyIdentifier = { .random() }
+        newInstallId: () -> String = { UUID().uuidString }
     ) {
         self.userDefaults = userDefaults
         self.calendar = calendar
-        self.coachSafetyIdentifierGenerator = newCoachSafetyIdentifier
         let wasOnboarded = userDefaults.bool(forKey: Keys.isOnboarded)
         isOnboarded = wasOnboarded
 
@@ -721,14 +698,10 @@ final class AppState {
             }
         }
 
-        if let storedSafetyIdentifier = userDefaults.string(forKey: Keys.coachSafetyIdentifier)
-            .flatMap(CoachSafetyIdentifier.init(rawValue:)),
-           storedSafetyIdentifier.rawValue != resolvedInstallId {
-            coachSafetyIdentifier = storedSafetyIdentifier
-        } else {
-            let generatedSafetyIdentifier = newCoachSafetyIdentifier()
-            coachSafetyIdentifier = generatedSafetyIdentifier
-            userDefaults.set(generatedSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
+        // The Coach no longer runs through the Cloudflare Worker (M4, ADR-0017), so the pseudonym and the
+        // App Attest key reference that route kept on the device are removed rather than left behind.
+        for retired in Keys.retiredCloudflareCoachKeys {
+            userDefaults.removeObject(forKey: retired)
         }
 
         // `didSet` does not fire during `init`, so this launch's open time is written through.
@@ -760,7 +733,13 @@ final class AppState {
         static let hasSeenClassicsUpdateNote = "AppState.hasSeenClassicsUpdateNote"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
-        static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
+        /// What the retired Cloudflare Coach route kept on the device: its provider pseudonym and the App
+        /// Attest key references of the production and staging lanes. Cleared once at launch.
+        static let retiredCloudflareCoachKeys = [
+            "AppState.coachSafetyIdentifier",
+            "coachProductionAppAttestKeyV1",
+            "coachStagingAppAttestKeyV2",
+        ]
         static let healthWorkoutSuggestionsEnabled = "AppState.healthWorkoutSuggestionsEnabled"
         static let dismissedHealthWorkoutIds = "AppState.dismissedHealthWorkoutIds"
         static let accountUserId = "AppState.accountUserId"

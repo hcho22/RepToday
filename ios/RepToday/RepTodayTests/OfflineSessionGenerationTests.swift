@@ -267,7 +267,6 @@ final class OfflineSessionGenerationTests: XCTestCase {
         ServiceContainer.live(
             context: context,
             installId: "offline-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
             analyticsGate: { true },
             analyticsService: telemetry
         )

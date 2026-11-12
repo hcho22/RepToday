@@ -9,9 +9,9 @@ import Foundation
 /// *offer* to take the user somewhere. Setting the flag is unreachable from here; it happens in the
 /// injury control the user is routed to, under their own explicit, confirmed, reversible action.
 ///
-/// This is the deliberate sibling of `CoachPolicyProposal` (US-AC07), which can name only *preference*
-/// levers: safety filters stay inexpressible on the coach's write path, permanently. Injury routing is
-/// not a second write path - it is a pointer to the user's own control.
+/// The Coach agent's tools (M4, `convex/coachTools.ts`) have no injury-flag tool either: safety filters
+/// stay inexpressible on everything the Coach can propose, permanently. Injury routing is not a write
+/// path - it is a pointer to the user's own control.
 struct CoachInjuryRoutingProposal: Equatable {
     /// The area the message sounded like it was about, from the closed onboarding vocabulary the
     /// engine's `InjuryContraindication` map already recognizes. It is the *destination* of a route,
@@ -21,8 +21,7 @@ struct CoachInjuryRoutingProposal: Equatable {
 
 /// Recognizes a health/injury signal in a free-text coach message, on-device (US-AC08).
 ///
-/// It mirrors `CoachIntentMapper`'s shape: a pure, deterministic, closed function of the message (no
-/// clock, no state, no I/O) that returns a routing proposal or `nil`. A mention of a body part is never
+/// It is a pure, deterministic, closed function of the message (no clock, no state, no I/O) that returns a routing proposal or `nil`. A mention of a body part is never
 /// enough - the message must carry a **complaint cue** near a **recognized area**, so "how do I do a
 /// pistol squat?" routes nothing. A cue that is negated ("my knee doesn't hurt any more") is not a live
 /// complaint either, and that negation is read within its own clause so a real complaint is never
@@ -40,7 +39,7 @@ struct CoachInjuryRoutingProposal: Equatable {
 /// signal just means the coach talks without offering, and the user can still flag the area from the
 /// control in Settings; a spurious offer changes nothing on its own - it is a question with a decline
 /// affordance, and the flag is only ever set by the user in the control itself. Real sophistication
-/// belongs behind the same seam `CoachIntentMapper` names - the *output type* is the contract, so a
+/// belongs behind this seam - the *output type* is the contract, so a
 /// future story can replace this function with a structured signal emitted by the model without
 /// touching a caller - rather than in more cue tuning here, which only ever trades one failure
 /// direction for the other.

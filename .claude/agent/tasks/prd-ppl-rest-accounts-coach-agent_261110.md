@@ -1,6 +1,6 @@
 # PRD: Push/Pull/Legs Training Days, Rest Days, Accounts and the Coach Agent (2026-11-10)
 
-- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2 implemented (2026-11-10); M3 implemented against the development Clerk instance and Convex deployment (2026-11-11), its device exit criteria and release steps pending (`artifacts/reports/accounts-m3/validation.md`); M4 not started.**
+- Status: **Approved for documentation (2026-11-10); M1 implemented (2026-11-10); M2 implemented (2026-11-10); M3 implemented against the development Clerk instance and Convex deployment (2026-11-11), its device exit criteria and release steps pending (`artifacts/reports/accounts-m3/validation.md`); M4 implemented against the development Clerk instance and Convex deployment and walked in the Simulator (2026-11-11), its device exit criteria (a sandbox subscription, notifications and VoiceOver on hardware) and release steps pending (`artifacts/reports/coach-agent-m4/validation.md`).**
   Every decision below was settled with the captain in a design grill on 2026-11-09 and 2026-11-10.
   The captain approved this PRD and its documentation changes on 2026-11-10.
   No implementation is authorized until the captain approves a milestone.
@@ -223,46 +223,46 @@ Exit criteria: all M4 stories pass against a Convex dev deployment and on a devi
 
 #### US-CA01: Coach on Convex
 **Acceptance Criteria:**
-- [ ] Coach turn runs as a Convex action, authenticated by Clerk, reading the user's history, status, injury history and conversation memory server-side.
-- [ ] Cloudflare Coach route and `CoachRuntimeAuthentication` retired; the variety-language route is evaluated separately.
+- [x] Coach turn runs as a Convex action, authenticated by Clerk, reading the user's history, status, injury history and conversation memory server-side. (`convex/coach.ts`; the phone adds only today's plan, which only its engine can compute.)
+- [x] Cloudflare Coach route and `CoachRuntimeAuthentication` retired; the variety-language route is evaluated separately. (The app no longer calls the Worker's Coach route; the Worker is not redeployed, so removing the route and its secret is a release step. The variety-language route needs no change: it never used the Coach's authentication.)
 
 #### US-CA02: Per-user premium entitlement
 **Acceptance Criteria:**
-- [ ] App Store Server Notifications keep a per-user entitlement in Convex; the Coach checks it on every turn.
-- [ ] Restore purchases links an existing subscription to the account.
+- [x] App Store Server Notifications keep a per-user entitlement in Convex; the Coach checks it on every turn. (Verified in process and with a seeded entitlement on the dev deployment; a live Sandbox notification is a device check.)
+- [x] Restore purchases links an existing subscription to the account. (Linking is verified in process; a Sandbox restore is a device check.)
 
 #### US-CA03: Agent tools and memory
 **Acceptance Criteria:**
-- [ ] Conversation history persists and is sent as context.
-- [ ] Tools: log Outside Activity, rest today or train anyway, change today's length, swap a movement, set Focus Areas, schedule a reminder; every action shows a confirmation with Undo.
-- [ ] Safety-owned engine moves (de-load, Return, cold start) stay out of reach (ADR-0005).
+- [x] Conversation history persists and is sent as context.
+- [x] Tools: log Outside Activity, rest today or train anyway, change today's length, swap a movement, set Focus Areas, schedule a reminder; every action shows a confirmation with Undo. (Read as confirm first, then Undo; each tool walked against the dev deployment.)
+- [x] Safety-owned engine moves (de-load, Return, cold start) stay out of reach (ADR-0005). (No tool or app action can express one.)
 
 #### US-CA04: Generate a Custom Workout
 **Acceptance Criteria:**
-- [ ] The Coach writes a workout from history, status and injury history (decision 27).
-- [ ] It appears as a proposal card; nothing plays until accepted.
-- [ ] Catalog movements resolve to their Trainer art; others are text-only steps.
+- [x] The Coach writes a workout from history, status and injury history (decision 27).
+- [x] It appears as a proposal card; nothing plays until accepted.
+- [x] Catalog movements resolve to their Trainer art; others are text-only steps.
 
 #### US-CA05: Review, edit and play a Custom Workout
 **Acceptance Criteria:**
-- [ ] Edit before accepting: swap, remove, reorder, change reps or time.
-- [ ] Plays in the hands-free player; logged as a Custom Workout that counts like an Outside Activity (decision 27).
+- [x] Edit before accepting: swap, remove, reorder, change reps or time.
+- [x] Plays in the hands-free player; logged as a Custom Workout that counts like an Outside Activity (decision 27). (It never advances progression; its group gets a day off only when one group has strictly the most catalog sets, ADR-0017.)
 
 #### US-CA06: Coach tab
 **Acceptance Criteria:**
-- [ ] Fourth tab (Today / Coach / Progress / Profile); full-screen chat, persistent history, quick-action chips, inline Custom Workout cards.
-- [ ] Free users see a preview and the paywall; the Coach row leaves Profile.
-- [ ] Verify in the simulator, light and dark, Dynamic Type, VoiceOver.
+- [x] Fourth tab (Today / Coach / Progress / Profile); full-screen chat, persistent history, quick-action chips, inline Custom Workout cards.
+- [x] Free users see a preview and the paywall; the Coach row leaves Profile.
+- [x] Verify in the simulator, light and dark, Dynamic Type, VoiceOver. (VoiceOver is read from the accessibility tree; live VoiceOver is a device check.)
 
 #### US-CA07: Diet guidance with an age rail
 **Acceptance Criteria:**
-- [ ] General guidance only (decision 29) for users 18 and over; declines diet topics for users under 18; never medical advice.
-- [ ] Coach data disclosure updated to cover workout history and injury history.
+- [x] General guidance only (decision 29) for users 18 and over; declines diet topics for users under 18; never medical advice. (The age rail is enforced on the server from the synced onboarding age, before and after the model; walked with a 16-year-old account.)
+- [x] Coach data disclosure updated to cover workout history and injury history.
 
 #### US-CA08: Coach reminders
 **Acceptance Criteria:**
-- [ ] Coach schedules on-device notifications from chat; listed, editable and deletable in Settings.
-- [ ] Copy is identity-framed; no guilt or streak framing.
+- [x] Coach schedules on-device notifications from chat; listed, editable and deletable in Settings. (Delivered on the Simulator; delivery on hardware is a device check.)
+- [x] Copy is identity-framed; no guilt or streak framing.
 
 ## Functional Requirements
 
@@ -314,7 +314,7 @@ Exit criteria: all M4 stories pass against a Convex dev deployment and on a devi
 
 1. Variation list per rung (Push and Pull first) and its Trainer art schedule. Recommendation: Wide and One-legged for Standard push-up; Decline for Pike; captain supplies the list.
 2. ~~Confirm the planning defaults listed under the decisions table at M1 kickoff.~~ Resolved 2026-11-10: the captain confirmed the defaults as implemented, with the reconciliations recorded in ADR-0013.
-3. M4 LLM provider and model for an agent with tools. Recommendation: decide at M4 kickoff with a short evaluation.
+3. ~~M4 LLM provider and model for an agent with tools. Recommendation: decide at M4 kickoff with a short evaluation.~~ Resolved 2026-11-11: OpenAI stays, `gpt-5.6-luna` at low reasoning effort, chosen by a short evaluation on the dev deployment (ADR-0017).
 
 ## Documentation changes (applied 2026-11-10)
 

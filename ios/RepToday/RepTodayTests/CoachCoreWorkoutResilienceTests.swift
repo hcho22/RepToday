@@ -6,21 +6,7 @@ import XCTest
 /// response. This uses the same Ready/player/completion services the production views compose.
 @MainActor
 final class CoachCoreWorkoutResilienceTests: XCTestCase {
-    private actor UnauthorizedCoachTransport: CoachProxyTransport {
-        private(set) var callCount = 0
-
-        func post(
-            to url: URL,
-            jsonBody: Data,
-            headers: [String: String],
-            timeoutSeconds: Double
-        ) async throws -> (data: Data, statusCode: Int) {
-            callCount += 1
-            return (Data(#"{"error":"unauthorized"}"#.utf8), 401)
-        }
-    }
-
-    private func replacingCoach(in base: ServiceContainer, with client: CoachProxyClient?) -> ServiceContainer {
+    private func replacingCoach(in base: ServiceContainer, with coach: (any CoachServiceProtocol)?) -> ServiceContainer {
         ServiceContainer(
             exerciseService: base.exerciseService,
             workoutEngine: base.workoutEngine,
@@ -37,8 +23,11 @@ final class CoachCoreWorkoutResilienceTests: XCTestCase {
             authService: base.authService,
             analyticsService: base.analyticsService,
             accountDeletionService: base.accountDeletionService,
-            coachClient: client,
-            coachPolicyService: base.coachPolicyService
+            coachService: coach,
+            premiumEntitlements: coach == nil ? nil : MockPremiumEntitlementService(premium: true),
+            customWorkoutService: base.customWorkoutService,
+            todayChoices: base.todayChoices,
+            reminders: base.reminders
         )
     }
 
@@ -65,39 +54,32 @@ final class CoachCoreWorkoutResilienceTests: XCTestCase {
 
         for rejectsCoach in [false, true] {
             let base = ServiceContainer.mock()
-            let denyingTransport = UnauthorizedCoachTransport()
-            let coachClient = rejectsCoach
-                ? CoachProxyClient(
-                    endpoint: URL(string: "https://proxy.example.com/coach")!,
-                    safetyIdentifier: testCoachSafetyIdentifier,
-                    transport: denyingTransport
-                )
-                : nil
-            let services = replacingCoach(in: base, with: coachClient)
+            let rejectingCoach = MockCoachService(reply: { _ in throw CoachServiceError.unavailable })
+            let services = replacingCoach(in: base, with: rejectsCoach ? rejectingCoach : nil)
             let user = MockPersistence.sampleUser
             try await services.userService.save(user)
 
-            // First exercise the optional integration in its unavailable or authorization-rejected
-            // state. A tuning-shaped question is deliberate: a rejected send must not write even the
-            // Coach's already-bounded preference policy.
-            let coach = CoachViewModel(services: services)
+            // First exercise the optional integration in its unavailable or failing state. A
+            // tuning-shaped question is deliberate: a failed turn must not write anything to the program.
+            let coach = CoachViewModel(services: services, planInputsChanged: {})
+            await coach.load()
             coach.grantDataSharingConsent()
             coach.draft = "focus my push"
             await coach.send()
 
             if rejectsCoach {
-                let coachCallCount = await denyingTransport.callCount
-                XCTAssertEqual(coachCallCount, 1)
-                XCTAssertEqual(coach.errorMessage, CoachViewModel.genericFailureMessage)
+                let attempts = await rejectingCoach.sent
+                XCTAssertEqual(attempts.count, 1)
+                XCTAssertEqual(coach.errorMessage, CoachCopy.couldNotAnswer)
                 XCTAssertTrue(coach.canRetry)
             } else {
-                XCTAssertFalse(coach.isAvailable)
+                XCTAssertEqual(coach.access, .unavailable)
                 XCTAssertTrue(coach.messages.isEmpty)
                 XCTAssertNil(coach.errorMessage)
             }
             let policyAfterCoach = try await services.sessionPolicyService.currentPolicy(for: user)
             XCTAssertEqual(policyAfterCoach, .default,
-                           "an unavailable or rejected Coach must not mutate the program")
+                           "an unavailable or failing Coach must not mutate the program")
 
             // Follow the production Ready composition into the deterministic engine.
             let ready = ReadyViewModel(
@@ -159,15 +141,15 @@ final class CoachCoreWorkoutResilienceTests: XCTestCase {
             XCTAssertEqual(logs.first?.workoutId, workout.id)
             XCTAssertTrue(logs.first?.exercises.contains { !$0.completedSets.isEmpty } == true)
 
-            let mode = rejectsCoach ? "authorization rejected (HTTP 401)" : "unconfigured"
-            let transportCalls = await denyingTransport.callCount
+            let mode = rejectsCoach ? "failing (coach_unavailable)" : "unconfigured"
+            let transportCalls = await rejectingCoach.sent.count
             let exerciseCount = workout.blocks.reduce(0) { $0 + $1.exercises.count }
             let loggedExerciseCount = logs.first?.exercises.filter { !$0.completedSets.isEmpty }.count ?? 0
             evidence.append(contentsOf: [
                 "",
                 "## Coach \(mode)",
                 "",
-                "- Coach transport calls: \(transportCalls)",
+                "- Coach turns attempted: \(rejectsCoach ? transportCalls : 0)",
                 "- Policy after Coach attempt: unchanged default (version \(policyAfterCoach.version))",
                 "- Ready generated: \(ready.requestedMinutes) minutes, \(workout.blocks.count) blocks, \(exerciseCount) exercise prescriptions",
                 "- Active session started: yes; completed sets: \(player.completedSetCount); reached completion: \(player.isComplete)",

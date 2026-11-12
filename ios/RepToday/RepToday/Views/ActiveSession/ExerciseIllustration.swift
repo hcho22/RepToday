@@ -83,6 +83,10 @@ struct ExerciseIllustration: View {
     /// under a running countdown or a rest preview keeps it still. Reduce Motion stills it regardless.
     var animatesGlyph: Bool = true
 
+    /// Shows only the start pose of a pair, filling the frame: a list thumbnail (a Custom Workout step)
+    /// is too small for two poses side by side to read.
+    var startPoseOnly: Bool = false
+
     var resolver: TrainerPoseResolver = .bundled
 
     @Environment(\.trainer) private var trainer
@@ -96,9 +100,15 @@ struct ExerciseIllustration: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            TrainerPoseCopy.accessibilityLabel(exerciseName: prescription.exercise.displayName, art: art)
+            isTextOnly
+                ? "\(prescription.exercise.displayName), described in words, no picture"
+                : TrainerPoseCopy.accessibilityLabel(exerciseName: prescription.exercise.displayName, art: art)
         )
     }
+
+    /// A Custom Workout step that names no catalog movement (decision 27) is text only: the card shows
+    /// its name rather than guessing a picture.
+    private var isTextOnly: Bool { CustomWorkout.isTextOnly(exerciseId: prescription.exercise.id) }
 
     /// The gap between the two poses of a pair.
     private static let poseSpacing: CGFloat = Theme.Spacing.sm
@@ -108,14 +118,30 @@ struct ExerciseIllustration: View {
         // One pose's square: half the width (less the gap) or the full height, whichever is smaller -
         // the same for a pair and a single pose, so a single pose is never bigger than a paired one.
         let side = max(0, min((size.width - Self.poseSpacing) / 2, size.height))
+        if isTextOnly {
+            Text(prescription.exercise.displayName)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.5)
+                .padding(Theme.Spacing.md)
+        } else {
+            artContent(art, side: side, size: size)
+        }
+    }
+
+    @ViewBuilder
+    private func artContent(_ art: TrainerPoseArt, side: CGFloat, size: CGSize) -> some View {
         switch art {
+        case .pair(let start, _) where startPoseOnly:
+            pose(start, side: min(size.width, size.height))
         case .pair(let start, let end):
             HStack(spacing: Self.poseSpacing) {
                 pose(start, side: side)
                 pose(end, side: side)
             }
         case .single(_, let name):
-            pose(name, side: side)
+            pose(name, side: startPoseOnly ? min(size.width, size.height) : side)
         case .none:
             glyph(size: min(size.width, size.height))
         }

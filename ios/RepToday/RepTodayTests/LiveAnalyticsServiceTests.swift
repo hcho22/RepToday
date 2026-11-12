@@ -800,7 +800,6 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let container = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
             analyticsConfiguration: try makeConfigurationBundle(
                 endpoint: "https://example-deployment.convex.site",
                 secret: Self.testSecret
@@ -838,7 +837,6 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let container = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
-            coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
             analyticsConfiguration: try makeConfigurationBundle(
                 endpoint: "https://example-deployment.convex.site",
                 secret: Self.testSecret
@@ -873,7 +871,6 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let container = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
             analyticsConfiguration: unconfigured
         )
         XCTAssertTrue(

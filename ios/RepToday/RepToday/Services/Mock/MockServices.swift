@@ -218,6 +218,11 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
         return subscription
     }
 
+    /// A stand-in signed transaction while Premium, so the account-link path (M4) has something to send.
+    func premiumTransactionJWS() async -> [String] {
+        subscription.tier == .premium ? ["mock.premium.transaction"] : []
+    }
+
     private func grantIfSimulating() {
         guard simulatesPurchase else { return }
         subscription = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)

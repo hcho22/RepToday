@@ -185,7 +185,6 @@ final class AnalyticsServiceTests: XCTestCase {
         let live = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
         )
         let mock = ServiceContainer.mock()
 

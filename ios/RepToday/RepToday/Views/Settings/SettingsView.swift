@@ -6,8 +6,8 @@ import SwiftUI
 /// opt-out, and burying that control would defeat the point of an opt-out. It is deliberately a real
 /// sectioned Settings surface rather than an inline toggle on the Profile placeholder, so a later,
 /// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it, which
-/// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Training safety (US-AC08), Trainer
-/// (US-TP11), and Account (US-AD01). Nothing else about Profile changes here.
+/// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Reminders (US-CA08), Training
+/// safety (US-AC08), Trainer (US-TP11), and Account (US-AD01). Nothing else about Profile changes here.
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.services) private var services
@@ -21,6 +21,14 @@ struct SettingsView: View {
 
     /// The Focus Areas row's value (US-HO02), re-read on every appearance so a save shows on return.
     @State private var focusAreas: [FocusArea] = []
+
+    /// How many reminders are set (US-CA08), re-read on every appearance.
+    @State private var reminderCount = 0
+
+    /// "None", "1 reminder", "2 reminders".
+    static func reminderSummary(_ count: Int) -> String {
+        count == 0 ? "None" : CountWording.phrase(count, singular: "reminder", plural: "reminders")
+    }
 
     /// Production creates the deletion model lazily from the environment. Focused hosted-surface
     /// coverage can inject the same model directly so both confirmation variants are renderable
@@ -97,6 +105,33 @@ struct SettingsView: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
+
+            // US-CA08: the training reminders the Coach or the user set, listed, editable and deletable.
+            Section {
+                NavigationLink {
+                    RemindersView(service: services.reminders)
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "bell")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .accessibilityHidden(true)
+                        Text(CoachReminderCopy.settingsTitle)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Spacer(minLength: Theme.Spacing.sm)
+                        Text(Self.reminderSummary(reminderCount))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(CoachReminderCopy.settingsTitle)
+                .accessibilityValue(Self.reminderSummary(reminderCount))
+                .accessibilityHint("See, change or delete your training reminders")
+                .accessibilityAddTraits(.isButton)
             }
             .listRowBackground(Theme.Colors.surface)
 
@@ -235,6 +270,7 @@ struct SettingsView: View {
         .task {
             await trainerModel().load()
             focusAreas = (try? await services.userService.currentUser())?.profile.focusAreas ?? focusAreas
+            reminderCount = await services.reminders.reminders().count
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)

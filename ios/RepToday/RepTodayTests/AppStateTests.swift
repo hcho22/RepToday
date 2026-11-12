@@ -246,42 +246,32 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing, "turning telemetry off must not touch coach consent")
     }
 
-    // MARK: - Coach abuse-prevention pseudonym
+    // MARK: - The retired Cloudflare Coach route (M4)
 
-    func testCoachSafetyIdentifierIsStableAndSeparateFromInstallIdentity() {
-        let original = AppState(userDefaults: defaults)
-        let identifier = original.coachSafetyIdentifier
+    /// The Coach no longer runs through the Cloudflare Worker (ADR-0017): what that route kept on the
+    /// device - its provider pseudonym and the App Attest key references - is removed at launch, and the
+    /// provider's abuse-monitoring id is derived on the server from the account instead.
+    func testTheRetiredCoachRouteLeavesNothingOnTheDevice() {
+        defaults.set("coach-00000000-0000-4000-8000-000000000000", forKey: "AppState.coachSafetyIdentifier")
+        defaults.set("key-reference", forKey: "coachProductionAppAttestKeyV1")
+        defaults.set("key-reference", forKey: "coachStagingAppAttestKeyV2")
 
-        XCTAssertTrue(identifier.rawValue.hasPrefix(CoachSafetyIdentifier.prefix))
-        XCTAssertNotEqual(identifier.rawValue, original.installId)
-        XCTAssertEqual(original.coachSafetyIdentifierProvider(), identifier)
+        _ = AppState(userDefaults: defaults)
 
-        let reloaded = AppState(userDefaults: defaults)
-        XCTAssertEqual(reloaded.coachSafetyIdentifier, identifier)
-        XCTAssertEqual(reloaded.installId, original.installId)
+        XCTAssertNil(defaults.object(forKey: "AppState.coachSafetyIdentifier"))
+        XCTAssertNil(defaults.object(forKey: "coachProductionAppAttestKeyV1"))
+        XCTAssertNil(defaults.object(forKey: "coachStagingAppAttestKeyV2"))
     }
 
-    func testRotatingCoachSafetyIdentifierUpdatesExistingProviderAndPersists() {
+    /// The Coach agent's disclosure (US-CA07) is a new contract: an acknowledgement of the old one does
+    /// not cover workout and injury history reaching the model provider.
+    func testAnAcknowledgementOfTheOldCoachDisclosureDoesNotCoverTheAgent() {
+        defaults.set(3, forKey: "AppState.hasAcknowledgedCoachDataSharing")
         let appState = AppState(userDefaults: defaults)
-        let provider = appState.coachSafetyIdentifierProvider
-        let original = appState.coachSafetyIdentifier
-        let installId = appState.installId
-
-        appState.rotateCoachSafetyIdentifier()
-
-        XCTAssertNotEqual(appState.coachSafetyIdentifier, original)
-        XCTAssertEqual(appState.installId, installId)
-        XCTAssertEqual(provider(), appState.coachSafetyIdentifier)
-        XCTAssertEqual(AppState(userDefaults: defaults).coachSafetyIdentifier, appState.coachSafetyIdentifier)
-    }
-
-    func testInvalidStoredCoachSafetyIdentifierIsReminted() {
-        defaults.set("person@example.com", forKey: "AppState.coachSafetyIdentifier")
-
-        let appState = AppState(userDefaults: defaults)
-
-        XCTAssertNotEqual(appState.coachSafetyIdentifier.rawValue, "person@example.com")
-        XCTAssertEqual(appState.coachSafetyIdentifierProvider(), appState.coachSafetyIdentifier)
+        XCTAssertEqual(AppState.coachDataSharingDisclosureVersion, 4)
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+        appState.markCoachDataSharingAcknowledged()
+        XCTAssertTrue(AppState(userDefaults: defaults).hasAcknowledgedCoachDataSharing)
     }
 
     // MARK: - Injury-flag revision (US-AC08)

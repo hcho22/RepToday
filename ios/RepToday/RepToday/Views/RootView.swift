@@ -243,6 +243,15 @@ private struct MainTabsView: View {
                     Label("Today", systemImage: "house.fill")
                 }
 
+            // The Coach (M4, US-CA06, decision 28): the premium agent, full screen, with its persistent
+            // conversation, quick actions and Custom Workout cards. Free users see a preview and the
+            // paywall; the tab itself never gates the core loop.
+            CoachTabView(services: services)
+                .tag(AppTab.coach)
+                .tabItem {
+                    Label("Coach", systemImage: "bubble.left.and.bubble.right.fill")
+                }
+
             // The reflection surface (US-M01): the calendar, the Consistency Score trend, and the
             // earned longest-run pride. US-M02 layers pillar balance, chain position, and bests on top.
             ProgressTabView(services: services)
@@ -271,14 +280,12 @@ private struct MainTabsView: View {
     }
 }
 
-/// The Profile tab: the existing placeholder, plus navigation rows to Account, the Coach and the real
-/// Settings screen.
+/// The Profile tab: the existing placeholder, plus navigation rows to Account and the real Settings
+/// screen. (The Coach has its own tab since M4.)
 ///
 /// Settings is a plain, prominent list-style row rather than a toolbar gear, because the one control
 /// behind it - the anonymous-usage-data opt-out - has to be *found* to be worth anything.
 struct ProfileTabView: View {
-    @Environment(\.services) private var services
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -316,12 +323,6 @@ struct ProfileTabView: View {
                 .accessibilityLabel("Account")
                 .accessibilityHint("Your account and what is saved to it")
 
-                // US-AC03: the premium gate + upsell entry point for the talking coach
-                // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap
-                // opens the existing paywall carrying the `coach_upsell` entry point. The gate
-                // is best-effort and never touches the core loop.
-                CoachEntryRow(services: services)
-
                 NavigationLink {
                     SettingsView()
                 } label: {
@@ -340,13 +341,11 @@ struct ProfileTabView: View {
 /// tested against - the widest glyph any row uses.
 enum ProfileRowIcon: String, CaseIterable {
     case account = "person.crop.circle"
-    case coach = "bubble.left.and.bubble.right.fill"
-    case coachSyntheticQA = "testtube.2"
     case settings = "gearshape.fill"
 
     /// The icon column's width at the default text size, scaled with Dynamic Type relative to `.body`
-    /// (the glyph's own text style). Wide enough for `coach`, the widest glyph (28pt at 17pt body), so
-    /// every row's title starts at the same x.
+    /// (the glyph's own text style). Wide enough for the widest glyph, so every row's title starts at
+    /// the same x.
     static let columnWidth: CGFloat = 30
 
     /// The largest text size the icon (and its column) grows to. Beyond it the glyph alone would take a
@@ -355,14 +354,12 @@ enum ProfileRowIcon: String, CaseIterable {
 }
 
 /// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional badge, and a
-/// chevron. Shared so the Account, Coach and Settings rows stay visually identical (and so the US-AC03
-/// gate can reuse it for both the Premium and upsell states). Internal, not private, so the coach entry
-/// row in its own file can render an identical row.
+/// chevron. Shared so the Account and Settings rows stay visually identical.
 struct ProfileRowLabel: View {
     let icon: ProfileRowIcon
     let title: String
-    /// An optional short tag (e.g. "Premium" on the coach upsell row), trailing the title or, at
-    /// accessibility sizes, under it. `nil` renders no badge.
+    /// An optional short tag (such as "Premium"), trailing the title or, at accessibility sizes, under
+    /// it. `nil` renders no badge.
     var badge: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

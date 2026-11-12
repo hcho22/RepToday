@@ -125,12 +125,13 @@ actor FakeAccountServer: SyncRemote {
         return deletionOutcome
     }
 
-    /// The profile and the policy are one row per account; logs and activities are keyed by id.
+    /// The profile and the policy are one row per account; logs, activities and Custom Workouts are keyed
+    /// by id.
     private func key(_ type: SyncRecordType, _ recordId: String) -> String {
         switch type {
         case .profile, .sessionPolicy:
             return "\(type.rawValue):singleton"
-        case .workoutLog, .outsideActivity:
+        case .workoutLog, .outsideActivity, .customWorkout:
             return "\(type.rawValue):\(recordId)"
         }
     }
@@ -142,6 +143,7 @@ struct SyncTestStack {
     let users: CoreDataUserService
     let logs: CoreDataWorkoutLogService
     let activities: CoreDataOutsideActivityService
+    let customWorkouts: CoreDataCustomWorkoutService
     let policies: CoreDataSessionPolicyStore
     let activeSessions: CoreDataActiveSessionStore
     let store: CoreDataSyncStore
@@ -152,6 +154,7 @@ struct SyncTestStack {
         users = CoreDataUserService(context: context)
         logs = CoreDataWorkoutLogService(context: context)
         activities = CoreDataOutsideActivityService(context: context)
+        customWorkouts = CoreDataCustomWorkoutService(context: context)
         policies = CoreDataSessionPolicyStore(context: context)
         activeSessions = CoreDataActiveSessionStore(context: context)
         store = CoreDataSyncStore(context: context)

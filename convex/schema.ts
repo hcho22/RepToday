@@ -110,12 +110,77 @@ export default defineSchema({
     .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
 
   /**
-   * The Coach agent's conversation memory (US-CA03). Created empty in M3; M4 fills it. Removed
-   * with the account.
+   * The Coach agent's conversation memory (US-CA03): one row per message, written only by the Coach
+   * functions (`convex/coach.ts`), never by sync. `recordId` is the message id (a user message's id is
+   * the client's idempotency key), `payload` the message as JSON (`CoachMessage` in `coach.ts`).
+   * Removed with the account.
    */
   coachMemory: defineTable(syncedRecord)
     .index("by_ownerId_recordId", ["ownerId", "recordId"])
     .index("by_ownerId_serverSeq", ["ownerId", "serverSeq"]),
+
+  /**
+   * How many Coach turns an owner took on one UTC day, and the deployment-wide total under the
+   * reserved `ownerId` `*` (M4, US-CA01). Bounds the paid model calls one account, or everyone, can
+   * cause. Rows older than a few days are swept by `crons.ts`.
+   */
+  coachUsage: defineTable({
+    ownerId: v.string(),
+    /** `YYYY-MM-DD`, UTC. */
+    day: v.string(),
+    count: v.number(),
+  })
+    .index("by_ownerId_day", ["ownerId", "day"])
+    .index("by_day", ["day"]),
+
+  /**
+   * Premium subscriptions the App Store has told this deployment about (M4, US-CA02, ADR-0017): one
+   * row per subscription (its `originalTransactionId`), kept current by App Store Server
+   * Notifications and linked to an account by `appAccountToken` or by the account's own verified
+   * restore. `ownerId` is absent until a subscription is linked. The Coach reads it on every turn;
+   * a client can never write it. Removed with the account.
+   */
+  entitlements: defineTable({
+    ownerId: v.optional(v.string()),
+    originalTransactionId: v.string(),
+    productId: v.string(),
+    environment: v.union(v.literal("Production"), v.literal("Sandbox"), v.literal("Xcode")),
+    /** When the current period ends (ms since the epoch). */
+    expiresAt: v.number(),
+    /** The end of a billing grace period Apple granted, when one is running. */
+    gracePeriodExpiresAt: v.optional(v.number()),
+    /** Set when Apple refunded or revoked the purchase; the entitlement is then inactive. */
+    revokedAt: v.optional(v.number()),
+    /** The newest `signedDate` applied, so a late, older update never replaces a newer one. */
+    lastSignedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_originalTransactionId", ["originalTransactionId"]),
+
+  /**
+   * Each account's App Store `appAccountToken` (M4, US-CA02): a random UUID the app passes to
+   * StoreKit with every purchase, which Apple then echoes in that subscription's notifications, so a
+   * renewal reaches the right account without the app. Removed with the account.
+   */
+  appAccountTokens: defineTable({
+    ownerId: v.string(),
+    token: v.string(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_token", ["token"]),
+
+  /**
+   * App Store Server Notifications already processed, by Apple's `notificationUUID`, so a retried
+   * delivery is applied once (M4, US-CA02). Holds no subscription or account data; swept by `crons.ts`.
+   */
+  appStoreNotifications: defineTable({
+    notificationUUID: v.string(),
+    notificationType: v.string(),
+    receivedAt: v.number(),
+  })
+    .index("by_notificationUUID", ["notificationUUID"])
+    .index("by_receivedAt", ["receivedAt"]),
 
   events: defineTable({
     /**

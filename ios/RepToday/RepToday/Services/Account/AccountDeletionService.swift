@@ -33,9 +33,10 @@ protocol AccountDeletionServiceProtocol {
     ///    reinstall - and end the account's session on this device.
     /// 3. On the first successful onboarded teardown, rotate `AppState`'s anonymous analytics
     ///    install identifier, reset account-scoped Coach state, forget the account, then reset routing
-    ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running clients read both
-    ///    identifiers per request, so a later account inherits neither linkage, provider safety
-    ///    history, nor data-sharing acknowledgement.
+    ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running telemetry client reads
+    ///    the identifier per request, so a later account inherits neither its linkage nor the Coach
+    ///    data-sharing acknowledgement. (The Coach's conversation and Custom Workouts live with the
+    ///    account, so the server step removes them; Coach reminders are cleared on the device.)
     ///
     /// Idempotent: a second call skips the finished server step, finds nothing to delete, the Keychain
     /// clear is a no-op, and the already-rotated identifier stays stable because routing marked the
@@ -79,7 +80,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     private let sessionPolicyStore: any SessionPolicyStore
     private let activeSessionStore: any ActiveSessionStore
     private let authService: any AuthServiceProtocol
-    private let coachAuthenticationCleanup: (@Sendable () async -> Void)?
+    /// The Coach's on-device state (M4): accepted Custom Workouts, scheduled reminders and today's
+    /// choices. Optional so a caller that predates the Coach agent still composes the teardown.
+    private let coachState: CoachDeviceTeardown?
     /// Logged Outside Activities (US-HO04), kept in the on-device Local store and never synced to
     /// iCloud. Optional so a caller that predates them still composes the teardown.
     private let outsideActivityService: (any OutsideActivityServiceProtocol)?
@@ -113,7 +116,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         sessionPolicyStore: any SessionPolicyStore,
         activeSessionStore: any ActiveSessionStore,
         authService: any AuthServiceProtocol,
-        coachAuthenticationCleanup: (@Sendable () async -> Void)? = nil,
+        coachState: CoachDeviceTeardown? = nil,
         outsideActivityService: (any OutsideActivityServiceProtocol)? = nil,
         account: AccountTeardown? = nil,
         legacyICloud: LegacyICloudErasure? = nil
@@ -123,7 +126,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         self.sessionPolicyStore = sessionPolicyStore
         self.activeSessionStore = activeSessionStore
         self.authService = authService
-        self.coachAuthenticationCleanup = coachAuthenticationCleanup
+        self.coachState = coachState
         self.outsideActivityService = outsideActivityService
         self.account = account
         self.legacyICloud = legacyICloud
@@ -231,9 +234,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         // The account's session on this device. The server already removed it with the Clerk user;
         // this clears what the device kept.
         await account?.auth.signOut()
-        // Unlink the device's Coach key immediately. Remote content-free metadata deletion is
-        // bounded best effort and never gates deletion of on-device records or routing.
-        await coachAuthenticationCleanup?()
+        // The Coach's on-device state: accepted Custom Workouts, the reminders it scheduled (their
+        // pending notifications too) and today's choices.
+        try await coachState?.erase()
 
         // 3. Reset routing state on the main actor (it is what SwiftUI observes), which sends the app
         //    back to onboarding. Done last, so a throw in an earlier step leaves the user in place to

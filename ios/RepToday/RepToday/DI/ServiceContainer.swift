@@ -1,11 +1,6 @@
 import CoreData
 import SwiftUI
 
-struct ResolvedCoachAuthentication {
-    let client: CoachProxyClient?
-    let accountCleanup: CoachAuthenticationAccountCleanup
-}
-
 /// App-wide service registry.
 ///
 /// Views read this from `@Environment(\.services)`, and view models receive the service
@@ -38,22 +33,19 @@ struct ServiceContainer {
     /// Settings "Delete Account" control. Composes the same user/log/policy/active-session/auth seams
     /// this container already wires, so a delete clears exactly what the rest of the app reads.
     let accountDeletionService: any AccountDeletionServiceProtocol
-    /// The premium AI coach transport (US-AC02), `nil` when no coach proxy is configured for this
-    /// build. Configuration and deployment status are owned by `docs/coach-runtime-authentication.md`.
-    /// The coach chat surface reads this and, when it is `nil`, shows a clear "coach unavailable"
-    /// state; it never gates or blocks the core loop. `live(...)` resolves it once from
-    /// the build-configured `Info.plist` origin (`CoachProxyClient.configured(...)`), exactly like the
-    /// telemetry sink; `mock()` leaves it `nil`. Unlike the other services this is genuinely optional -
-    /// the coach is a best-effort upgrade, never a dependency - so it carries an initializer default.
-    let coachClient: CoachProxyClient?
-    /// The sovereign on-device write path for a coach-sourced `SessionPolicy` nudge (US-AC07). It writes
-    /// through the **same** `SessionPolicyStore` as the deterministic Programmer (`sessionPolicyService`),
-    /// so the two writers share one in-force policy and the coach's bounded, preference-only overlay can
-    /// never clobber a deterministic safety move (ADR-0005). Reachable only from the premium, disclosure-
-    /// gated coach surface; it never gates or blocks the core loop. `mock()`/`live()` wire it from the
-    /// shared store; a container built without one simply cannot tune from the coach (the chat still talks),
-    /// so it carries an initializer default like `coachClient`.
-    let coachPolicyService: (any CoachPolicyServiceProtocol)?
+    /// The Coach agent on the account backend (M4, US-CA01, ADR-0017), `nil` when this build has no
+    /// account backend: the Coach tab then says the Coach is not available, and nothing else is
+    /// affected. Shares the account's Convex client with sync.
+    let coachService: (any CoachServiceProtocol)?
+    /// The account's server-side Premium entitlement (M4, US-CA02), `nil` without an account backend.
+    let premiumEntitlements: (any PremiumEntitlementServiceProtocol)?
+    /// Accepted Custom Workouts (M4, US-CA05), on the device and synced to the account.
+    let customWorkoutService: any CustomWorkoutServiceProtocol
+    /// Today's choices - rest or train anyway, the length, movements swapped out - shared by Today and
+    /// the Coach (M4).
+    let todayChoices: any TodayChoicesStoring
+    /// Training reminders, as on-device notifications (M4, US-CA08).
+    let reminders: CoachReminderService
     /// Signs the user in to their Rep Today account (M3, ADR-0016): Clerk in a configured build, the
     /// on-device stub in tests, previews and a Debug build without a Clerk key.
     let accountAuthService: any AccountAuthServiceProtocol
@@ -86,8 +78,14 @@ struct ServiceContainer {
         authService: any AuthServiceProtocol,
         analyticsService: any AnalyticsServiceProtocol,
         accountDeletionService: any AccountDeletionServiceProtocol,
-        coachClient: CoachProxyClient? = nil,
-        coachPolicyService: (any CoachPolicyServiceProtocol)? = nil,
+        coachService: (any CoachServiceProtocol)? = nil,
+        premiumEntitlements: (any PremiumEntitlementServiceProtocol)? = nil,
+        customWorkoutService: any CustomWorkoutServiceProtocol = InMemoryCustomWorkoutService(),
+        todayChoices: any TodayChoicesStoring = InMemoryTodayChoicesStore(),
+        reminders: CoachReminderService = CoachReminderService(
+            defaults: UserDefaults(suiteName: "RepToday.inMemoryReminders") ?? .standard,
+            scheduler: RecordingReminderNotificationScheduler()
+        ),
         outsideActivityService: any OutsideActivityServiceProtocol = InMemoryOutsideActivityService(),
         accountAuthService: any AccountAuthServiceProtocol = StubAccountAuthService(),
         syncStore: any SyncStore = NoOpSyncStore(),
@@ -112,8 +110,11 @@ struct ServiceContainer {
         self.authService = authService
         self.analyticsService = analyticsService
         self.accountDeletionService = accountDeletionService
-        self.coachClient = coachClient
-        self.coachPolicyService = coachPolicyService
+        self.coachService = coachService
+        self.premiumEntitlements = premiumEntitlements
+        self.customWorkoutService = customWorkoutService
+        self.todayChoices = todayChoices
+        self.reminders = reminders
         self.accountAuthService = accountAuthService
         self.syncStore = syncStore
         self.syncCursorStore = syncCursorStore
@@ -154,6 +155,13 @@ struct ServiceContainer {
         // On-device account sign-in with no backend: the mock container never syncs.
         let accountAuthService = StubAccountAuthService()
         let syncCursorStore = InMemorySyncCursorStore()
+        // The Coach's on-device state (M4), in memory, torn down with the account like the rest.
+        let customWorkoutService = InMemoryCustomWorkoutService()
+        let todayChoices = InMemoryTodayChoicesStore()
+        let reminders = CoachReminderService(
+            defaults: UserDefaults(suiteName: "RepToday.mockReminders") ?? .standard,
+            scheduler: RecordingReminderNotificationScheduler()
+        )
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
@@ -202,6 +210,11 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
+                coachState: CoachDeviceTeardown(
+                    customWorkouts: customWorkoutService,
+                    reminders: reminders,
+                    todayChoices: todayChoices
+                ),
                 outsideActivityService: outsideActivityService,
                 account: AccountDeletionService.AccountTeardown(
                     remote: nil,
@@ -210,9 +223,12 @@ struct ServiceContainer {
                     cursorStore: syncCursorStore
                 )
             ),
-            // The coach's bounded policy-write path (US-AC07), over the same shared in-memory policy store
-            // as the deterministic Programmer above, so both writers share one in-force policy.
-            coachPolicyService: CoachSessionPolicyService(store: policyStore),
+            // A scripted Coach and a free account for previews and tests: no network, no model.
+            coachService: MockCoachService(),
+            premiumEntitlements: MockPremiumEntitlementService(),
+            customWorkoutService: customWorkoutService,
+            todayChoices: todayChoices,
+            reminders: reminders,
             outsideActivityService: outsideActivityService,
             accountAuthService: accountAuthService,
             syncCursorStore: syncCursorStore
@@ -283,8 +299,6 @@ struct ServiceContainer {
     ///     lives, so a test that only wants the CoreData services keeps its existing call.
     ///   - analyticsConsentGeneration: The opt-out generation paired with `analyticsGate`. Pending
     ///     rows capture it so a later re-enable cannot revive work from before the opt-out.
-    ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
-    ///     pseudonym at request time so account deletion rotates an already-configured client.
     ///   - linkedAccountUserId: Reads the Clerk user id of the account this device is linked to, so the
     ///     account backend only ever receives that account's session token. Bound to `AppState`'s store
     ///     the same way `analyticsGate` is.
@@ -295,7 +309,6 @@ struct ServiceContainer {
         context: NSManagedObjectContext,
         installId: String,
         analyticsInstallId: (@Sendable () -> String)? = nil,
-        coachSafetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         analyticsConfiguration: Bundle = .main,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
@@ -341,14 +354,24 @@ struct ServiceContainer {
         #else
         syncSession = .shared
         #endif
-        let syncRemote: (any SyncRemote)? = accountAuthService.isConfigured
+        // One Convex client for the account backend: sync, the Coach agent and the Premium entitlement
+        // (M4) all reach the same deployment with the linked account's session token.
+        let convexClient: ConvexHTTPClient? = accountAuthService.isConfigured
             ? AccountBackendConfiguration.convexURL(bundle: accountConfiguration).map { url in
-                ConvexSyncRemote(client: ConvexHTTPClient(deploymentURL: url, session: syncSession) {
+                ConvexHTTPClient(deploymentURL: url, session: syncSession) {
                     try await accountAuthService.sessionToken(forLinkedAccount: linkedAccountUserId())
-                })
+                }
             }
             : nil
+        let syncRemote: (any SyncRemote)? = convexClient.map { ConvexSyncRemote(client: $0) }
         let syncEngine = syncRemote.map { SyncEngine(store: syncStore, remote: $0, cursorStore: syncCursorStore) }
+        let coachService: (any CoachServiceProtocol)? = convexClient.map { ConvexCoachService(client: $0) }
+        let premiumEntitlements: (any PremiumEntitlementServiceProtocol)? = convexClient.map { ConvexPremiumEntitlementService(client: $0) }
+        // The Coach's on-device state (M4): accepted Custom Workouts in the Local store, today's choices
+        // and the reminders in UserDefaults.
+        let customWorkoutService = CoreDataCustomWorkoutService(context: context)
+        let todayChoices = DefaultsTodayChoicesStore()
+        let reminders = CoachReminderService()
         // The telemetry transport keeps its own session and durable outbox in every ordinary build.
         // Debug probe launches use the counting in-process interceptor; an in-process XCTest host uses
         // a silent interceptor. Both pair interception with volatile storage and no UIKit background
@@ -389,16 +412,6 @@ struct ServiceContainer {
                 secretStandIn: analyticsSecretStandIn
             )
             ?? NoOpAnalyticsService()
-        // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
-        // origin exactly like the telemetry sink. Ordinary builds remain `nil` while the locally
-        // prepared stronger-authentication path awaits migration and genuine-device QA. CoachDeviceQA
-        // is an explicit synthetic preparation lane (docs/coach-iphone-qa.md); ordinary builds stay
-        // inert and render the "unavailable" state; the coach never gates the core loop.
-        let resolvedCoachAuthentication = resolveCoachAuthentication(
-            safetyIdentifierProvider: coachSafetyIdentifierProvider
-        )
-        let resolvedCoachClient = resolvedCoachAuthentication.client
-        let coachAuthenticationCleanup = resolvedCoachAuthentication.accountCleanup
         let premiumSessionAuthority = PremiumSessionAuthority()
         let subscriptionService = StoreKitSubscriptionService.live(
             analytics: resolvedAnalyticsService,
@@ -460,7 +473,11 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
-                coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() },
+                coachState: CoachDeviceTeardown(
+                    customWorkouts: customWorkoutService,
+                    reminders: reminders,
+                    todayChoices: todayChoices
+                ),
                 outsideActivityService: outsideActivityService,
                 account: AccountDeletionService.AccountTeardown(
                     remote: syncRemote,
@@ -471,12 +488,12 @@ struct ServiceContainer {
                 ),
                 legacyICloud: legacyICloudErasure
             ),
-            // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
-            coachClient: resolvedCoachClient,
-            // The coach's bounded policy-write path (US-AC07), over the same shared `CoreDataSessionPolicyStore`
-            // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
-            // in-force policy and the engine reads whichever landed last on the next open.
-            coachPolicyService: CoachSessionPolicyService(store: policyStore),
+            // The Coach agent and the Premium entitlement on the account backend (M4); nil without one.
+            coachService: coachService,
+            premiumEntitlements: premiumEntitlements,
+            customWorkoutService: customWorkoutService,
+            todayChoices: todayChoices,
+            reminders: reminders,
             outsideActivityService: outsideActivityService,
             accountAuthService: accountAuthService,
             syncStore: syncStore,
@@ -507,25 +524,6 @@ struct ServiceContainer {
         #else
         return UnavailableAccountAuthService()
         #endif
-    }
-
-    static func resolveCoachAuthentication(
-        safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
-        bundle: Bundle = .main,
-        keyStore: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore()
-    ) -> ResolvedCoachAuthentication {
-        let client = CoachProxyClient.configured(
-            safetyIdentifierProvider: safetyIdentifierProvider,
-            bundle: bundle,
-            runtimeAuthenticationKeyStore: keyStore
-        )
-        return ResolvedCoachAuthentication(
-            client: client,
-            accountCleanup: CoachAuthenticationAccountCleanup(
-                keys: keyStore,
-                runtime: client?.transport as? RuntimeAuthenticatedCoachTransport
-            )
-        )
     }
 }
 

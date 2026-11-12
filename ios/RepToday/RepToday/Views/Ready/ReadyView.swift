@@ -53,6 +53,7 @@ struct ReadyView: View {
                 healthKitService: services.healthKitService,
                 consistencyService: services.consistencyService,
                 activeSessionStore: services.activeSessionStore,
+                todayChoicesStore: services.todayChoices,
                 analytics: services.analyticsService,
                 now: now
             )
@@ -252,7 +253,7 @@ struct ReadyView: View {
                     Text(greeting)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Colors.textSecondary)
-                    Text(WelcomeCopy.restTitle(for: viewModel.plan.restReason ?? .cycleComplete))
+                    Text(WelcomeCopy.restTitle(for: viewModel.effectivePlan.restReason ?? .cycleComplete))
                         .font(Theme.Typography.largeTitle)
                         .foregroundStyle(Theme.Colors.textPrimary)
                         .accessibilityAddTraits(.isHeader)
@@ -273,8 +274,8 @@ struct ReadyView: View {
                 healthSuggestions
 
                 RestDayCard(
-                    next: viewModel.plan.trainingDay,
-                    reason: viewModel.plan.restReason ?? .cycleComplete,
+                    next: viewModel.effectivePlan.trainingDay,
+                    reason: viewModel.effectivePlan.restReason ?? .cycleComplete,
                     onRecovery: {
                         Task {
                             guard let recovery = await viewModel.recoveryWorkout() else { return }

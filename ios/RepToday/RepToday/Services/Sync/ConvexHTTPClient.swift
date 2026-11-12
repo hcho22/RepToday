@@ -24,12 +24,14 @@ struct ConvexHTTPClient: Sendable {
         self.token = token
     }
 
-    /// Calls `path` (`"module:function"`) with `args` and decodes its return value.
+    /// Calls `path` (`"module:function"`) with `args` and decodes its return value. `timeout` bounds the
+    /// request: 30 seconds for sync, longer for a Coach turn, which waits on the model.
     func call<Args: Encodable & Sendable, Value: Decodable>(
         _ kind: FunctionKind,
         _ path: String,
         args: Args,
-        as valueType: Value.Type = Value.self
+        as valueType: Value.Type = Value.self,
+        timeout: TimeInterval = 30
     ) async throws -> Value {
         let bearer: String?
         do {
@@ -45,7 +47,7 @@ struct ConvexHTTPClient: Sendable {
         }
         var request = URLRequest(url: deploymentURL.appendingPathComponent("api").appendingPathComponent(kind.rawValue))
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(RequestBody(path: path, args: args, format: "json"))

@@ -1,134 +1,339 @@
 import Foundation
 import Observation
 
-private final class CoachDeliveryAuthorization: SessionPolicyWriteAuthorization, @unchecked Sendable {
-    private let lock = NSLock()
-    private var valid = true
-
-    func invalidate() {
-        lock.lock()
-        valid = false
-        lock.unlock()
-    }
-
-    func isAuthorized() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return valid
-    }
-
-    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard valid else { return nil }
-        return try body()
-    }
-}
-
-/// Backs the premium AI coach chat surface (US-AC02, the *talking* coach). The user asks free-text
-/// questions and the coach answers them, grounded in the user's real on-device history via the
-/// audited, non-identifying `CoachContextBundle` (US-AC01) and the stateless `CoachProxyClient`
-/// transport. It answers the target intents - "why this workout?", "how do I do <movement>?", "is
-/// <movement> safe with <complaint>?", "I'm bored" - but it only ever *talks*: it never generates,
-/// edits, or prescribes a workout (the deterministic on-device engine owns every session), which is
-/// enforced in the proxy persona rather than reconstructed here.
+/// Backs the Coach tab (M4, US-CA01/US-CA03/US-CA04/US-CA06, ADR-0017): the premium agent that
+/// remembers, acts through confirmed proposals, writes Custom Workouts, and sets reminders.
 ///
-/// Three properties make it safe to live beside the free core loop:
-///
-/// - **It never blocks the core loop.** The core loop (generate / play / log) never calls the coach,
-///   and the coach never calls the core loop. Every send goes through the bounded, throwing
-///   `CoachProxyClient`, so an `await` here always returns. Transport failures become a non-blocking,
-///   retryable UI state; safety refusals become a stable non-retryable state.
-/// - **Conversation memory is on-device, in the caller.** The transport is stateless per request; the
-///   transcript (`messages`) lives here, on the device, and is what "multi-turn context" means for
-///   this surface. Nothing about the conversation is persisted off-device.
-/// - **It never sets a safety filter.** A health/injury signal raises a routing *offer* (US-AC08) that
-///   points at the user's own injury control; the coach cannot set or clear an injury flag, and the
-///   policy-write path it does have (US-AC07) cannot express one.
-/// - **Inert when unconfigured.** Missing or invalid local configuration (`client == nil`) shows
-///   the build-disabled screen. Device, proof, network and service failures occur on send and keep
-///   the conversation open. Build configuration is owned by `docs/coach-runtime-authentication.md`.
-///
-/// It is `@Observable`, takes its services as protocols, and injects a clock/calendar so the derived
-/// context is deterministic under test - the same conventions as the other v6 view models. It is
-/// **not** premium-gated here: US-AC03 owns the entitlement gate and the upsell entry point.
+/// - **The server decides Premium.** Access comes from the account's entitlement on the server
+///   (`PremiumEntitlementServiceProtocol`), which App Store Server Notifications keep current, and the
+///   server checks it again on every turn. When StoreKit on this phone shows Premium but the account does
+///   not yet, the phone links its signed transaction first (US-CA02); a free user sees the preview and the
+///   paywall.
+/// - **The conversation lives with the account.** It is loaded from the server and every turn returns
+///   the stored messages, so it survives a reinstall and follows the user to another device.
+/// - **Nothing happens without a tap.** A Coach reply may carry proposals; each is a card the user
+///   applies, declines, and can undo (`CoachProposalApplier`), and a Custom Workout plays only after the
+///   user has reviewed and accepted it (FR-11). Safety-owned engine moves cannot be proposed at all.
+/// - **Nothing is sent before consent.** The data disclosure (US-AC04, US-CA07) gates the one send path.
+/// - **It never blocks the core loop.** The core loop never calls the Coach; every failure here is a calm,
+///   retryable state on this tab.
 @Observable
 @MainActor
 final class CoachViewModel {
 
-    /// One turn in the on-device transcript. Identifiable so the chat list can render it stably.
-    struct Message: Identifiable, Equatable {
-        enum Author: Equatable {
-            /// The user's question.
-            case user
-            /// The coach's answer.
-            case coach
-        }
-
-        let id: UUID
-        let author: Author
-        let text: String
-
-        init(id: UUID = UUID(), author: Author, text: String) {
-            self.id = id
-            self.author = author
-            self.text = text
-        }
+    /// What the Coach tab can show.
+    enum Access: Equatable {
+        /// Deciding.
+        case loading
+        /// This build has no account backend, so there is no Coach.
+        case unavailable
+        /// The account is not Premium: the preview and the paywall.
+        case free
+        /// StoreKit shows Premium on this phone, but the account does not (yet): offer Restore.
+        case unconfirmed(message: String)
+        /// No connection: the Coach needs one.
+        case offline
+        /// The Coach is open.
+        case premium
     }
 
-    /// The on-device conversation transcript, oldest first. This *is* the coach's multi-turn memory:
-    /// the transport holds none, so what the user and coach have said lives here and nowhere else.
-    private(set) var messages: [Message] = []
-
-    /// The in-flight question, bound to the input field.
-    var draft: String = ""
-
-    /// True while a reply is being awaited. The input is disabled and a typing indicator shows; it
-    /// always returns to `false`, success or failure, so the surface never gets stuck.
+    private(set) var access: Access = .loading
+    private(set) var messages: [CoachMessage] = []
+    private(set) var isLoadingHistory = false
+    var draft = ""
     private(set) var isSending = false
-
-    /// A friendly, non-blocking error when a send fails. Transport errors are retryable via
-    /// `retryLastMessage()`; a safety refusal is not. Cleared the moment a new send starts.
+    /// A calm, non-blocking failure line for the last send.
     private(set) var errorMessage: String?
+    /// Whether the last failure can be retried with the same message.
+    var canRetry: Bool { pendingRetry != nil && !isSending }
 
-    /// Local client inclusion only, never a claim about device authentication or service health.
-    /// Missing and invalid configuration both fail closed as build-disabled. Send-time failures
-    /// belong to `errorMessage` and cannot change this state or replace the conversation.
-    enum LocalAvailability: Equatable {
-        case enabled
-        case notEnabledInBuild
-    }
-
-    var localAvailability: LocalAvailability { client == nil ? .notEnabledInBuild : .enabled }
-    var isAvailable: Bool { localAvailability == .enabled }
-
-    /// Whether the user has acknowledged the coach data disclosure (US-AC04) and the coach may send.
-    /// This is the **load-bearing send gate**: it is checked in the one send path (`deliver`), not just
-    /// used to enable a button, so no coach request - and therefore no message and no training-context
-    /// summary - can leave the device until the user has read the disclosure and tapped "I understand".
-    /// It starts `false` (consent not yet given) and is flipped only by `grantDataSharingConsent()`.
-    private(set) var isDataSharingAcknowledged = false
-
-    /// Whether the pre-use disclosure still owes an acknowledgement before the coach can be used. Only
-    /// meaningful for a configured coach: an unavailable build has nothing to send, so it needs no
-    /// consent (it shows the calm "unavailable" state instead).
-    var needsDataSharingConsent: Bool { isAvailable && !isDataSharingAcknowledged }
-
-    /// Record the user's explicit acknowledgement of the coach data disclosure (US-AC04), opening the
-    /// send gate for this session. Persisting acknowledgement of the current disclosure version is
-    /// the caller's job - `CoachView` writes `AppState` - which keeps this view model free of
-    /// `AppState` and hostable in evidence surfaces. Idempotent.
-    func grantDataSharingConsent() { isDataSharingAcknowledged = true }
-
-    /// The pending injury routing offer (US-AC08), set when a sent message read as a health signal for
-    /// an area the user has not already flagged. It is an **offer**, not a change: the coach never sets
-    /// or clears an injury filter, and this value carries no way to - it names the area the surface
-    /// should route to if the user accepts. `nil` whenever there is nothing to offer.
+    /// The US-AC08 routing offer: a health signal in the user's message points them at their own injury
+    /// control. It is an offer, never a change - the Coach cannot set or clear an injury flag.
     private(set) var injuryRoutingOffer: CoachInjuryRoutingProposal?
 
-    /// The user accepted the offer: clear it and hand the caller the area to route to. The write does
-    /// not happen here and cannot - the returned area is the *destination* of a route to the user's own
-    /// injury control, where they still have to confirm.
+    /// Proposals being applied, undone or declined right now.
+    private(set) var busyProposals: Set<String> = []
+    /// A proposal that could not be applied, and why.
+    private(set) var proposalErrors: [String: String] = [:]
+    /// Accepted Custom Workouts by the proposal they came from, so a card can offer Play.
+    private(set) var acceptedWorkouts: [String: CustomWorkout] = [:]
+    /// The catalog, so Custom Workout cards resolve catalog steps to their Trainer art and target copy.
+    private(set) var library: [Exercise] = []
+    /// The user's Trainer, whose art catalog steps show; `nil` shows the movement glyph.
+    private(set) var trainer: Trainer?
+
+    /// Whether the user has acknowledged the current Coach data disclosure (US-AC04/US-CA07). The
+    /// load-bearing send gate: checked in the one send path, not just used to enable a button.
+    private(set) var isDataSharingAcknowledged = false
+    var needsDataSharingConsent: Bool { access == .premium && !isDataSharingAcknowledged }
+    func grantDataSharingConsent() { isDataSharingAcknowledged = true }
+
+    var canSend: Bool {
+        access == .premium && isDataSharingAcknowledged && !isSending && !trimmedDraft.isEmpty
+    }
+
+    /// The quick-action chips under the conversation (US-CA06): each sends a plain request the Coach
+    /// answers with the matching proposal.
+    struct QuickAction: Identifiable, Equatable {
+        let title: String
+        let message: String
+        let systemImage: String
+        var id: String { title }
+    }
+
+    static let quickActions: [QuickAction] = [
+        QuickAction(title: "Write me a workout", message: "Write me a workout for today.", systemImage: "list.bullet.rectangle"),
+        QuickAction(title: "I worked out outside", message: "I did a workout outside Rep Today today.", systemImage: "figure.run"),
+        QuickAction(title: "Shorter session", message: "I only have 10 minutes today.", systemImage: "timer"),
+        QuickAction(title: "Rest today", message: "I'd like to rest today.", systemImage: "bed.double"),
+        QuickAction(title: "Remind me", message: "Remind me to train on weekdays at 7:30 AM.", systemImage: "bell"),
+        QuickAction(title: "How am I doing?", message: "How am I doing?", systemImage: "chart.line.uptrend.xyaxis"),
+    ]
+
+    private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private let coach: (any CoachServiceProtocol)?
+    private let entitlements: (any PremiumEntitlementServiceProtocol)?
+    private let subscriptionService: any SubscriptionServiceProtocol
+    private let premiumAuthority: PremiumSessionAuthority
+    private let applier: CoachProposalApplier
+    private let today: CoachTodayReader
+    private let customWorkouts: any CustomWorkoutServiceProtocol
+    private let userService: any UserServiceProtocol
+    private let exerciseService: any ExerciseServiceProtocol
+    private let now: () -> Date
+
+    /// The message whose send failed, kept so "Try again" resends it with the same id (the server then
+    /// answers a retry of an already-stored turn without asking the model again).
+    private var pendingRetry: (id: UUID, text: String)?
+    /// Undo handles by proposal id.
+    private var undos: [String: CoachProposalApplier.Undo] = [:]
+
+    /// A proposal outcome this phone acted on that the server has not stored yet.
+    private struct UnrecordedOutcome {
+        let id = UUID()
+        let messageId: String
+        let proposalId: String
+        let status: CoachProposal.Status
+    }
+
+    /// Outcomes still owed to the server, in the order they happened. They are resent until stored, and
+    /// shown over a reloaded history so a proposal already acted on is never offered again.
+    private var unrecordedOutcomes: [UnrecordedOutcome] = []
+
+    init(
+        coach: (any CoachServiceProtocol)?,
+        entitlements: (any PremiumEntitlementServiceProtocol)?,
+        subscriptionService: any SubscriptionServiceProtocol,
+        premiumAuthority: PremiumSessionAuthority,
+        applier: CoachProposalApplier,
+        today: CoachTodayReader,
+        customWorkouts: any CustomWorkoutServiceProtocol,
+        userService: any UserServiceProtocol,
+        exerciseService: any ExerciseServiceProtocol,
+        now: @escaping () -> Date = { Date() }
+    ) {
+        self.coach = coach
+        self.entitlements = entitlements
+        self.subscriptionService = subscriptionService
+        self.premiumAuthority = premiumAuthority
+        self.applier = applier
+        self.today = today
+        self.customWorkouts = customWorkouts
+        self.userService = userService
+        self.exerciseService = exerciseService
+        self.now = now
+    }
+
+    /// Production wiring off the container. `planInputsChanged` tells Today to rebuild after an action.
+    convenience init(services: ServiceContainer, planInputsChanged: @escaping @Sendable @MainActor () -> Void) {
+        self.init(
+            coach: services.coachService,
+            entitlements: services.premiumEntitlements,
+            subscriptionService: services.subscriptionService,
+            premiumAuthority: services.premiumSessionAuthority,
+            applier: CoachProposalApplier(
+                userService: services.userService,
+                outsideActivityService: services.outsideActivityService,
+                todayChoices: services.todayChoices,
+                reminders: services.reminders,
+                customWorkouts: services.customWorkoutService,
+                planInputsChanged: planInputsChanged
+            ),
+            today: CoachTodayReader(services: services),
+            customWorkouts: services.customWorkoutService,
+            userService: services.userService,
+            exerciseService: services.exerciseService
+        )
+    }
+
+    // MARK: - Access and history
+
+    /// Decides what the tab shows and, for a Premium account, loads the conversation.
+    func load() async {
+        guard let coach, let entitlements else {
+            access = .unavailable
+            return
+        }
+        // Only the first load shows the spinner (`access` starts at `.loading`): returning to the tab
+        // re-checks with the known state still on screen until the answer arrives.
+        do {
+            var status = try await entitlements.status()
+            if !status.premium, await hasLocalPremium() {
+                // StoreKit says Premium on this phone: link its signed transaction to the account.
+                let transactions = await subscriptionService.premiumTransactionJWS()
+                do {
+                    status = try await entitlements.link(transactions: transactions)
+                } catch PremiumEntitlementError.linkedToOtherAccount {
+                    access = .unconfirmed(message: CoachCopy.linkedToOtherAccount)
+                    return
+                } catch {
+                    access = .unconfirmed(message: CoachCopy.unconfirmed)
+                    return
+                }
+                if !status.premium {
+                    access = .unconfirmed(message: CoachCopy.unconfirmed)
+                    return
+                }
+            }
+            guard status.premium else {
+                access = .free
+                return
+            }
+            access = .premium
+        } catch PremiumEntitlementError.offline {
+            access = .offline
+            return
+        } catch {
+            access = messages.isEmpty ? .offline : access
+            return
+        }
+        await loadHistory(coach)
+    }
+
+    /// Restore Purchases from the "not confirmed" state: StoreKit sync, then link, then re-check.
+    func restorePurchases() async {
+        access = .loading
+        _ = try? await subscriptionService.restorePurchaseGrant()
+        await load()
+    }
+
+    private func hasLocalPremium() async -> Bool {
+        let token = premiumAuthority.beginRead()
+        if let grant = try? await subscriptionService.currentSubscriptionGrant() {
+            premiumAuthority.acceptSnapshot(grant, token: token)
+        } else {
+            premiumAuthority.acceptReadFailure(token: token)
+        }
+        return premiumAuthority.subscription.tier == .premium
+    }
+
+    private func loadHistory(_ coach: any CoachServiceProtocol) async {
+        isLoadingHistory = messages.isEmpty
+        defer { isLoadingHistory = false }
+        if library.isEmpty, let exercises = try? await exerciseService.exercises() {
+            library = exercises
+        }
+        if let user = try? await userService.currentUser() {
+            trainer = Trainer.effective(for: user.profile)
+        }
+        await sendUnrecordedOutcomes()
+        if let history = try? await coach.history() {
+            messages = history
+            for outcome in unrecordedOutcomes {
+                setStatus(outcome.status, for: outcome.proposalId, in: outcome.messageId)
+            }
+        }
+        if let workouts = try? await customWorkouts.workouts() {
+            acceptedWorkouts = Dictionary(
+                workouts.compactMap { workout in workout.proposalId.map { ($0, workout) } },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+    }
+
+    // MARK: - Sending
+
+    func send() async {
+        let text = trimmedDraft
+        guard canSend else { return }
+        draft = ""
+        await deliver(id: UUID(), text: text)
+    }
+
+    func sendQuickAction(_ action: QuickAction) async {
+        guard access == .premium, isDataSharingAcknowledged, !isSending else { return }
+        await deliver(id: UUID(), text: action.message)
+    }
+
+    func retry() async {
+        guard let pendingRetry, !isSending, isDataSharingAcknowledged else { return }
+        await deliver(id: pendingRetry.id, text: pendingRetry.text)
+    }
+
+    /// The one send path. Never throws: a failure becomes `errorMessage`, and `isSending` always returns
+    /// to `false`.
+    private func deliver(id: UUID, text: String) async {
+        guard let coach, access == .premium, isDataSharingAcknowledged else { return }
+        let pendingId = "pending-\(id.uuidString.lowercased())"
+        if pendingRetry?.id != id {
+            messages.append(CoachMessage(id: pendingId, role: .user, text: text, createdAt: now(), proposals: []))
+        }
+        errorMessage = nil
+        injuryRoutingOffer = nil
+        isSending = true
+        defer { isSending = false }
+        let snapshot = await today.snapshot()
+        do {
+            let turn = try await coach.send(clientMessageId: id, message: text, today: snapshot)
+            messages.removeAll { $0.id == pendingId }
+            messages.append(contentsOf: [turn.user, turn.coach])
+            pendingRetry = nil
+            await offerInjuryRoutingIfSignalled(text)
+        } catch let error as CoachServiceError {
+            handle(error, id: id, text: text, pendingId: pendingId)
+        } catch {
+            handle(.unavailable, id: id, text: text, pendingId: pendingId)
+        }
+    }
+
+    private func handle(_ error: CoachServiceError, id: UUID, text: String, pendingId: String) {
+        switch error {
+        case .notPremium:
+            messages.removeAll { $0.id == pendingId }
+            pendingRetry = nil
+            access = .free
+        case .invalidMessage:
+            messages.removeAll { $0.id == pendingId }
+            if trimmedDraft.isEmpty { draft = text }
+            errorMessage = CoachCopy.messageTooLong
+            pendingRetry = nil
+        case .limitReached:
+            messages.removeAll { $0.id == pendingId }
+            if trimmedDraft.isEmpty { draft = text }
+            errorMessage = CoachCopy.limitReached
+            pendingRetry = nil
+        case .signedOut, .accountDeleting:
+            messages.removeAll { $0.id == pendingId }
+            if trimmedDraft.isEmpty { draft = text }
+            errorMessage = CoachCopy.signedOut
+            pendingRetry = nil
+        case .offline, .unavailable, .outcomeRefused:
+            errorMessage = CoachCopy.couldNotAnswer
+            pendingRetry = (id, text)
+        }
+    }
+
+    // MARK: - US-AC08 injury routing
+
+    private func offerInjuryRoutingIfSignalled(_ message: String) async {
+        guard let routing = CoachInjurySignalMapper.routing(for: message) else { return }
+        if let user = try? await userService.currentUser(), routing.area.isFlagged(in: user.profile.injuries) {
+            return
+        }
+        injuryRoutingOffer = routing
+    }
+
     @discardableResult
     func acceptInjuryRoutingOffer() -> InjuryOption? {
         let area = injuryRoutingOffer?.area
@@ -136,441 +341,152 @@ final class CoachViewModel {
         return area
     }
 
-    /// The user declined the offer: dismiss it and change nothing. No profile write, no policy write,
-    /// no transcript turn - declining is exactly a no-op plus the card going away.
     func declineInjuryRoutingOffer() {
         injuryRoutingOffer = nil
     }
 
-    /// The pending analytics-driven action offer (US-AN02), set when a "how am I doing?" progress
-    /// inquiry landed on a strength journey that shows a real stall. It is an **offer**, not a change:
-    /// accepting applies a bounded, preference-only `patternEmphasis` nudge through the *same* US-AC07
-    /// write path (never a workout edit); it can express nothing else. `nil` whenever there is nothing
-    /// to offer.
-    private(set) var analyticsOffer: CoachAnalyticsInsightOffer?
+    // MARK: - Proposals
 
-    /// The user accepted the analytics offer: clear it and apply the bounded, clamped, preference-only
-    /// nudge that emphasizes the stalled pattern - through `CoachPolicyServiceProtocol`, exactly like
-    /// the US-AC07 tuning path - surfacing the honest coach note as a coach turn. A no-op (beyond
-    /// dismissing the card) when there is no policy service, no current user, or the clamped write
-    /// moves nothing. It only ever touches the one preference lever, so it never blocks the core loop
-    /// and never touches a safety filter.
-    func acceptAnalyticsOffer() async {
-        guard let offer = analyticsOffer else { return }
-        analyticsOffer = nil
-        guard let policyService,
-              let user = try? await userService.currentUser() else { return }
-        guard let written = try? await policyService.applyProposal(offer.proposal, for: user, asOf: now()),
-              let note = written.note else { return }
-        messages.append(Message(author: .coach, text: note.text))
-    }
-
-    /// The user declined the analytics offer: dismiss it and change nothing. Like declining the injury
-    /// offer, it is exactly a no-op plus the card going away - nothing was ever written.
-    func declineAnalyticsOffer() {
-        analyticsOffer = nil
-    }
-
-    /// Whether the current draft can be sent right now: available, consent given, not already sending,
-    /// and non-empty.
-    var canSend: Bool { isAvailable && isDataSharingAcknowledged && !isSending && !trimmedDraft.isEmpty }
-
-    /// Whether there is a failed message to retry.
-    var canRetry: Bool { isAvailable && !isSending && pendingRetryMessage != nil }
-
-    /// A few identity-framed starter prompts shown on the empty state, one per target intent, so the
-    /// user sees what the coach can actually help with rather than a blank box.
-    static let suggestedPrompts: [String] = [
-        "Why this workout today?",
-        "How do I do a pistol squat?",
-        "Is planking safe with a sore wrist?",
-        "I'm bored - why does it feel repetitive?",
-    ]
-
-    private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    private let client: CoachProxyClient?
-    private let userService: any UserServiceProtocol
-    private let workoutLogService: any WorkoutLogServiceProtocol
-    private let exerciseService: any ExerciseServiceProtocol
-    /// The sovereign on-device coach policy-write path (US-AC07). When present and a sent message maps to
-    /// an eligible tuning request, the coach applies a bounded, clamped, preference-only `SessionPolicy`
-    /// nudge and surfaces the honest note as a coach turn. `nil` leaves the coach purely talking (US-AC02).
-    private let policyService: (any CoachPolicyServiceProtocol)?
-    private let now: () -> Date
-    private let calendar: Calendar
-
-    /// The last user message whose send failed, kept so "Try again" resends exactly it without the
-    /// user retyping. Cleared on a successful send.
-    private var pendingRetryMessage: String?
-
-    /// Identifies the one delivery whose result is still allowed to mutate this view model. Leaving
-    /// the Coach screen invalidates it before cancelling the task, so a transport or Apple callback
-    /// that ignores cancellation cannot arrive late and append a reply, apply a policy nudge, or
-    /// raise an offer on a screen the user already left.
-    private var deliveryGeneration: UInt64 = 0
-
-    private var activeDeliveryAuthorization: CoachDeliveryAuthorization?
-
-    /// The question currently in flight. Kept only while the request owns the generation above so a
-    /// cancelled screen can settle into the same calm, retryable state as any other interruption.
-    private var activeDeliveryMessage: String?
-
-    /// The derived context, built once from the user's real state and reused across the conversation
-    /// (it is a snapshot of "where they are today", which does not change mid-chat). Rebuilt lazily.
-    private var cachedContext: CoachContextBundle?
-
-    /// The typed strength-journey trends behind `cachedContext.strengthJourney` (US-AN02), cached
-    /// alongside it so the analytics offer reads the *same* classification the bundle sent - never a
-    /// second derivation that could disagree. Set whenever `cachedContext` is.
-    private var cachedStrengthTrends: [StrengthPatternTrend]?
-
-    init(
-        client: CoachProxyClient?,
-        userService: any UserServiceProtocol,
-        workoutLogService: any WorkoutLogServiceProtocol,
-        exerciseService: any ExerciseServiceProtocol,
-        policyService: (any CoachPolicyServiceProtocol)? = nil,
-        now: @escaping () -> Date = { Date() },
-        calendar: Calendar = .current
-    ) {
-        self.client = client
-        self.userService = userService
-        self.workoutLogService = workoutLogService
-        self.exerciseService = exerciseService
-        self.policyService = policyService
-        self.now = now
-        self.calendar = calendar
-    }
-
-    /// Convenience initializer wiring the services this needs straight off the container, so the one
-    /// call site (`CoachView`) does not have to name them individually.
-    convenience init(services: ServiceContainer, now: @escaping () -> Date = { Date() }, calendar: Calendar = .current) {
-        self.init(
-            client: services.coachClient,
-            userService: services.userService,
-            workoutLogService: services.workoutLogService,
-            exerciseService: services.exerciseService,
-            policyService: services.coachPolicyService,
-            now: now,
-            calendar: calendar
-        )
-    }
-
-    /// Send the current draft. Appends it to the transcript, clears the input, awaits the coach's
-    /// reply through the bounded transport, and appends the reply - or surfaces the matching bounded
-    /// failure state without ever blocking. A no-op when there is nothing sendable.
-    func send() async {
-        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        // US-AC04: never send before the user has acknowledged the data disclosure. Gated here *and*
-        // in `deliver` so no path - a tapped Send, a suggested prompt, or a retry - can leak content
-        // before consent.
-        guard isAvailable, isDataSharingAcknowledged, !isSending, !message.isEmpty else { return }
-        draft = ""
-        await deliver(message)
-    }
-
-    /// Resend the last message whose send failed (the input was already cleared when it was first
-    /// sent), so a transient network blip does not cost the user their question. A no-op when there is
-    /// nothing to retry.
-    func retryLastMessage() async {
-        guard isAvailable, isDataSharingAcknowledged, !isSending, let message = pendingRetryMessage else { return }
-        await deliver(message)
-    }
-
-    /// Settle and invalidate the active send when the Coach surface leaves the screen. The caller also
-    /// cancels its task, but this generation boundary is load-bearing: deterministic doubles (and some
-    /// system callbacks) may finish despite cancellation. Their late result must never win. The user's
-    /// already-visible question remains available for a calm retry if this view model is presented
-    /// again; no provider response or authentication material is retained here.
-    func cancelPendingSend() {
-        guard isSending else { return }
-        activeDeliveryAuthorization?.invalidate()
-        deliveryGeneration &+= 1
-        if let activeDeliveryMessage {
-            pendingRetryMessage = activeDeliveryMessage
-        }
-        activeDeliveryMessage = nil
-        errorMessage = Self.genericFailureMessage
-        isSending = false
-    }
-
-    /// The one send path, shared by `send()` and `retryLastMessage()`. It never throws to the caller:
-    /// a `CoachProxyClient` failure becomes `errorMessage`, and `isSending` always returns to `false`.
-    private func deliver(_ message: String) async {
-        guard let client else { return }
-        // US-AC04, the load-bearing guarantee: the send path itself refuses to run until the user has
-        // acknowledged the disclosure. This is not merely a disabled button - it is the last line that
-        // makes "declining sends nothing" true even if a caller reached here another way.
-        guard isDataSharingAcknowledged else { return }
-
-        // Show the user's turn immediately (only the first time - a retry has already appended it),
-        // and clear any prior error so the transcript reads cleanly.
-        if messages.last?.text != message || messages.last?.author != .user {
-            messages.append(Message(author: .user, text: message))
-        }
-        errorMessage = nil
-        // A new question supersedes any un-answered offer: an offer belongs to the turn that raised
-        // it, and letting one linger under a later answer would read as a standing prompt. Dropping
-        // either changes nothing (neither ever set anything to begin with).
-        injuryRoutingOffer = nil
-        analyticsOffer = nil
-        deliveryGeneration &+= 1
-        let expectedGeneration = deliveryGeneration
-        let authorization = CoachDeliveryAuthorization()
-        activeDeliveryAuthorization = authorization
-        activeDeliveryMessage = message
-        isSending = true
-        defer {
-            if deliveryGeneration == expectedGeneration {
-                activeDeliveryAuthorization = nil
-                activeDeliveryMessage = nil
-                isSending = false
-            }
-        }
-
-        let context = await contextBundle()
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
+    /// Applies an action proposal the user confirmed, through the same paths their own taps take.
+    func apply(_ proposal: CoachProposal, in message: CoachMessage) async {
+        guard proposal.status == .proposed, !busyProposals.contains(proposal.id) else { return }
+        busyProposals.insert(proposal.id)
+        proposalErrors[proposal.id] = nil
+        defer { busyProposals.remove(proposal.id) }
         do {
-            let reply = try await client.reply(to: message, context: context)
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
-            // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
-            // turn. It runs only on the successful-reply path, so a message the transport rejected (too
-            // long) or that failed in flight never tunes the program and never orphans a turn in the
-            // transcript; it never touches a safety filter and never blocks.
-            await applyTuningIfRequested(
-                message,
-                expectedGeneration: expectedGeneration,
-                authorization: authorization
-            )
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            // US-AC08: a health/injury signal produces a *routing offer*, never a filter change. Like
-            // the tuning above it runs only on the successful-reply path, and unlike it, it writes
-            // nothing at all - the flag can only be set by the user in the injury control this offer
-            // routes to.
-            await offerInjuryRoutingIfSignalled(
-                message,
-                expectedGeneration: expectedGeneration,
-                authorization: authorization
-            )
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            // US-AN02: a "how am I doing?" progress inquiry, on a journey that shows a real stall,
-            // ends the turn with a bounded emphasis *offer*. Like the two above it runs only on the
-            // successful-reply path and writes nothing until the user accepts - and accepting routes
-            // through the US-AC07 policy path, so it can never be a workout edit.
-            await offerAnalyticsInsightIfRequested(
-                message,
-                expectedGeneration: expectedGeneration,
-                authorization: authorization
-            )
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            messages.append(Message(author: .coach, text: reply))
-            pendingRetryMessage = nil
-        } catch let error as CoachProxyClient.CoachError where error.isSafetyRefusal {
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            errorMessage = Self.friendlyMessage(for: error)
-            pendingRetryMessage = nil
-        } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            // The one failure the user can fix themselves: give them their text back so they can
-            // trim it, drop the rejected turn rather than orphaning it in the transcript, and do not
-            // offer retry - resending the identical over-long text just re-hits the same local guard.
-            if messages.last?.author == .user, messages.last?.text == message {
-                messages.removeLast()
-            }
-            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                draft = message
-            }
-            errorMessage = Self.friendlyMessage(for: error)
-            pendingRetryMessage = nil
-        } catch let error as CoachProxyClient.CoachError {
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            errorMessage = Self.friendlyMessage(for: error)
-            pendingRetryMessage = message
+            undos[proposal.id] = try await applier.apply(proposal.action)
+            setStatus(.applied, for: proposal.id, in: message.id)
+            await record(.applied, for: proposal.id, in: message.id)
+        } catch CoachProposalApplier.ApplyError.notificationsOff {
+            proposalErrors[proposal.id] = CoachReminderCopy.permissionDenied
         } catch {
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            // Any transport-level failure (offline, DNS, TLS, timeout) - the client throws these
-            // through, and they are all recovered identically: a non-blocking, retryable state.
-            errorMessage = Self.genericFailureMessage
-            pendingRetryMessage = message
+            proposalErrors[proposal.id] = CoachCopy.couldNotApply
         }
     }
 
-    private func isDeliveryAuthorized(
-        _ expectedGeneration: UInt64,
-        authorization: CoachDeliveryAuthorization
-    ) -> Bool {
-        deliveryGeneration == expectedGeneration
-            && activeDeliveryAuthorization === authorization
-            && authorization.isAuthorized()
-            && !Task.isCancelled
+    func decline(_ proposal: CoachProposal, in message: CoachMessage) async {
+        guard proposal.status == .proposed, !busyProposals.contains(proposal.id) else { return }
+        setStatus(.declined, for: proposal.id, in: message.id)
+        await record(.declined, for: proposal.id, in: message.id)
     }
 
-    /// Apply a coach policy nudge (US-AC07) when `message` maps to an eligible tuning request. Entirely
-    /// best-effort and non-blocking: it no-ops when there is no policy service, no recognized intent, no
-    /// current user, or the write moves nothing (a clamped no-op). On a real write it appends the honest,
-    /// coach-authored note as a coach turn so the user sees exactly what changed - never a claim of a change
-    /// that did not happen (the note is `nil` unless a lever actually moved, and only a non-`nil` written
-    /// policy reaches here). It can only ever move the three preference levers, so it never blocks the core
-    /// loop and never touches a safety filter.
-    private func applyTuningIfRequested(
-        _ message: String,
-        expectedGeneration: UInt64,
-        authorization: CoachDeliveryAuthorization
-    ) async {
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        guard let policyService,
-              let proposal = CoachIntentMapper.proposal(for: message),
-              let user = try? await userService.currentUser() else { return }
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        guard let written = try? await policyService.applyProposal(
-            proposal,
-            for: user,
-            asOf: now(),
-            authorization: authorization
-        ),
-              let note = written.note else { return }
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        messages.append(Message(author: .coach, text: note.text))
+    /// Whether this session can undo a proposal it applied.
+    func canUndo(_ proposal: CoachProposal) -> Bool {
+        proposal.status == .applied && undos[proposal.id] != nil
     }
 
-    /// Raise the injury routing offer (US-AC08) when `message` reads as a health signal about an area
-    /// the user has not already flagged.
-    ///
-    /// This is the *entire* injury path on the coach side, and it is deliberately write-free: it reads
-    /// the profile to avoid offering something already done, and then sets `injuryRoutingOffer`. It
-    /// calls no policy service (safety filters are inexpressible on that path by construction, US-AC07)
-    /// and never touches `UserProfile.injuries` - the flag is set only by the user, in the injury
-    /// control the offer routes to. Best-effort and non-blocking throughout: a missing profile or an
-    /// unrecognized message simply means no offer.
-    private func offerInjuryRoutingIfSignalled(
-        _ message: String,
-        expectedGeneration: UInt64,
-        authorization: CoachDeliveryAuthorization
-    ) async {
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        guard let routing = CoachInjurySignalMapper.routing(for: message) else { return }
-        // Offering to flag something already flagged would be noise, and would invite the user to
-        // "confirm" a change that is not a change. The "already flagged" question is asked the
-        // engine's way (normalized tags), so an area the filter already protects reads as protected.
-        if let user = try? await userService.currentUser() {
-            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-            if routing.area.isFlagged(in: user.profile.injuries) {
-                return
+    func undo(_ proposal: CoachProposal, in message: CoachMessage) async {
+        guard let undo = undos[proposal.id], !busyProposals.contains(proposal.id) else { return }
+        busyProposals.insert(proposal.id)
+        defer { busyProposals.remove(proposal.id) }
+        do {
+            try await applier.undo(undo)
+            undos[proposal.id] = nil
+            if case .customWorkout = proposal.action { acceptedWorkouts[proposal.id] = nil }
+            setStatus(.undone, for: proposal.id, in: message.id)
+            await record(.undone, for: proposal.id, in: message.id)
+        } catch {
+            proposalErrors[proposal.id] = CoachCopy.couldNotUndo
+        }
+    }
+
+    // MARK: - Custom Workouts
+
+    /// The reviewable workout for a Custom Workout proposal (US-CA05): editable, not yet saved.
+    func reviewableWorkout(for proposal: CoachProposal, in message: CoachMessage) async -> CustomWorkout? {
+        guard case let .customWorkout(draft) = proposal.action else { return nil }
+        let library = (try? await exerciseService.exercises()) ?? []
+        return CustomWorkout(draft: draft, messageId: message.id, proposalId: proposal.id, library: library, now: now())
+    }
+
+    /// Accepts the reviewed workout: only now is it saved, and only now can it play.
+    @discardableResult
+    func accept(_ workout: CustomWorkout, for proposal: CoachProposal, in message: CoachMessage) async -> CustomWorkout? {
+        guard proposal.status == .proposed, !busyProposals.contains(proposal.id) else { return nil }
+        busyProposals.insert(proposal.id)
+        defer { busyProposals.remove(proposal.id) }
+        do {
+            let (accepted, undo) = try await applier.acceptCustomWorkout(workout)
+            undos[proposal.id] = undo
+            acceptedWorkouts[proposal.id] = accepted
+            setStatus(.applied, for: proposal.id, in: message.id)
+            await record(.applied, for: proposal.id, in: message.id)
+            return accepted
+        } catch {
+            proposalErrors[proposal.id] = CoachCopy.couldNotApply
+            return nil
+        }
+    }
+
+    /// What the player needs to play an accepted workout (FR-11: only an accepted one).
+    func playback(of workout: CustomWorkout) async -> CustomWorkoutPlayback? {
+        guard workout.isAccepted else { return nil }
+        let library = (try? await exerciseService.exercises()) ?? []
+        guard let user = try? await userService.currentUser() else { return nil }
+        return CustomWorkoutPlayback(workout: workout, playable: workout.playableWorkout(library: library, now: now()), library: library, user: user)
+    }
+
+    /// Records a proposal's outcome with the server, keeping it on the phone until the server stores it.
+    private func record(_ status: CoachProposal.Status, for proposalId: String, in messageId: String) async {
+        unrecordedOutcomes.append(UnrecordedOutcome(messageId: messageId, proposalId: proposalId, status: status))
+        await sendUnrecordedOutcomes()
+    }
+
+    /// Sends every owed outcome in order. A proposal whose outcome fails for now keeps its later ones for
+    /// next time; one the server refuses for good is dropped, so the server's status stands.
+    private func sendUnrecordedOutcomes() async {
+        guard let coach else { return }
+        var failed: Set<String> = []
+        for outcome in unrecordedOutcomes where !failed.contains(outcome.proposalId) {
+            do {
+                try await coach.recordOutcome(messageId: outcome.messageId, proposalId: outcome.proposalId, status: outcome.status)
+                unrecordedOutcomes.removeAll { $0.id == outcome.id }
+            } catch CoachServiceError.outcomeRefused {
+                failed.insert(outcome.proposalId)
+                unrecordedOutcomes.removeAll { $0.proposalId == outcome.proposalId }
+            } catch {
+                failed.insert(outcome.proposalId)
             }
         }
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        injuryRoutingOffer = routing
     }
 
-    /// Raise the analytics-driven action offer (US-AN02) when `message` is a progress inquiry and the
-    /// user's strength journey shows a real stall.
-    ///
-    /// The stall read is the *same* `CoachStrengthJourneyReader` classification the context bundle
-    /// carries (cached when the bundle was built at the top of this send), so the offer and the
-    /// narration cannot disagree. It only offers when there is a policy service to apply the nudge
-    /// through - offering an action the surface cannot take would be noise - and the offer's accept
-    /// routes through that same bounded US-AC07 path, so it can never be a workout edit. Best-effort
-    /// and non-blocking: no policy service, no progress inquiry, or no stall simply means no offer.
-    private func offerAnalyticsInsightIfRequested(
-        _ message: String,
-        expectedGeneration: UInt64,
-        authorization: CoachDeliveryAuthorization
-    ) async {
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        guard policyService != nil,
-              CoachAnalyticsInsight.isProgressInquiry(message) else { return }
-        // The trends were cached when `contextBundle()` ran earlier in this send; recompute defensively
-        // if a cache miss ever leaves them nil (e.g. a neutral default bundle).
-        let trends = cachedStrengthTrends ?? []
-        guard let offer = CoachAnalyticsInsight.offer(from: trends) else { return }
-        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
-        analyticsOffer = offer
+    private func setStatus(_ status: CoachProposal.Status, for proposalId: String, in messageId: String) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let proposalIndex = messages[index].proposals.firstIndex(where: { $0.id == proposalId }) else { return }
+        messages[index].proposals[proposalIndex].status = status
     }
+}
 
-    /// The derived, non-identifying context bundle for the conversation, built once from the user's
-    /// real on-device state and cached. Best-effort throughout: a missing user or a failed library
-    /// read yields a neutral default bundle so the coach can still give general form guidance rather
-    /// than the send failing - it never blocks, and it never fabricates history.
-    private func contextBundle() async -> CoachContextBundle {
-        if let cachedContext { return cachedContext }
+/// An accepted Custom Workout, ready for the hands-free player.
+struct CustomWorkoutPlayback: Identifiable {
+    let workout: CustomWorkout
+    let playable: Workout
+    let library: [Exercise]
+    let user: User
+    var id: UUID { playable.id }
+}
 
-        let bundle: CoachContextBundle
-        var trends: [StrengthPatternTrend] = []
-        if let user = try? await userService.currentUser() {
-            let logs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? []
-            let trend = ConsistencyTrend.trend(
-                logs: logs,
-                weeklyGoal: user.consistency.weeklyGoal,
-                asOf: now(),
-                calendar: calendar
-            )
-            let chainPositions: [ChainPositionSummary]
-            let strengthJourney: StrengthJourney
-            if let library = try? await exerciseService.exercises() {
-                // One analytics pass gives both the chain positions and the strength journey the coach
-                // narrates, so both read the *same* frontier the Progress tab shows.
-                let analytics = ProgressAnalytics.from(
-                    logs: logs,
-                    library: library,
-                    level: user.profile.fitnessLevel,
-                    phase: user.phase,
-                    asOf: now(),
-                    calendar: calendar
-                )
-                chainPositions = analytics.chainPositions
-                strengthJourney = analytics.deep.strengthJourney
-            } else {
-                chainPositions = []
-                strengthJourney = StrengthJourney(chains: [])
-            }
-            trends = CoachStrengthJourneyReader.trends(from: strengthJourney, asOf: now(), calendar: calendar)
-            bundle = CoachContextBundle.make(
-                phase: user.phase,
-                // The user's learned Default Duration (US-F04) stands in for "the minutes they'd
-                // request" on this standalone surface, so "why this workout at this length?" is
-                // answerable without the coach being tied to a live session.
-                requestedMinutes: user.duration.defaultMinutes,
-                chainPositions: chainPositions,
-                consistencyTrend: trend,
-                recentLogs: logs,
-                strengthJourney: strengthJourney,
-                asOf: now(),
-                calendar: calendar
-            )
-        } else {
-            // No profile (should not happen on this surface): a neutral, non-identifying default so the
-            // coach can still answer general form/variety questions without fabricating history.
-            bundle = CoachContextBundle.make(
-                phase: .discipline,
-                requestedMinutes: 15,
-                chainPositions: [],
-                consistencyTrend: [],
-                recentLogs: []
-            )
-        }
-        cachedContext = bundle
-        cachedStrengthTrends = trends
-        return bundle
-    }
-
-    /// The friendly copy for each `CoachError`. Transport failures collapse to one retryable message;
-    /// user-correctable and safety outcomes stay non-retryable.
-    private static func friendlyMessage(for error: CoachProxyClient.CoachError) -> String {
-        switch error {
-        case .messageTooLong:
-            return "That question is a little long - try shortening it and asking again."
-        case .safetyRefusal:
-            return safetyRefusalMessage
-        case .emptyMessage, .invalidSafetyIdentifier, .notHTTP, .badStatus, .emptyReply:
-            return genericFailureMessage
-        }
-    }
-
-    /// The one non-blocking failure line, identity-framed and never alarming: the coach is a nicety,
-    /// not a dependency, so a failure reads as "not right now" rather than "something is broken".
-    static let genericFailureMessage = "The coach couldn't answer just now. Your workout isn't affected - tap to try again."
-
-    static let safetyRefusalMessage = "The coach can't help with that request. Try asking about your training, form, or consistency."
+/// The Coach's copy, one source for the tab, its cards and the tests that pin it. Identity-framed and
+/// calm: the Coach is a nicety, never a dependency, so a failure reads as "not right now".
+enum CoachCopy {
+    static let title = "Coach"
+    static let emptyTitle = "Your coach"
+    static let emptyBody = "Ask about today's session or a movement, tell it about a run, or ask for a workout. "
+        + "Anything it suggests waits for you to confirm."
+    static let couldNotAnswer = "The coach couldn't answer just now. Your workout isn't affected - tap to try again."
+    static let messageTooLong = "That message is a little long - try shortening it and sending again."
+    static let limitReached = "You've talked with the coach a lot today. It'll be ready again tomorrow."
+    static let signedOut = "Sign in to your Rep Today account to use the coach."
+    static let couldNotApply = "That didn't go through. Nothing changed - try again."
+    static let couldNotUndo = "That couldn't be undone just now. Try again."
+    static let unconfirmed = "Your Premium subscription isn't on your Rep Today account yet. Restore purchases to link it."
+    static let linkedToOtherAccount = "This Apple ID's Premium subscription belongs to another Rep Today account, so the coach stays with that account."
+    static let offline = "The coach needs a connection. Your sessions work offline as always."
+    static let unavailable = "The coach isn't available in this build. Your workouts are unaffected."
+    static let previewTitle = "A coach that knows your training"
+    static let previewBody = "Premium's coach remembers your sessions, logs a run for you, adjusts today, writes workouts for a hotel room, "
+        + "and reminds you when you want it to - always waiting for your OK."
+    static let unlock = "See Premium plans"
+    static let restore = "Restore purchases"
+    static let retry = "Try again"
 }

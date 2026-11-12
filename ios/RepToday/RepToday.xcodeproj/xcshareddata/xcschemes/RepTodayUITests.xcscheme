@@ -60,6 +60,11 @@
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
+            key = "REPTODAY_E2E_COACH"
+            value = "$(REPTODAY_E2E_COACH)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
             key = "REPTODAY_E2E_EXISTING_USER"
             value = "$(REPTODAY_E2E_EXISTING_USER)"
             isEnabled = "YES">

@@ -79,46 +79,62 @@ final class AccountDeletionServiceTests: XCTestCase {
 
     // MARK: - US-AD03 orchestration
 
-    func testCoachAuthenticationCleanupFollowsDurableDeletionAndSignOutBeforeRouting() async throws {
-        let userService=MockUserService(user:MockPersistence.sampleUser),logs=MockWorkoutLogService(logs:[makeLog()])
-        let auth=MockAuthService(userIdentifier:"fixture-apple-user");let appState=makeAppState(isOnboarded:true,selectedTab:.home)
-        let cleaned=CleanupObservation()
-        let service=AccountDeletionService(userService:userService,workoutLogService:logs,
-            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:auth,
-            coachAuthenticationCleanup:{
-                let user=try? await userService.currentUser();let remaining=try? await logs.workoutLogs(from:nil,to:nil)
-                let identifier=try? await auth.currentUserIdentifier()
-                await cleaned.record(user == nil && remaining?.isEmpty == true && identifier == nil)
-            })
-        try await service.deleteAccount(appState:appState)
-        let observation=await cleaned.values;XCTAssertEqual(observation,[true]);XCTAssertFalse(appState.isOnboarded)
+    /// The Coach's on-device state (M4) - accepted Custom Workouts, reminders and their pending
+    /// notifications, today's choices - goes with the account, after the durable records.
+    func testCoachDeviceStateIsErasedWithTheAccount() async throws {
+        let workout = CustomWorkout(
+            id: UUID(), title: "Desk Reset", note: "", steps: [], messageId: nil, proposalId: nil,
+            createdAt: Date(timeIntervalSinceReferenceDate: 700_000_000), acceptedAt: Date(timeIntervalSinceReferenceDate: 700_000_000)
+        )
+        let customWorkouts = InMemoryCustomWorkoutService(workouts: [workout])
+        let scheduler = RecordingReminderNotificationScheduler(permission: .allowed)
+        let reminders = CoachReminderService(defaults: defaults, scheduler: scheduler)
+        try await reminders.save(CoachReminder(hour: 7, minute: 30, weekdays: [2, 4], createdAt: Date()))
+        let todayChoices = InMemoryTodayChoicesStore(TodayChoices(day: "2026-11-11", rest: .restToday, minutes: 10))
+        let appState = makeAppState(isOnboarded: true, selectedTab: .coach)
+        let service = AccountDeletionService(
+            userService: MockUserService(user: MockPersistence.sampleUser),
+            workoutLogService: MockWorkoutLogService(),
+            sessionPolicyStore: InMemorySessionPolicyStore(),
+            activeSessionStore: InMemoryActiveSessionStore(),
+            authService: MockAuthService(),
+            coachState: CoachDeviceTeardown(customWorkouts: customWorkouts, reminders: reminders, todayChoices: todayChoices)
+        )
+        try await service.deleteAccount(appState: appState)
+
+        let remainingWorkouts = try await customWorkouts.workouts()
+        XCTAssertTrue(remainingWorkouts.isEmpty)
+        let remainingReminders = await reminders.reminders()
+        XCTAssertTrue(remainingReminders.isEmpty)
+        let pending = await scheduler.pending
+        XCTAssertTrue(pending.isEmpty, "a deleted account leaves no notification behind")
+        XCTAssertTrue(todayChoices.choices(on: "2026-11-11").isEmpty)
+        XCTAssertEqual(appState.selectedTab, .home)
     }
-    func testDisabledAndInvalidCoachConfigurationsStillUnlinkTheSharedAuthenticationKey() async throws {
-        for endpoint in ["", "http://worker.example.com/coach"] {
-            let keyStore=DefaultsCoachAuthenticationKeyStore(defaults:defaults)
-            keyStore.save(Data(repeating:1,count:32).base64EncodedString())
-            try await withCoachConfiguration([CoachProxyClient.endpointInfoPlistKey:endpoint]) {bundle in
-                let resolution=ServiceContainer.resolveCoachAuthentication(
-                    safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle,keyStore:keyStore)
-                XCTAssertNil(resolution.client)
-                let cleanup=resolution.accountCleanup
-                let appState=makeAppState(isOnboarded:true,selectedTab:.home)
-                let service=AccountDeletionService(userService:MockUserService(user:MockPersistence.sampleUser),
-                    workoutLogService:MockWorkoutLogService(),sessionPolicyStore:InMemorySessionPolicyStore(),
-                    activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
-                    coachAuthenticationCleanup:{await cleanup.resetAccount()})
-                try await service.deleteAccount(appState:appState)
-                XCTAssertNil(keyStore.load())
-            }
-        }
-    }
-    func testFailedDurableDeletionDoesNotUnlinkCoachAuthenticationOrRouteAway() async throws {
-        let appState=makeAppState(isOnboarded:true,selectedTab:.home);let cleaned=CleanupObservation()
-        let service=AccountDeletionService(userService:ThrowingUserService(failDeletion:true),workoutLogService:MockWorkoutLogService(),
-            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
-            coachAuthenticationCleanup:{await cleaned.record(true)})
-        do {try await service.deleteAccount(appState:appState);XCTFail("durable deletion should fail")} catch {}
-        let observation=await cleaned.values;XCTAssertTrue(observation.isEmpty);XCTAssertTrue(appState.isOnboarded)
+
+    func testFailedDurableDeletionLeavesTheCoachStateAndRoutingInPlace() async throws {
+        let workout = CustomWorkout(
+            id: UUID(), title: "Desk Reset", note: "", steps: [], messageId: nil, proposalId: nil,
+            createdAt: Date(), acceptedAt: Date()
+        )
+        let customWorkouts = InMemoryCustomWorkoutService(workouts: [workout])
+        let appState = makeAppState(isOnboarded: true, selectedTab: .home)
+        let service = AccountDeletionService(
+            userService: ThrowingUserService(failDeletion: true),
+            workoutLogService: MockWorkoutLogService(),
+            sessionPolicyStore: InMemorySessionPolicyStore(),
+            activeSessionStore: InMemoryActiveSessionStore(),
+            authService: MockAuthService(),
+            coachState: CoachDeviceTeardown(
+                customWorkouts: customWorkouts,
+                reminders: CoachReminderService(defaults: defaults, scheduler: RecordingReminderNotificationScheduler()),
+                todayChoices: InMemoryTodayChoicesStore()
+            )
+        )
+        do { try await service.deleteAccount(appState: appState); XCTFail("durable deletion should fail") } catch {}
+        let remaining = try await customWorkouts.workouts()
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertTrue(appState.isOnboarded)
     }
 
     func testDeleteAccountClearsEverythingForASignedInUser() async throws {
@@ -130,8 +146,6 @@ final class AccountDeletionServiceTests: XCTestCase {
         let appState = makeAppState(isOnboarded: true, selectedTab: .progress)
         let preDeletionInstallId = appState.installId
         appState.markCoachDataSharingAcknowledged()
-        let originalCoachSafetyIdentifier = appState.coachSafetyIdentifier
-        let coachSafetyIdentifierProvider = appState.coachSafetyIdentifierProvider
 
         let service = AccountDeletionService(
             userService: userService,
@@ -162,8 +176,6 @@ final class AccountDeletionServiceTests: XCTestCase {
                 appState.installId, preDeletionInstallId,
                 "post-deletion telemetry would remain linked to the prior install identity"
             )
-            XCTAssertNotEqual(appState.coachSafetyIdentifier, originalCoachSafetyIdentifier)
-            XCTAssertEqual(coachSafetyIdentifierProvider(), appState.coachSafetyIdentifier)
             XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
             XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
             XCTAssertFalse(appState.isOnboarded, "the app did not route back to onboarding")
@@ -235,7 +247,6 @@ final class AccountDeletionServiceTests: XCTestCase {
         )
         try await service.deleteAccount(appState: appState)
         let identityAfterFirstDeletion = appState.installId
-        let coachIdentityAfterFirstDeletion = appState.coachSafetyIdentifier
         // Second call: nothing left to clear, must not throw.
         try await service.deleteAccount(appState: appState)
 
@@ -248,10 +259,6 @@ final class AccountDeletionServiceTests: XCTestCase {
             XCTAssertEqual(
                 appState.installId, identityAfterFirstDeletion,
                 "an idempotent second deletion rotated the already-separated identity again"
-            )
-            XCTAssertEqual(
-                appState.coachSafetyIdentifier, coachIdentityAfterFirstDeletion,
-                "an idempotent second deletion rotated the Coach safety identifier again"
             )
         }
     }
@@ -318,22 +325,6 @@ final class AccountDeletionServiceTests: XCTestCase {
         return appState
     }
 
-    private func withCoachConfiguration(
-        _ values:[String:Any],
-        check:(Bundle) async throws -> Void
-    ) async throws {
-        var repository=URL(fileURLWithPath:#filePath)
-        for _ in 0..<4 {repository.deleteLastPathComponent()}
-        let fixture=repository.appendingPathComponent("build/coach-deletion-fixtures/\(UUID().uuidString).bundle")
-        try FileManager.default.createDirectory(at:fixture,withIntermediateDirectories:true)
-        defer {try? FileManager.default.removeItem(at:fixture)}
-        var info=values;info["CFBundleIdentifier"]="com.reptoday.localcoachdeletionfixture"
-        info["CFBundlePackageType"]="BNDL"
-        let data=try PropertyListSerialization.data(fromPropertyList:info,format:.xml,options:0)
-        try data.write(to:fixture.appendingPathComponent("Info.plist"))
-        try await check(try XCTUnwrap(Bundle(url:fixture)))
-    }
-
     private func makeLog(id: UUID = UUID()) -> WorkoutLog {
         WorkoutLog(
             id: id, workoutId: UUID(),
@@ -362,11 +353,6 @@ final class AccountDeletionServiceTests: XCTestCase {
         )
         return ActiveSessionState(fresh: workout)
     }
-}
-
-private actor CleanupObservation {
-    private(set) var values:[Bool]=[]
-    func record(_ value:Bool) {values.append(value)}
 }
 
 /// A `UserServiceProtocol` double whose `currentUser()` always throws - modelling a corrupt/unreadable

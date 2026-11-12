@@ -13,7 +13,9 @@ enum SyncRecordContent: Equatable, Sendable {
     case workoutLog(payload: String, completedAt: Date)
     /// An `OutsideActivity` as JSON and its date.
     case outsideActivity(payload: String, date: Date)
-    /// The record is gone (a log or an Outside Activity was deleted).
+    /// An accepted `CustomWorkout` as JSON (M4).
+    case customWorkout(payload: String)
+    /// The record is gone (a log, an Outside Activity or a Custom Workout was deleted).
     case deleted
 }
 

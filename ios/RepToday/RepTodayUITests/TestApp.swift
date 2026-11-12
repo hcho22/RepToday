@@ -144,6 +144,38 @@ final class TestApp {
         app.terminate()
     }
 
+    /// Sends the app to the background and leaves it there, so system UI over the Home Screen (a
+    /// delivered notification) is what is on screen.
+    func goHome() {
+        XCUIDevice.shared.press(.home)
+    }
+
+    // MARK: - System UI
+
+    /// SpringBoard, which draws system alerts and notification banners. Held privately like `app`: it
+    /// is only ever queried, never launched, and no test holds it.
+    private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+    /// Taps "Allow" on a system permission alert (notifications, for the Coach's first reminder),
+    /// returning whether one appeared within `timeout`.
+    func allowSystemAlert(timeout: TimeInterval) -> Bool {
+        let alert = springboard.alerts.firstMatch
+        guard alert.waitForExistence(timeout: timeout) else { return false }
+        for title in ["Allow", "Allow Notifications"] where alert.buttons[title].exists {
+            alert.buttons[title].tap()
+            return true
+        }
+        return false
+    }
+
+    /// The first SpringBoard element whose label contains any of `texts`: a delivered notification banner,
+    /// found by its own text (an app's name would also match its Home Screen icon).
+    func springboardElement(matchingAnyOf texts: [String]) -> XCUIElement {
+        let predicates = texts.map { NSPredicate(format: "label CONTAINS %@", $0) }
+        return springboard.descendants(matching: .any)
+            .matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+
     /// Answers the Health share prompt the main tabs raise as they appear (US-N03), via the shared
     /// `RepTodayUITests/HealthAccessPrompt.swift` seam. The private `app` never leaves the wrapper
     /// except into that trusted helper, which only queries the sheet and never launches.

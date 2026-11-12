@@ -20,6 +20,10 @@ final class CDOutsideActivity: NSManagedObject {
     @NSManaged var durationMinutes: Int
     @NSManaged var distanceMeters: NSNumber?
     @NSManaged var healthWorkoutId: UUID?
+    /// A played Custom Workout's id, title and group (model version 4, M4).
+    @NSManaged var customWorkoutId: UUID?
+    @NSManaged var customWorkoutTitle: String?
+    @NSManaged var customWorkoutGroupRaw: String?
 }
 
 // MARK: - Domain conversion
@@ -40,7 +44,10 @@ extension CDOutsideActivity {
             date: date,
             durationMinutes: durationMinutes,
             distanceMeters: distanceMeters?.doubleValue,
-            healthWorkoutId: healthWorkoutId
+            healthWorkoutId: healthWorkoutId,
+            customWorkoutId: customWorkoutId,
+            customWorkoutTitle: customWorkoutTitle,
+            customWorkoutGroup: customWorkoutGroupRaw.flatMap(TrainingDay.init(rawValue:))
         )
     }
 
@@ -52,5 +59,8 @@ extension CDOutsideActivity {
         durationMinutes = activity.durationMinutes
         distanceMeters = activity.distanceMeters.map { NSNumber(value: $0) }
         healthWorkoutId = activity.healthWorkoutId
+        customWorkoutId = activity.customWorkoutId
+        customWorkoutTitle = activity.customWorkoutTitle
+        customWorkoutGroupRaw = activity.customWorkoutGroup?.rawValue
     }
 }

@@ -1,4 +1,4 @@
-// Debug configuration only. Never Release, CoachDeviceQA or CoachStaging.
+// Debug configuration only. Never Release.
 // The dev usage-data shared secret is not committed. tools/dev-telemetry-secret.sh install writes it
 // from this Mac's login Keychain into the untracked DebugTelemetry.local.xcconfig beside this file:
 //   REPTODAY_ANALYTICS_SECRET = <value>

@@ -24,6 +24,8 @@ final class WelcomeViewModel {
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let outsideActivityService: any OutsideActivityServiceProtocol
     private let workoutEngine: any WorkoutEngineProtocol
+    /// Today's choices (M4): a rest the user chose, or training on a Rest Day, shows here as on Today.
+    private let todayChoices: (any TodayChoicesStoring)?
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -32,6 +34,7 @@ final class WelcomeViewModel {
         workoutLogService: any WorkoutLogServiceProtocol,
         outsideActivityService: any OutsideActivityServiceProtocol,
         workoutEngine: any WorkoutEngineProtocol,
+        todayChoices: (any TodayChoicesStoring)? = nil,
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
@@ -39,6 +42,7 @@ final class WelcomeViewModel {
         self.workoutLogService = workoutLogService
         self.outsideActivityService = outsideActivityService
         self.workoutEngine = workoutEngine
+        self.todayChoices = todayChoices
         self.now = now
         self.calendar = calendar
     }
@@ -48,7 +52,8 @@ final class WelcomeViewModel {
             userService: services.userService,
             workoutLogService: services.workoutLogService,
             outsideActivityService: services.outsideActivityService,
-            workoutEngine: services.workoutEngine
+            workoutEngine: services.workoutEngine,
+            todayChoices: services.todayChoices
         )
     }
 
@@ -61,13 +66,15 @@ final class WelcomeViewModel {
         let asOf = now()
         let lookback = calendar.date(byAdding: .day, value: -ReadyViewModel.recentLogLookbackDays, to: asOf)
         let recentLogs = lookback.map { start in history.filter { $0.completedAt >= start } } ?? history
-        plan = try? await workoutEngine.trainingPlan(
+        let rotation = try? await workoutEngine.trainingPlan(
             user: user,
             recentLogs: recentLogs,
             history: history,
             activities: activities,
             asOf: asOf
         )
+        let choices = todayChoices?.choices(on: TodayChoices.dayKey(for: asOf, calendar: calendar))
+        plan = rotation.map { choices?.applied(to: $0) ?? $0 }
         steps = (try? await workoutEngine.cycleSteps(
             user: user,
             recentLogs: recentLogs,
@@ -125,7 +132,13 @@ enum WelcomeCopy {
         case .cycleComplete: return cycleComplete
         case .early: return earlyRest(covering: next)
         case let .workedOutside(groups, today): return workedOutside(groups, today: today)
+        case .chosen: return chosenRest(next: next)
         }
+    }
+
+    /// Resting on a Training Day by choice: "You're resting today. Your Push Day is ready when you are."
+    static func chosenRest(next: TrainingDay) -> String {
+        "You're resting today. Your \(next.displayName) is ready when you are."
     }
 
     static func earlyRest(covering day: TrainingDay) -> String {

@@ -11,6 +11,8 @@ enum SyncRecordType: String, CaseIterable, Sendable {
     case workoutLog
     /// One logged Outside Activity (`CDOutsideActivity`), keyed by `OutsideActivity.id`.
     case outsideActivity
+    /// One accepted Custom Workout (`CDCustomWorkout`, M4), keyed by `CustomWorkout.id`.
+    case customWorkout
 }
 
 /// One record waiting to sync: the durable outbox entry of the local-first sync layer (M3, US-AU03),

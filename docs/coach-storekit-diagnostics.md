@@ -1,5 +1,9 @@
 # Coach QA paywall StoreKit diagnostics
 
+> **Superseded by M4 (ADR-0017, 2026-11-11).**
+> The app no longer calls the Cloudflare Coach route: the Coach runs as Convex actions authenticated by the account, with a server-side Premium entitlement (`artifacts/reports/coach-agent-m4/validation.md`, `convex/README.md`).
+> The QA-only paywall diagnostics (`COACH_IPHONE_QA`) and `tools/test-storekit-paywall-diagnostics.sh` were removed with the QA lane. Kept as a historical record.
+
 In `COACH_IPHONE_QA` builds, the existing Premium paywall displays independent Products and
 Restore results beside its ordinary messages. For shared recovery controls and messages, see
 [Account and Premium access](../README.md#account-and-premium-access). The diagnostic rows live only with
