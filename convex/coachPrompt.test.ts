@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import internalWords from "../proxy/coach-internal-words.json";
-import { catalogMessage, COACH_INSTRUCTIONS, contextMessage } from "./coachPrompt";
+import { catalogMessage, COACH_INSTRUCTIONS, contextMessage, houseStyle } from "./coachPrompt";
 import { SERVED_CATALOG } from "./coachCatalog";
 
 /**
@@ -110,5 +110,16 @@ describe("contextMessage", () => {
     expect(catalog).toContain("- push_incline: Incline Push-Up (push");
     expect(catalog).not.toContain("pull_ytw");
     expect(SERVED_CATALOG.length).toBe(68);
+  });
+});
+
+describe("houseStyle", () => {
+  test("a reply's em dash becomes the app's spaced hyphen; ordinary hyphens are left alone", () => {
+    expect(houseStyle("General guidance is fine\u2014but I can help with training too.")).toBe(
+      "General guidance is fine - but I can help with training too.",
+    );
+    expect(houseStyle("Rest \u2014 then train.")).toBe("Rest - then train.");
+    expect(houseStyle("Push 3 \u2013 4 sets of a 10-minute warm-up.")).toBe("Push 3 - 4 sets of a 10-minute warm-up.");
+    expect(houseStyle("Pages 3\u20134 stay as written.")).toBe("Pages 3\u20134 stay as written.");
   });
 });

@@ -4,7 +4,7 @@ import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { accountError, findAccount, requireOwner, writableAccount } from "./ownership";
 import { premiumState } from "./entitlements";
-import { catalogMessage, COACH_INSTRUCTIONS, contextMessage, type TodaySnapshot } from "./coachPrompt";
+import { catalogMessage, COACH_INSTRUCTIONS, contextMessage, houseStyle, type TodaySnapshot } from "./coachPrompt";
 import { coachModelConfigured, runCoachModel, type ModelInputMessage } from "./coachModel";
 import { parseToolCalls, proposalReply, type CoachProposal, type ProposalStatus } from "./coachTools";
 import { ageGroup, DIET_DECLINE_REPLY, isDietTopic, mayDiscussDiet, replyMentionsDiet } from "./coachSafety";
@@ -153,7 +153,7 @@ export const send = action({
         reply = REFUSAL_REPLY;
       } else {
         proposals = parseToolCalls(outcome.toolCalls, today?.movements ?? [], () => crypto.randomUUID().toLowerCase());
-        reply = outcome.text.length > 0 ? outcome.text : proposals.length > 0 ? proposalReply(proposals) : "";
+        reply = outcome.text.length > 0 ? houseStyle(outcome.text) : proposals.length > 0 ? proposalReply(proposals) : "";
         if (reply.length === 0) {
           throw accountError("coach_unavailable", "The Coach couldn't answer just now.");
         }

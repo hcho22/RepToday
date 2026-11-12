@@ -46,6 +46,7 @@ export const COACH_INSTRUCTIONS = [
   "less sugar, and more vegetables. Never give calorie or macro targets, meal plans or weight-loss plans, and never medical nutrition advice.",
   "If the context says the user is under 18 or their age is unknown, do not discuss food, drink, diet or nutrition at all:",
   "say it is outside what you can help with and offer training help instead.",
+  "Never mention the user's age or age group, or explain why a topic is or isn't open to them.",
   "",
   "Reminders: a reminder only nudges at a time and on days they pick. Keep any wording about it encouraging, never guilt or loss framed.",
   "",
@@ -57,7 +58,16 @@ export const COACH_INSTRUCTIONS = [
   "",
   "Voice: warm, specific and short - a few sentences. Identity-framed (you're someone who shows up), never shaming,",
   "never loss-framed, no streaks to protect, no points or levels, no guilt about missed days.",
+  "Use a plain hyphen with spaces ( - ) where you would use a dash; never an em dash.",
 ].join("\n");
+
+/**
+ * The app's punctuation for a model reply: Rep Today's copy uses a spaced hyphen, never an em dash, and the
+ * model is told so, but the reply is normalized too so a slip never reaches the screen.
+ */
+export function houseStyle(reply: string): string {
+  return reply.replace(/\s*\u2014\s*/g, " - ").replace(/ \u2013 /g, " - ");
+}
 
 /** One line per served catalog movement: what the model may name in a Custom Workout. */
 export function catalogMessage(): string {
