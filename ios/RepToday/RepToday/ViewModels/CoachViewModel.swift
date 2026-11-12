@@ -181,7 +181,9 @@ final class CoachViewModel {
 
     /// `freeNote` is what the preview says when the account turns out free.
     private func load(freeNote: String?) async {
-        restoreNote = nil
+        // Set with the answer, so a re-check keeps the current note on screen until the answer arrives.
+        var note: String?
+        defer { restoreNote = note }
         guard let coach, let entitlements else {
             access = .unavailable
             return
@@ -197,7 +199,7 @@ final class CoachViewModel {
                     // Nothing signed to send, so a link can never succeed and offering Restore again
                     // would only lead back here. Say plainly that nothing was found.
                     access = .free
-                    restoreNote = CoachCopy.noSubscriptionFound
+                    note = CoachCopy.noSubscriptionFound
                     return
                 }
                 do {
@@ -216,7 +218,7 @@ final class CoachViewModel {
             }
             guard status.premium else {
                 access = .free
-                restoreNote = freeNote
+                note = freeNote
                 return
             }
             access = .premium
