@@ -346,6 +346,28 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(outcomes.map(\.status), [.applied, .undone, .declined])
     }
 
+    /// An outcome the server refuses for good (another device answered the card first) is dropped: the
+    /// server's status stands and the refused outcome is never resent.
+    func testAnOutcomeTheServerRefusesIsDroppedAndTheServersStatusStands() async throws {
+        let (fixture, message, proposal) = try await proposing(.outsideActivity(type: .run, minutes: 30, distanceMeters: nil, day: .today))
+        await fixture.coach.setOutcomeFailure(.offline)
+        await fixture.viewModel.decline(proposal, in: message)
+        await fixture.viewModel.load()
+        XCTAssertEqual(status(fixture, proposal), .declined)
+
+        await fixture.coach.setOutcomeFailure(nil)
+        try await fixture.coach.recordOutcome(messageId: message.id, proposalId: proposal.id, status: .applied)
+        await fixture.coach.setOutcomeFailure(.outcomeRefused)
+        await fixture.viewModel.load()
+        XCTAssertEqual(status(fixture, proposal), .applied, "the server's answer from the other device stands")
+
+        await fixture.coach.setOutcomeFailure(nil)
+        await fixture.viewModel.load()
+        let outcomes = await fixture.coach.outcomes
+        XCTAssertEqual(outcomes.map(\.status), [.applied], "the refused decline is never sent again")
+        XCTAssertEqual(status(fixture, proposal), .applied)
+    }
+
     /// The closed action set: a de-load, a Return, the cold start, the pace, the phase and the injury
     /// flags have no case, so no proposal can express one (ADR-0005). The switch is exhaustive, so adding
     /// an action fails this test to compile until it is reviewed here.

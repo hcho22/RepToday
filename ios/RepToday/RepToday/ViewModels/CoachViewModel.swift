@@ -237,6 +237,7 @@ final class CoachViewModel {
         if let user = try? await userService.currentUser() {
             trainer = Trainer.effective(for: user.profile)
         }
+        await sendUnrecordedOutcomes()
         if let history = try? await coach.history() {
             messages = history
             for outcome in unrecordedOutcomes {
@@ -249,7 +250,6 @@ final class CoachViewModel {
                 uniquingKeysWith: { first, _ in first }
             )
         }
-        await sendUnrecordedOutcomes()
     }
 
     // MARK: - Sending
@@ -318,7 +318,7 @@ final class CoachViewModel {
             if trimmedDraft.isEmpty { draft = text }
             errorMessage = CoachCopy.signedOut
             pendingRetry = nil
-        case .offline, .unavailable:
+        case .offline, .unavailable, .outcomeRefused:
             errorMessage = CoachCopy.couldNotAnswer
             pendingRetry = (id, text)
         }
@@ -432,7 +432,8 @@ final class CoachViewModel {
         await sendUnrecordedOutcomes()
     }
 
-    /// Sends every owed outcome in order; a proposal whose outcome fails keeps its later ones for next time.
+    /// Sends every owed outcome in order. A proposal whose outcome fails for now keeps its later ones for
+    /// next time; one the server refuses for good is dropped, so the server's status stands.
     private func sendUnrecordedOutcomes() async {
         guard let coach else { return }
         var failed: Set<String> = []
@@ -440,6 +441,9 @@ final class CoachViewModel {
             do {
                 try await coach.recordOutcome(messageId: outcome.messageId, proposalId: outcome.proposalId, status: outcome.status)
                 unrecordedOutcomes.removeAll { $0.id == outcome.id }
+            } catch CoachServiceError.outcomeRefused {
+                failed.insert(outcome.proposalId)
+                unrecordedOutcomes.removeAll { $0.proposalId == outcome.proposalId }
             } catch {
                 failed.insert(outcome.proposalId)
             }

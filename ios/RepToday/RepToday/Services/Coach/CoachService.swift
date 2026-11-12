@@ -37,6 +37,8 @@ enum CoachServiceError: Error, Equatable {
     case invalidMessage
     /// The account is being deleted.
     case accountDeleting
+    /// The server refused a proposal outcome for good: no such proposal, or a change its status forbids.
+    case outcomeRefused
 
     /// Maps the sync layer's error onto the Coach's terms.
     init(_ error: SyncRemoteError) {
@@ -52,6 +54,7 @@ enum CoachServiceError: Error, Equatable {
             case "not_premium": self = .notPremium
             case "limit_reached": self = .limitReached
             case "invalid_message": self = .invalidMessage
+            case "invalid_change": self = .outcomeRefused
             default: self = .unavailable
             }
         case .invalidResponse:

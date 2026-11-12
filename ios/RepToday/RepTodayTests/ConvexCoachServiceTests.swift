@@ -87,6 +87,23 @@ final class ConvexCoachServiceTests: XCTestCase {
         XCTAssertEqual(json["args"] as? [String: String], ["messageId": "m1", "proposalId": "p1", "status": "undone"])
     }
 
+    func testAnOutcomeTheServerRefusesForGoodReadsAsRefusedNotUnavailable() async throws {
+        StubConvexProtocol.respond(json: #"{"status":"error","errorMessage":"x","errorData":{"code":"invalid_change","message":"A applied proposal cannot become declined."}}"#)
+        do {
+            try await ConvexCoachService(client: client()).recordOutcome(messageId: "m1", proposalId: "p1", status: .declined)
+            XCTFail("invalid_change should throw")
+        } catch {
+            XCTAssertEqual(error as? CoachServiceError, .outcomeRefused)
+        }
+        StubConvexProtocol.fail(with: URLError(.timedOut))
+        do {
+            try await ConvexCoachService(client: client()).recordOutcome(messageId: "m1", proposalId: "p1", status: .declined)
+            XCTFail("a timeout should throw")
+        } catch {
+            XCTAssertEqual(error as? CoachServiceError, .offline)
+        }
+    }
+
     // MARK: - The entitlement (US-CA02)
 
     func testTheAppAccountTokenAndStatusAreRead() async throws {
