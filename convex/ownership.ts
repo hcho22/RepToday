@@ -33,7 +33,21 @@ export type AccountErrorCode =
   /** A change was malformed or over a size limit. */
   | "invalid_change"
   /** The deployment has no Clerk secret key, so the Clerk user cannot be deleted. */
-  | "deletion_unavailable";
+  | "deletion_unavailable"
+  /** The caller has no active Premium entitlement on the server (M4, US-CA02). */
+  | "not_premium"
+  /** The deployment is not configured to accept App Store data (M4, US-CA02). */
+  | "entitlement_unavailable"
+  /** The App Store transaction did not verify, or is not a Premium subscription of this app. */
+  | "invalid_transaction"
+  /** The subscription is already linked to another live account. */
+  | "linked_to_other_account"
+  /** A Coach message was empty, too long, or malformed (M4, US-CA01). */
+  | "invalid_message"
+  /** The caller, or the deployment, reached the Coach's daily turn limit. */
+  | "limit_reached"
+  /** The Coach model is not configured or did not answer. */
+  | "coach_unavailable";
 
 export function accountError(code: AccountErrorCode, message: string): ConvexError<{ code: AccountErrorCode; message: string }> {
   return new ConvexError({ code, message });

@@ -41,8 +41,8 @@ const recordFields = {
 
 /**
  * One changed record, as a device uploads it. The profile and the session policy are one per
- * owner and are never deleted by sync (account deletion removes them); logs and Outside Activities
- * can be deleted, so they carry `deleted` and omit their payload when they do.
+ * owner and are never deleted by sync (account deletion removes them); logs, Outside Activities and
+ * Custom Workouts can be deleted, so they carry `deleted` and omit their payload when they do.
  */
 export const syncChange = v.union(
   v.object({
@@ -69,6 +69,13 @@ export const syncChange = v.union(
     deleted: v.boolean(),
     payload: v.optional(v.string()),
     date: v.optional(v.number()),
+  }),
+  /** A Custom Workout the user accepted from the Coach (M4, US-CA05). */
+  v.object({
+    table: v.literal("customWorkout"),
+    ...recordFields,
+    deleted: v.boolean(),
+    payload: v.optional(v.string()),
   }),
 );
 export type SyncChange = Infer<typeof syncChange>;
@@ -122,6 +129,14 @@ export type PulledChange =
       deleted: boolean;
       payload?: string;
       date: number;
+    }
+  | {
+      table: "customWorkout";
+      recordId: string;
+      serverSeq: number;
+      clientUpdatedAt: number;
+      deleted: boolean;
+      payload?: string;
     };
 
 /**
@@ -181,6 +196,16 @@ export const pull = query({
           date: row.date,
         }),
       ),
+      ...(await rowsAfter(ctx, "customWorkouts", owner.ownerId, since, fetchCount)).map(
+        (row): PulledChange => ({
+          table: "customWorkout",
+          recordId: row.recordId,
+          serverSeq: row.serverSeq,
+          clientUpdatedAt: row.clientUpdatedAt,
+          deleted: row.deleted,
+          ...(row.payload === undefined ? {} : { payload: row.payload }),
+        }),
+      ),
     ];
     candidates.sort((a, b) => a.serverSeq - b.serverSeq);
     const changes = candidates.slice(0, pageSize);
@@ -218,6 +243,9 @@ function validateChanges(changes: SyncChange[]): void {
         break;
       case "outsideActivity":
         requireDeletableShape(change.deleted, change.payload, change.date, "date");
+        break;
+      case "customWorkout":
+        requireDeletableShape(change.deleted, change.payload, change.clientUpdatedAt, "clientUpdatedAt");
         break;
     }
   }
@@ -300,6 +328,19 @@ async function applyChange(
         const date = change.date ?? existing?.date ?? change.clientUpdatedAt;
         const row = { ownerId, ...recordRow(change, content), date, serverSeq: nextSeq() };
         await (existing === null ? ctx.db.insert("outsideActivities", row) : ctx.db.replace(existing._id, row));
+      }
+      return outcome;
+    }
+    case "customWorkout": {
+      const existing = await ctx.db
+        .query("customWorkouts")
+        .withIndex("by_ownerId_recordId", (q) => q.eq("ownerId", ownerId).eq("recordId", change.recordId))
+        .unique();
+      const content = { payload: change.payload, deleted: change.deleted };
+      const outcome = decide(existing, change, content);
+      if (outcome === "applied") {
+        const row = { ownerId, ...recordRow(change, content), serverSeq: nextSeq() };
+        await (existing === null ? ctx.db.insert("customWorkouts", row) : ctx.db.replace(existing._id, row));
       }
       return outcome;
     }
@@ -407,10 +448,17 @@ async function rowsAfter(
   since: number,
   count: number,
 ): Promise<Doc<"outsideActivities">[]>;
+async function rowsAfter(
+  ctx: QueryCtx,
+  table: "customWorkouts",
+  ownerId: string,
+  since: number,
+  count: number,
+): Promise<Doc<"customWorkouts">[]>;
 /** The owner's rows in `table` written after `since`, oldest first, at most `count`. */
 async function rowsAfter(
   ctx: QueryCtx,
-  table: "sessionPolicies" | "workoutLogs" | "outsideActivities",
+  table: "sessionPolicies" | "workoutLogs" | "outsideActivities" | "customWorkouts",
   ownerId: string,
   since: number,
   count: number,
@@ -431,6 +479,12 @@ async function rowsAfter(
     case "outsideActivities":
       return await ctx.db
         .query("outsideActivities")
+        .withIndex("by_ownerId_serverSeq", (q) => q.eq("ownerId", ownerId).gt("serverSeq", since))
+        .order("asc")
+        .take(count);
+    case "customWorkouts":
+      return await ctx.db
+        .query("customWorkouts")
         .withIndex("by_ownerId_serverSeq", (q) => q.eq("ownerId", ownerId).gt("serverSeq", since))
         .order("asc")
         .take(count);

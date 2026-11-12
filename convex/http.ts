@@ -4,6 +4,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { EVENT_NAMES, type AnalyticsEventName } from "./events";
 import { WEB_EVENT_NAMES, WEB_REFERRER_SOURCES } from "./webEvents";
+import { appStoreNotificationHandler } from "./appStoreNotifications";
 
 /**
  * The client's only entry point.
@@ -411,6 +412,17 @@ http.route({
     }
     return new Response(null, { status: 204 });
   }),
+});
+
+/**
+ * App Store Server Notifications V2 (M4, US-CA02): the account backend's one HTTP route, kept apart
+ * from the anonymous telemetry routes above and sharing none of their checks or tables
+ * (`convex/appStoreNotifications.ts`).
+ */
+http.route({
+  path: "/appStore/notifications",
+  method: "POST",
+  handler: appStoreNotificationHandler,
 });
 
 export default http;

@@ -11,7 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "convex": "^1.16.0"
+    "asn1js": "^3.0.7",
+    "convex": "^1.16.0",
+    "pkijs": "^3.4.0"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

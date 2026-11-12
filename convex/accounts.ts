@@ -51,7 +51,11 @@ const CLERK_API_ORIGIN = "https://api.clerk.com";
  */
 declare const process: { readonly env: Readonly<Record<string, string | undefined>> };
 
-/** Every table that holds rows owned by an account, other than `users` itself. */
+/**
+ * Every table that holds rows owned by an account, other than `users` itself. Since M4 that includes
+ * the Coach's turn counters, the account's App Store token and its linked Premium subscriptions, so a
+ * deleted account's subscription is free to be linked by a new one (`convex/entitlements.ts`).
+ */
 const OWNED_TABLES = [
   "profiles",
   "focusAreas",
@@ -60,6 +64,9 @@ const OWNED_TABLES = [
   "sessionPolicies",
   "customWorkouts",
   "coachMemory",
+  "coachUsage",
+  "entitlements",
+  "appAccountTokens",
 ] as const;
 
 /** Whether the Clerk user is gone, still exists, or could not be found out. */
@@ -277,20 +284,39 @@ export const finishDeletion = internalMutation({
 async function purgeBatch(ctx: MutationCtx, ownerId: string): Promise<boolean> {
   let remaining = false;
   for (const table of OWNED_TABLES) {
-    const rows =
-      table === "profiles" || table === "focusAreas" || table === "sessionPolicies"
-        ? await ctx.db
-            .query(table)
-            .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
-            .take(PURGE_BATCH + 1)
-        : await ctx.db
-            .query(table)
-            .withIndex("by_ownerId_recordId", (q) => q.eq("ownerId", ownerId))
-            .take(PURGE_BATCH + 1);
+    const rows = await ownedRows(ctx, table, ownerId);
     for (const row of rows.slice(0, PURGE_BATCH)) {
       await ctx.db.delete(row._id);
     }
     remaining ||= rows.length > PURGE_BATCH;
   }
   return remaining;
+}
+
+/** Up to `PURGE_BATCH + 1` of the owner's rows in `table`, through the table's owner index. */
+async function ownedRows(ctx: MutationCtx, table: (typeof OWNED_TABLES)[number], ownerId: string) {
+  switch (table) {
+    case "profiles":
+    case "focusAreas":
+    case "sessionPolicies":
+    case "entitlements":
+    case "appAccountTokens":
+      return await ctx.db
+        .query(table)
+        .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+        .take(PURGE_BATCH + 1);
+    case "coachUsage":
+      return await ctx.db
+        .query(table)
+        .withIndex("by_ownerId_day", (q) => q.eq("ownerId", ownerId))
+        .take(PURGE_BATCH + 1);
+    case "workoutLogs":
+    case "outsideActivities":
+    case "customWorkouts":
+    case "coachMemory":
+      return await ctx.db
+        .query(table)
+        .withIndex("by_ownerId_recordId", (q) => q.eq("ownerId", ownerId))
+        .take(PURGE_BATCH + 1);
+  }
 }

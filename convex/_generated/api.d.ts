@@ -9,7 +9,18 @@
  */
 
 import type * as accounts from "../accounts.js";
+import type * as appStore from "../appStore.js";
+import type * as appStoreJws from "../appStoreJws.js";
+import type * as appStoreNotifications from "../appStoreNotifications.js";
+import type * as appleRoots from "../appleRoots.js";
+import type * as coach from "../coach.js";
+import type * as coachCatalog from "../coachCatalog.js";
+import type * as coachModel from "../coachModel.js";
+import type * as coachPrompt from "../coachPrompt.js";
+import type * as coachSafety from "../coachSafety.js";
+import type * as coachTools from "../coachTools.js";
 import type * as crons from "../crons.js";
+import type * as entitlements from "../entitlements.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as ownership from "../ownership.js";
@@ -26,7 +37,18 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
+  appStore: typeof appStore;
+  appStoreJws: typeof appStoreJws;
+  appStoreNotifications: typeof appStoreNotifications;
+  appleRoots: typeof appleRoots;
+  coach: typeof coach;
+  coachCatalog: typeof coachCatalog;
+  coachModel: typeof coachModel;
+  coachPrompt: typeof coachPrompt;
+  coachSafety: typeof coachSafety;
+  coachTools: typeof coachTools;
   crons: typeof crons;
+  entitlements: typeof entitlements;
   events: typeof events;
   http: typeof http;
   ownership: typeof ownership;
