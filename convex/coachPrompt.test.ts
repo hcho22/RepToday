@@ -83,6 +83,38 @@ describe("the Coach instructions and summary use the app's own words", () => {
   });
 });
 
+describe("the Coach's scope (ADR-0019)", () => {
+  test("names the general health and fitness topics of decision 9", () => {
+    for (const topic of ["sleep", "stress and recovery", "hydration", "nutrition", "cardio", "walking and daily activity", "gym lifting", "running", "sports", "energy"]) {
+      expect(COACH_INSTRUCTIONS, topic).toContain(topic);
+    }
+  });
+
+  test("carries the redirects of decision 11 at every age", () => {
+    expect(COACH_INSTRUCTIONS).toContain("Out of scope, at every age:");
+    expect(COACH_INSTRUCTIONS).toMatch(/Never diagnose/);
+    expect(COACH_INSTRUCTIONS).toMatch(/rehab plan/);
+    expect(COACH_INSTRUCTIONS).toMatch(/suicide or self-harm/);
+    expect(COACH_INSTRUCTIONS).toMatch(/disordered eating/);
+    expect(COACH_INSTRUCTIONS).toMatch(/Topics unrelated to health and fitness/);
+  });
+
+  test("gives adults decision 10's diet depth and none of its exclusions", () => {
+    expect(COACH_INSTRUCTIONS).toMatch(/sample meals/);
+    expect(COACH_INSTRUCTIONS).toMatch(/weight-management principles/);
+    expect(COACH_INSTRUCTIONS).toMatch(/protein powder, creatine and caffeine/);
+    expect(COACH_INSTRUCTIONS).toMatch(/Never calculate or state a personal calorie, macro or protein number/);
+    expect(COACH_INSTRUCTIONS).toMatch(/never ask for their height, weight/);
+    expect(COACH_INSTRUCTIONS).toMatch(/pregnancy/);
+    expect(COACH_INSTRUCTIONS).not.toMatch(/meal plans or weight-loss plans/);
+  });
+
+  test("keeps Custom Workouts bodyweight only and opens plain water to every age", () => {
+    expect(COACH_INSTRUCTIONS).toMatch(/a Custom Workout is always bodyweight only, even when they ask about the gym/);
+    expect(COACH_INSTRUCTIONS).toMatch(/Plain water is the exception/);
+  });
+});
+
 describe("contextMessage", () => {
   test("writes the user's records out in plain words, in the user's own time zone", () => {
     expect(SAMPLE_CONTEXT).toContain("- Age group: adult (18 or over).");
@@ -101,7 +133,7 @@ describe("contextMessage", () => {
 
   test("an unknown age is treated as under 18", () => {
     const text = contextMessage({ ageGroup: "unknown", profile: null, focusAreas: [], logs: [], activities: [], customWorkouts: [], today: null });
-    expect(text).toContain("Age group: unknown. Treat as under 18: no diet topics.");
+    expect(text).toContain("Age group: unknown. Treat as under 18: no food, diet, supplement or weight topics; plain water is fine.");
     expect(text).toContain("- None yet.");
   });
 
@@ -121,5 +153,15 @@ describe("houseStyle", () => {
     expect(houseStyle("Rest \u2014 then train.")).toBe("Rest - then train.");
     expect(houseStyle("Push 3 \u2013 4 sets of a 10-minute warm-up.")).toBe("Push 3 - 4 sets of a 10-minute warm-up.");
     expect(houseStyle("Pages 3\u20134 stay as written.")).toBe("Pages 3\u20134 stay as written.");
+  });
+
+  test("markdown emphasis and headings become plain text; lists, multiplication and lone asterisks stay", () => {
+    expect(houseStyle("Aim for **7-9 hours of sleep** a night.")).toBe("Aim for 7-9 hours of sleep a night.");
+    expect(houseStyle("- **Breakfast:** Oats\n- **Lunch:** Rice")).toBe("- Breakfast: Oats\n- Lunch: Rice");
+    expect(houseStyle("Keep it *easy* today.")).toBe("Keep it easy today.");
+    expect(houseStyle("### Warm-up\nWalk for 5 minutes.")).toBe("Warm-up\nWalk for 5 minutes.");
+    expect(houseStyle("A __steady__ pace.")).toBe("A steady pace.");
+    expect(houseStyle("Do 3 * 10 reps, then 2 x 30s.")).toBe("Do 3 * 10 reps, then 2 x 30s.");
+    expect(houseStyle("Push-ups* are fine.")).toBe("Push-ups* are fine.");
   });
 });

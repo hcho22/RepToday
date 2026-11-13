@@ -1,18 +1,30 @@
 /**
- * The Coach's server-side diet rail (M4, US-CA07, decision 29, FR-12).
+ * The Coach's server-side rails (M4, US-CA07, ADR-0017; widened by ADR-0019, US-HC01/US-HC03).
  *
- * Diet guidance is general (protein, hydration, low carb, low sugar, vegetables), for adults only,
- * and never medical. The prompt says so, but the rail does not rest on the model obeying it:
+ * Two deterministic rails run on the server around the one model call; neither rests on the model
+ * obeying its instructions.
+ *
+ * The crisis rail, at every age (`supportTopic`): a message that plainly speaks of suicide, self-harm
+ * or disordered eating gets a short, caring redirect to professional help and never reaches the model.
+ * It runs before the diet rail, so a young user's message about starving themselves gets the redirect
+ * rather than the diet decline. It matches only unambiguous phrases ("this workout is killing me" is
+ * not one); everything subtler is left to the instructions, which carry the same redirect.
+ *
+ * The diet rail, for anyone not known to be 18 or over:
  *
  * - The user's age is read from their own synced profile on the server (`ageGroup`), never from
  *   anything the app sends with the message. A profile with no readable age counts as under 18.
- * - For anyone not known to be 18 or over, a message about diet (`isDietTopic`) is answered with a
- *   fixed decline and never reaches the model.
- * - For the same users, a model reply that still talks about diet (`replyMentionsDiet`) is replaced
- *   by the same decline before it is stored or shown.
+ * - A message about food, diet, supplements or weight (`isDietTopic`) is answered with a fixed decline
+ *   and never reaches the model.
+ * - A model reply that still talks about them (`replyMentionsDiet`) is replaced by the same decline
+ *   before it is stored or shown.
  *
- * The word lists are deliberately broad: a false positive only means a young user gets the decline
- * and a pointer back to training, which is the safe direction.
+ * Plain hydration - how much water to drink around training - is open to every age (decision 12), so
+ * water, drinking and hydration are on neither word list; protein shakes, supplements, caffeine,
+ * weight loss and weight management stay on both. Sleep, stress, recovery, cardio and other training
+ * are open to every age and must never trip the rail. Otherwise the lists are deliberately broad: a
+ * false positive only means a young user gets the decline and a pointer back to training, sleep and
+ * recovery, which is the safe direction.
  */
 
 export type AgeGroup = "adult" | "minor" | "unknown";
@@ -30,112 +42,218 @@ export function mayDiscussDiet(group: AgeGroup): boolean {
   return group === "adult";
 }
 
-const DIET_TOPIC = new RegExp(
-  "\\b(" +
-    [
-      "diet",
-      "diets",
-      "dieting",
-      "nutrition",
-      "nutritional",
-      "nutrient",
-      "nutrients",
-      "protein",
-      "proteins",
-      "carb",
-      "carbs",
-      "carbohydrate",
-      "carbohydrates",
-      "sugar",
-      "sugars",
-      "sugary",
-      "calorie",
-      "calories",
-      "macro",
-      "macros",
-      "meal",
-      "meals",
-      "eat",
-      "eats",
-      "eating",
-      "ate",
-      "food",
-      "foods",
-      "snack",
-      "snacks",
-      "breakfast",
-      "lunch",
-      "dinner",
-      "hydration",
-      "hydrate",
-      "hydrated",
-      "vegetable",
-      "vegetables",
-      "veggies",
-      "fruit",
-      "fruits",
-      "fasting",
-      "keto",
-      "supplement",
-      "supplements",
-      "creatine",
-      "whey",
-      "vitamin",
-      "vitamins",
-      "lose weight",
-      "losing weight",
-      "weight loss",
-      "fat loss",
-      "bulk",
-      "bulking",
-      "drink",
-      "drinking",
-      "water intake",
-    ].join("|") +
-    ")\\b",
-  "i",
-);
+/** Regex alternatives matched as whole words, case-insensitively. */
+function wholeWords(alternatives: string[]): RegExp {
+  return new RegExp(`\\b(${alternatives.join("|")})\\b`, "i");
+}
 
-/** Whether a user's message is about diet, eating, drinking or nutrition. */
+// MARK: - The crisis rail (every age)
+
+const CRISIS_TOPIC = wholeWords([
+  "suicide",
+  "suicidal",
+  "kill myself",
+  "killing myself",
+  "end my life",
+  "ending my life",
+  "take my (own )?life",
+  "i (just |really |honestly |kind of |sometimes )?(want|wanna) to die",
+  "i (just |really |honestly |kind of |sometimes )?wanna die",
+  "wish i (was|were) dead",
+  "better off dead",
+  "don'?t want to (live|be alive|be here anymore)",
+  "no reason to live",
+  "self[- ]?harm(ing)?",
+  "cutting myself",
+  "overdose",
+]);
+
+const DISORDERED_EATING_TOPIC = wholeWords([
+  "eating disorders?",
+  "anorexi[ac]",
+  "bulimi[ac]",
+  "binge[- ]?(eat|eating|ate|and purge)",
+  "binging and purging",
+  "purging",
+  "purg(e|ed) after (i eat|eating|meals?)",
+  "make myself (throw up|sick|vomit)",
+  "made myself (throw up|sick|vomit)",
+  "making myself (throw up|sick|vomit)",
+  "throw(ing)? up after (i eat|eating|meals?)",
+  "starv(e|ed|ing) myself",
+  "stop(ped)? eating (completely|entirely|altogether)",
+  "(haven'?t|have not|hardly|barely) eaten in (days|a week|\\w+ days)",
+  "scared to eat",
+  "afraid to eat",
+  "hate myself (after|for) eating",
+]);
+
+/** Which professional-help redirect a message calls for, if any. */
+export type SupportTopic = "crisis" | "disorderedEating";
+
+/** Whether a user's message plainly speaks of a crisis or disordered eating. */
+export function supportTopic(message: string): SupportTopic | null {
+  if (CRISIS_TOPIC.test(message)) return "crisis";
+  if (DISORDERED_EATING_TOPIC.test(message)) return "disorderedEating";
+  return null;
+}
+
+/** The fixed, caring redirect for a message about suicide or self-harm, at every age. */
+export const CRISIS_SUPPORT_REPLY =
+  "I'm really glad you told me, and I'm sorry you're carrying this. It's bigger than what I can help with here, " +
+  "and you deserve real support. Please reach out to a doctor, a mental health professional, or someone you trust today. " +
+  "If you might act on these thoughts or you're in danger, contact your local emergency services now.";
+
+/** The fixed, caring redirect for a message about disordered eating, at every age. */
+export const EATING_SUPPORT_REPLY =
+  "Thank you for telling me. What you're going through with food deserves care from someone who can really help, " +
+  "and that's not something I can do here. Please reach out to a doctor or a mental health professional, or talk to someone you trust. " +
+  "If you ever feel unsafe, contact your local emergency services.";
+
+/** The fixed reply for a support topic. */
+export function supportReply(topic: SupportTopic): string {
+  return topic === "crisis" ? CRISIS_SUPPORT_REPLY : EATING_SUPPORT_REPLY;
+}
+
+// MARK: - The diet rail (under 18 or unknown age)
+
+const DIET_TOPIC = wholeWords([
+  "diet",
+  "diets",
+  "dieting",
+  "nutrition",
+  "nutritional",
+  "nutrient",
+  "nutrients",
+  "protein",
+  "proteins",
+  "carb",
+  "carbs",
+  "carbohydrate",
+  "carbohydrates",
+  "sugar",
+  "sugars",
+  "sugary",
+  "calorie",
+  "calories",
+  "macro",
+  "macros",
+  "meal",
+  "meals",
+  "eat",
+  "eats",
+  "eating",
+  "ate",
+  "food",
+  "foods",
+  "snack",
+  "snacks",
+  "breakfast",
+  "lunch",
+  "dinner",
+  "vegetable",
+  "vegetables",
+  "veggies",
+  "fruit",
+  "fruits",
+  "fasting",
+  "keto",
+  "supplement",
+  "supplements",
+  "creatine",
+  "whey",
+  "vitamin",
+  "vitamins",
+  "caffeine",
+  "coffee",
+  "energy drinks?",
+  "protein shakes?",
+  "milkshakes?",
+  "smoothies?",
+  "soda",
+  "alcohol",
+  "lose weight",
+  "losing weight",
+  "weight loss",
+  "gain weight",
+  "gaining weight",
+  "weight gain",
+  "put on weight",
+  "weight management",
+  "manag(e|ing) my weight",
+  "fat loss",
+  "lose fat",
+  "losing fat",
+  "burn fat",
+  "burning fat",
+  "body fat",
+  "bmi",
+  "(lose|drop|shed) \\d+ ?(pounds|lbs?|kg|kilos?)",
+  "bulk",
+  "bulking",
+]);
+
+/** Whether a user's message is about food, diet, supplements or weight. Plain water and hydration are not. */
 export function isDietTopic(message: string): boolean {
   return DIET_TOPIC.test(message);
 }
 
-const DIET_REPLY = new RegExp(
-  "\\b(" +
-    [
-      "diet",
-      "dieting",
-      "nutrition",
-      "protein",
-      "carb",
-      "carbs",
-      "carbohydrates?",
-      "calories?",
-      "macros?",
-      "meal plan",
-      "sugar",
-      "vegetables",
-      "veggies",
-      "fasting",
-      "keto",
-      "supplements?",
-      "creatine",
-      "weight loss",
-      "lose weight",
-      "hydrat\\w*",
-      "water intake",
-    ].join("|") +
-    ")\\b",
-  "i",
-);
+const DIET_REPLY = wholeWords([
+  "diet",
+  "dieting",
+  "nutrition",
+  "protein",
+  "carb",
+  "carbs",
+  "carbohydrates?",
+  "calories?",
+  "macros?",
+  "meal plan",
+  "sugar",
+  "vegetables",
+  "veggies",
+  "fasting",
+  "keto",
+  "supplements?",
+  "creatine",
+  "whey",
+  "caffeine",
+  "coffee",
+  "energy drinks?",
+  "weight loss",
+  "lose weight",
+  "losing weight",
+  "weight management",
+  "fat loss",
+]);
 
-/** Whether a model reply discusses diet. */
+/** Whether a model reply discusses diet, supplements or weight. Plain water and hydration do not count. */
 export function replyMentionsDiet(reply: string): boolean {
   return DIET_REPLY.test(reply);
 }
 
-/** The fixed reply a user under 18 (or of unknown age) gets for a diet question. */
+/**
+ * The fixed reply a user under 18 (or of unknown age) gets for a diet question. Its first sentence is
+ * what `CoachEndToEndUITests` recognises it by.
+ */
 export const DIET_DECLINE_REPLY =
-  "Food and diet questions are outside what I can help with here. I can help with your training, though - " +
+  "Food and diet questions are outside what I can help with here. I can help with your training, sleep and recovery, though - " +
   "how to do a movement, what today's session is for, or a workout that fits the time you have.";
+
+// MARK: - The rails around one turn
+
+/**
+ * The fixed reply the server gives a message before any model call, or null when the message may reach
+ * the model: the crisis rail first, at every age, then the diet rail for anyone not known to be an adult.
+ */
+export function replyBeforeModel(message: string, group: AgeGroup): string | null {
+  const support = supportTopic(message);
+  if (support !== null) return supportReply(support);
+  if (!mayDiscussDiet(group) && isDietTopic(message)) return DIET_DECLINE_REPLY;
+  return null;
+}
+
+/** A model reply as the diet rail lets it through: replaced by the decline if it drifted into diet for a user not known to be an adult. */
+export function replyAfterModel(reply: string, group: AgeGroup): string {
+  return !mayDiscussDiet(group) && replyMentionsDiet(reply) ? DIET_DECLINE_REPLY : reply;
+}

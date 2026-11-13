@@ -1,0 +1,170 @@
+import { describe, expect, test } from "vitest";
+import {
+  ageGroup,
+  CRISIS_SUPPORT_REPLY,
+  DIET_DECLINE_REPLY,
+  EATING_SUPPORT_REPLY,
+  replyAfterModel,
+  replyBeforeModel,
+  supportTopic,
+  type AgeGroup,
+} from "./coachSafety";
+
+/**
+ * The Coach's server rails under the wider scope (ADR-0019, US-HC01/US-HC03): plain hydration opens to
+ * every age while protein shakes, supplements and weight stay behind the diet rail for anyone not known
+ * to be an adult, the general health topics never trip it, and a crisis or disordered-eating message
+ * gets a caring redirect at every age, ahead of the diet rail.
+ */
+
+const YOUNG: AgeGroup[] = ["minor", "unknown"];
+const EVERY_AGE: AgeGroup[] = ["adult", ...YOUNG];
+
+describe("ageGroup", () => {
+  test("only a readable age of 18 or over is an adult", () => {
+    expect(ageGroup(18)).toBe("adult");
+    expect(ageGroup(16)).toBe("minor");
+    expect(ageGroup(null)).toBe("unknown");
+    expect(ageGroup("30")).toBe("unknown");
+    expect(ageGroup(0)).toBe("unknown");
+    expect(ageGroup(130)).toBe("unknown");
+  });
+});
+
+describe("plain hydration is open to every age", () => {
+  const water = [
+    "How much water should I drink after a workout?",
+    "How much water during a run?",
+    "Should I drink water while I train?",
+    "How do I stay hydrated on a hot day?",
+    "Is drinking a lot of water before bed bad for sleep?",
+  ];
+  for (const group of EVERY_AGE) {
+    test(`a water question reaches the model (${group})`, () => {
+      for (const message of water) expect(replyBeforeModel(message, group), message).toBeNull();
+    });
+  }
+
+  test("a reply about water and hydration passes the reply check for a young user", () => {
+    const reply = "Sip water through the session and drink a glass or two after it. If you sweat a lot, drink a bit more and stay hydrated through the day.";
+    for (const group of YOUNG) expect(replyAfterModel(reply, group)).toBe(reply);
+  });
+});
+
+describe("food, supplements and weight stay behind the diet rail for anyone not known to be an adult", () => {
+  const diet = [
+    "Should I drink protein shakes?",
+    "Is creatine safe for teens?",
+    "How do I lose weight?",
+    "What should I eat to build muscle?",
+    "Can I have coffee before training?",
+    "Are energy drinks okay before a game?",
+    "How can I burn fat on my belly?",
+    "I want to lose 10 pounds by summer",
+    "How do I manage my weight?",
+    "Should I take vitamins?",
+  ];
+  for (const group of YOUNG) {
+    test(`each is declined before the model (${group})`, () => {
+      for (const message of diet) expect(replyBeforeModel(message, group), message).toBe(DIET_DECLINE_REPLY);
+    });
+  }
+  test("an adult's reach the model", () => {
+    for (const message of diet) expect(replyBeforeModel(message, "adult"), message).toBeNull();
+  });
+
+  test("a reply that drifts into supplements or weight is replaced for a young user, and kept for an adult", () => {
+    for (const reply of [
+      "A protein shake after training can help.",
+      "Creatine is one of the most studied supplements.",
+      "Skip caffeine after lunch so you sleep better.",
+      "Weight loss comes from a moderate calorie deficit.",
+    ]) {
+      for (const group of YOUNG) expect(replyAfterModel(reply, group), reply).toBe(DIET_DECLINE_REPLY);
+      expect(replyAfterModel(reply, "adult"), reply).toBe(reply);
+    }
+  });
+});
+
+describe("the general health topics never trip the rail", () => {
+  const general = [
+    "How much sleep do I need?",
+    "I can't sleep the night before a big game.",
+    "I'm really stressed about exams. Any tips?",
+    "How do I start running?",
+    "How do I get faster at running for soccer?",
+    "What cardio should I do on rest days?",
+    "How should I recover after a long run?",
+    "How do I warm up before lifting at the gym?",
+    "I walk 8,000 steps a day. Is that enough?",
+    "Why do I feel so low on energy in the afternoon?",
+    "My legs shake during a plank, is that normal?",
+    "How do I avoid harming myself when I lift heavy?",
+    "This workout is killing me!",
+    "I'm dying after that last set.",
+  ];
+  for (const group of EVERY_AGE) {
+    test(`each reaches the model (${group})`, () => {
+      for (const message of general) expect(replyBeforeModel(message, group), message).toBeNull();
+    });
+  }
+
+  test("a sleep, stress, running or recovery reply passes the reply check for a young user", () => {
+    for (const reply of [
+      "Most teens need 8 to 10 hours of sleep. Keep a steady bedtime and put screens away an hour before bed.",
+      "When stress builds, try slow breathing: in for four, out for six, for a few minutes.",
+      "Build up with easy runs and add short strides twice a week; rest days are when you get faster.",
+      "After a long run, walk for a few minutes, stretch gently and get a good night's sleep.",
+    ]) {
+      for (const group of YOUNG) expect(replyAfterModel(reply, group), reply).toBe(reply);
+    }
+  });
+});
+
+describe("the crisis rail, at every age and ahead of the diet rail", () => {
+  const crisis = [
+    "I've been thinking about killing myself.",
+    "I want to die.",
+    "I've been self-harming again.",
+    "Sometimes I think everyone would be better off if I ended my life. I want to end my life.",
+    "I feel suicidal.",
+  ];
+  const eating = [
+    "I've been starving myself to lose weight.",
+    "I make myself throw up after meals.",
+    "I think I have an eating disorder.",
+    "I binge eat at night and then feel awful.",
+    "I haven't eaten in days.",
+  ];
+  for (const group of EVERY_AGE) {
+    test(`a crisis message gets the crisis redirect without the model (${group})`, () => {
+      for (const message of crisis) expect(replyBeforeModel(message, group), message).toBe(CRISIS_SUPPORT_REPLY);
+    });
+    test(`a disordered-eating message gets the eating redirect, not the diet decline (${group})`, () => {
+      for (const message of eating) expect(replyBeforeModel(message, group), message).toBe(EATING_SUPPORT_REPLY);
+    });
+  }
+
+  test("training talk that sounds dramatic is neither", () => {
+    for (const message of ["This workout is killing me", "My legs want to die after leg day.", "How do I purge lactic acid?", "I'm dying after that set"]) {
+      expect(supportTopic(message), message).toBeNull();
+    }
+  });
+
+  test("the redirects point to professional help and name no phone number", () => {
+    for (const reply of [CRISIS_SUPPORT_REPLY, EATING_SUPPORT_REPLY]) {
+      expect(reply).toMatch(/doctor/);
+      expect(reply).toMatch(/mental health professional/);
+      expect(reply).toMatch(/emergency services/);
+      expect(reply).not.toMatch(/\d{3}/);
+      expect(reply).not.toMatch(/—/);
+    }
+  });
+});
+
+describe("the diet decline", () => {
+  test("keeps the first sentence the end-to-end walk recognises and offers the wider help", () => {
+    expect(DIET_DECLINE_REPLY.startsWith("Food and diet questions are outside what I can help with here.")).toBe(true);
+    expect(DIET_DECLINE_REPLY).toMatch(/sleep and recovery/);
+  });
+});

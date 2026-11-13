@@ -1,6 +1,6 @@
 # ADR-0017: The Coach is a Convex-hosted agent that writes user-accepted Custom Workouts
 
-- Status: Accepted (decided 2026-11-10); implemented in M4 (`US-CA01`...`US-CA08`, 2026-11-11) against the development Clerk instance and Convex deployment. The device exit criteria (a sandbox subscription, notifications on hardware) and the release steps are owed (`artifacts/reports/coach-agent-m4/validation.md`).
+- Status: Accepted (decided 2026-11-10), diet scope amended by [ADR-0019](0019-coach-answers-general-health-and-fitness.md) (2026-11-13); implemented in M4 (`US-CA01`...`US-CA08`, 2026-11-11) against the development Clerk instance and Convex deployment. The device exit criteria (a sandbox subscription, notifications on hardware) and the release steps are owed (`artifacts/reports/coach-agent-m4/validation.md`).
 - Date: 2026-11-10
 - Deciders: captain, via the Push/Pull/Legs design grill (2026-11-09 to 2026-11-10)
 - Spec: `.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`
@@ -19,7 +19,7 @@ The captain wants a premium Coach that remembers the user, acts on their behalf,
 - Premium is a per-user entitlement in Convex kept current by App Store Server Notifications and checked every turn.
 - Tools: log an Outside Activity, rest today or train anyway, change today's length, swap a movement, set Focus Areas, schedule an on-device reminder. Each action is confirmed with Undo. De-load, Re-entry and cold start stay engine-owned.
 - A Custom Workout is written freely by the model from the user's workout history, status and injury history. It is a proposal: the user reviews, edits and accepts it before it plays. Any movement is allowed; catalog movements show Trainer art, others are text-only and untracked. A played Custom Workout counts like an Outside Activity and never advances progression.
-- Diet guidance is general (protein, hydration, low carb, low sugar, vegetables), for adults only, and never medical.
+- Diet guidance is general (protein, hydration, low carb, low sugar, vegetables), for adults only, and never medical. (Amended by [ADR-0019](0019-coach-answers-general-health-and-fitness.md): the Coach now answers general health and fitness questions, adults get sample meals, weight-management principles and the evidence on common supplements, and plain hydration is open to every age.)
 - The Coach becomes the fourth tab.
 
 ## Considered Options
@@ -54,6 +54,7 @@ The captain chose the retirement in the last item on 2026-11-11; the rest are re
   A subscription is linked to one live account; a restore never moves it from another account that still exists.
   Accepted environments are deployment configuration (`APPSTORE_ENVIRONMENTS`); a development deployment may also accept unsigned Xcode StoreKit test transactions (`APPSTORE_ALLOW_XCODE`), as Apple's own verifier does, so a Simulator purchase can be walked end to end.
 - **Diet age rail.** The server reads the onboarding age from the user's own profile; a user not known to be 18 or over gets a fixed decline for a diet question without a model call, and a model reply that drifts into diet is replaced before it is stored (`convex/coachSafety.ts`).
+  ADR-0019 keeps the rail, takes plain hydration off its word lists and adds a crisis rail ahead of it at every age.
 - **Custom Workouts and FR-8.** Only an accepted Custom Workout is saved or played (FR-11).
   A played one is recorded as an Outside Activity, never a session, so it never advances progression, Earned Reps or a Foundation.
   Its group is the one with strictly the most sets among its catalog steps (squat and hinge count as Legs); a tie, or no grouped catalog step, names no group, so the Rotation is left alone as an "other" Outside Activity leaves it.

@@ -7,7 +7,7 @@ import { premiumState } from "./entitlements";
 import { catalogMessage, COACH_INSTRUCTIONS, contextMessage, houseStyle, type TodaySnapshot } from "./coachPrompt";
 import { coachModelConfigured, runCoachModel, type ModelInputMessage } from "./coachModel";
 import { parseToolCalls, proposalReply, type CoachProposal, type ProposalStatus } from "./coachTools";
-import { ageGroup, DIET_DECLINE_REPLY, isDietTopic, mayDiscussDiet, replyMentionsDiet } from "./coachSafety";
+import { ageGroup, replyAfterModel, replyBeforeModel } from "./coachSafety";
 
 /**
  * The Coach agent on Convex (M4, US-CA01/US-CA03, decisions 25-26, ADR-0017).
@@ -16,8 +16,9 @@ import { ageGroup, DIET_DECLINE_REPLY, isDietTopic, mayDiscussDiet, replyMention
  * function (`requireOwner`). On the server it reads the user's own records - profile and injury
  * areas, sessions, Outside Activities, Custom Workouts, Focus Areas and the conversation so far -
  * checks the Premium entitlement Apple's signed data keeps (`convex/entitlements.ts`), applies the
- * diet age rail (`convex/coachSafety.ts`), asks the model once (`convex/coachModel.ts`), turns its tool
- * calls into proposals (`convex/coachTools.ts`), and stores both messages as the conversation memory.
+ * crisis rail and the diet age rail (`convex/coachSafety.ts`), asks the model once
+ * (`convex/coachModel.ts`), turns its tool calls into proposals (`convex/coachTools.ts`), and stores
+ * both messages as the conversation memory.
  *
  * The public API is exactly `history`, `send` and `recordProposalOutcome`. None takes an owner id;
  * none writes the user's training records - a proposal is applied by the app, through its own
@@ -41,7 +42,7 @@ const ALL_OWNERS = "*";
 const USAGE_RETENTION_DAYS = 3;
 
 /** The reply stored when the model refuses a request. */
-export const REFUSAL_REPLY = "I can't help with that one. Ask me about your training, a movement, or your sessions.";
+export const REFUSAL_REPLY = "I can't help with that one. Ask me about your training, a movement, sleep, recovery or staying active.";
 
 /** A message as the app receives it. */
 export type CoachMessage = {
@@ -120,9 +121,11 @@ export const send = action({
     const group = ageGroup(turn.age);
     let reply: string;
     let proposals: CoachProposal[] = [];
-    if (!mayDiscussDiet(group) && isDietTopic(message)) {
-      // FR-12: a diet question from someone not known to be an adult never reaches the model.
-      reply = DIET_DECLINE_REPLY;
+    // ADR-0019: a crisis or disordered-eating message gets a caring redirect at every age, and (FR-12) a diet
+    // question from someone not known to be an adult gets the decline; neither reaches the model.
+    const fixedReply = replyBeforeModel(message, group);
+    if (fixedReply !== null) {
+      reply = fixedReply;
     } else {
       if (!coachModelConfigured()) {
         throw accountError("coach_unavailable", "The Coach is not configured on this deployment.");
@@ -157,10 +160,8 @@ export const send = action({
         if (reply.length === 0) {
           throw accountError("coach_unavailable", "The Coach couldn't answer just now.");
         }
-        if (!mayDiscussDiet(group) && replyMentionsDiet(reply)) {
-          // The same rail, after the model: a reply that drifted into diet is never shown.
-          reply = DIET_DECLINE_REPLY;
-        }
+        // The diet rail again, after the model: a reply that drifted into diet is never shown.
+        reply = replyAfterModel(reply, group);
       }
     }
 

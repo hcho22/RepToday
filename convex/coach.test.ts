@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
 import { COACH_TOOL_NAMES } from "./coachTools";
-import { DIET_DECLINE_REPLY } from "./coachSafety";
+import { CRISIS_SUPPORT_REPLY, DIET_DECLINE_REPLY, EATING_SUPPORT_REPLY } from "./coachSafety";
 import { DEFAULT_COACH_MODEL } from "./coachModel";
 import type { SyncChange } from "./sync";
 
@@ -384,6 +384,46 @@ describe("diet guidance with an age rail (FR-12)", () => {
     const history = await t.withIdentity(ALICE).query(api.coach.history, {});
     expect(history.messages[1].text).toBe(DIET_DECLINE_REPLY);
     expect(modelCalls[0].body.input[0].content).toContain("Age group: under 18");
+  });
+
+  test("a minor's plain water question reaches the model and its answer is shown", async () => {
+    const t = convexTest(schema, modules);
+    await seedUser(t, ALICE, { age: 16 });
+    nextResponse = () => modelReply("Drink a glass or two of water after training, and sip more if you sweated a lot. Staying hydrated helps you recover.");
+    const result = await send(t, ALICE, "How much water should I drink after a workout?");
+    expect(modelCalls).toHaveLength(1);
+    expect(result.coach.text).toContain("glass or two of water");
+  });
+
+  test("a minor asking about protein shakes is still declined without the model", async () => {
+    const t = convexTest(schema, modules);
+    await seedUser(t, ALICE, { age: 16 });
+    const result = await send(t, ALICE, "Should I drink protein shakes?");
+    expect(result.coach.text).toBe(DIET_DECLINE_REPLY);
+    expect(modelCalls).toHaveLength(0);
+  });
+});
+
+describe("crisis and disordered-eating redirects at every age (ADR-0019)", () => {
+  for (const [label, age] of [["an adult", 30], ["a user under 18", 16], ["a user of unknown age", null]] as const) {
+    test(`${label} who speaks of self-harm gets the caring redirect and the model is never called`, async () => {
+      const t = convexTest(schema, modules);
+      await seedUser(t, ALICE, { age });
+      const result = await send(t, ALICE, "I've been thinking about killing myself.");
+      expect(result.coach.text).toBe(CRISIS_SUPPORT_REPLY);
+      expect(result.coach.proposals).toEqual([]);
+      expect(modelCalls).toHaveLength(0);
+      const history = await t.withIdentity(ALICE).query(api.coach.history, {});
+      expect(history.messages.map((message) => message.text)).toEqual(["I've been thinking about killing myself.", CRISIS_SUPPORT_REPLY]);
+    });
+  }
+
+  test("a minor's message about starving themselves gets the eating redirect, not the diet decline", async () => {
+    const t = convexTest(schema, modules);
+    await seedUser(t, ALICE, { age: 15 });
+    const result = await send(t, ALICE, "I've been starving myself to lose weight.");
+    expect(result.coach.text).toBe(EATING_SUPPORT_REPLY);
+    expect(modelCalls).toHaveLength(0);
   });
 });
 
