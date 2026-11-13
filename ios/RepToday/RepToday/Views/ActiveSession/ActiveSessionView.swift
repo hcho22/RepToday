@@ -31,6 +31,7 @@ struct ActiveSessionView: View {
     @Environment(AppState.self) private var appState: AppState?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.legibilityWeight) private var legibilityWeight
     @State private var viewModel: ActiveSessionViewModel
 
     /// The session's Trainer (US-TP06) and whether the one-time choice must be asked first (US-TP10).
@@ -602,15 +603,16 @@ struct ActiveSessionView: View {
         !Self.secondaryRowFits(
             titles: secondaryTitles,
             width: playerWidth - 2 * Theme.Spacing.lg,
-            size: dynamicTypeSize
+            size: dynamicTypeSize,
+            weight: legibilityWeight
         )
     }
 
-    /// The titles the secondary row shows at this step, one per slot. A swap in flight is measured by
-    /// its resting "Swap": the brief, dimmed "Swapping…" never moves the row.
+    /// The titles the secondary row can show at this step, one per slot. "+ More time" is measured
+    /// whether or not the step's countdown runs right now, and a swap in flight by its resting "Swap",
+    /// so starting or stopping a hold or a swap never moves the controls between the row and the column.
     private var secondaryTitles: [String] {
-        var titles: [String] = []
-        if viewModel.canExtendActiveCountdown { titles.append("+ More time") }
+        var titles = ["+ More time"]
         if viewModel.canSwap { titles.append("Swap") }
         if viewModel.holdSecondsPerSide != nil { titles.append(completeButtonTitle) }
         titles.append("Skip")
@@ -618,26 +620,30 @@ struct ActiveSessionView: View {
     }
 
     /// Whether `titles` fit side by side in `width`: each column at least as wide as the longest word of
-    /// its title (`longestWordWidth`), set in the row's type at `size`.
-    static func secondaryRowFits(titles: [String], width: CGFloat, size: DynamicTypeSize) -> Bool {
+    /// its title (`longestWordWidth`), set in the row's type at `size` and `weight`.
+    static func secondaryRowFits(titles: [String], width: CGFloat, size: DynamicTypeSize, weight: LegibilityWeight?) -> Bool {
         guard width.isFinite, !titles.isEmpty else { return true }
-        let words = titles.reduce(0) { $0 + longestWordWidth($1, size: size) }
+        let words = titles.reduce(0) { $0 + longestWordWidth($1, size: size, weight: weight) }
         return words + CGFloat(titles.count - 1) * Theme.Spacing.md <= width
     }
 
-    /// The width of the longest word of a secondary control's `title` at `size`: the narrowest its
-    /// column may be, so the word is never broken across lines.
-    static func longestWordWidth(_ title: String, size: DynamicTypeSize) -> CGFloat {
-        title.split(separator: " ").map { textWidth(String($0), style: .body, size: size) }.max() ?? 0
+    /// The width of the longest word of a secondary control's `title` at `size` and `weight`: the
+    /// narrowest its column may be, so the word is never broken across lines.
+    static func longestWordWidth(_ title: String, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
+        title.split(separator: " ").map { textWidth(String($0), style: .body, size: size, weight: weight) }.max() ?? 0
     }
 
-    /// The width `text` takes on one line in Theme's rounded type for `style` at `size` - the
-    /// measurement behind the player's and the rest overlay's choice between side-by-side and stacked
-    /// controls.
-    static func textWidth(_ text: String, style: UIFont.TextStyle, size: DynamicTypeSize) -> CGFloat {
+    /// The width `text` takes on one line in Theme's rounded type for `style` at `size`, drawn heavier
+    /// when `weight` is Bold Text - the measurement behind the player's and the rest overlay's choice
+    /// between side-by-side and stacked controls.
+    static func textWidth(_ text: String, style: UIFont.TextStyle, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
         let base = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits)
-        let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 0) } ?? base
+        var descriptor = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+        if weight == .bold {
+            descriptor = descriptor.withSymbolicTraits(descriptor.symbolicTraits.union(.traitBold)) ?? descriptor
+        }
+        let font = UIFont(descriptor: descriptor, size: 0)
         return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
@@ -665,6 +671,7 @@ struct ActiveSessionView: View {
         if viewModel.canSwap {
             secondaryAction(
                 title: viewModel.isSwapping ? "Swapping…" : "Swap",
+                measuredTitle: "Swap",
                 accessibilityLabel: "Swap this exercise",
                 accessibilityHint: "Replaces it with a similar movement",
                 isEnabled: !viewModel.isSwapping && !viewModel.isHolding
@@ -714,6 +721,7 @@ struct ActiveSessionView: View {
     /// active-screen touch target is the floor, never the ceiling.
     private func secondaryAction(
         title: String,
+        measuredTitle: String? = nil,
         accessibilityLabel: String,
         accessibilityHint: String?,
         isEnabled: Bool,
@@ -726,7 +734,7 @@ struct ActiveSessionView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .opacity(isEnabled ? 1 : 0.4)
-                .frame(minWidth: Self.longestWordWidth(title, size: dynamicTypeSize), maxWidth: .infinity)
+                .frame(minWidth: Self.longestWordWidth(measuredTitle ?? title, size: dynamicTypeSize, weight: legibilityWeight), maxWidth: .infinity)
                 .frame(minHeight: Theme.Spacing.workoutTouchTarget)
         }
         .disabled(!isEnabled)
@@ -1404,6 +1412,7 @@ private struct RestView: View {
     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.legibilityWeight) private var legibilityWeight
 
     /// The width the overlay is laid out in - what tells whether the two controls fit side by side
     /// (`stacksControls`). Unmeasured, they fit.
@@ -1612,7 +1621,7 @@ private struct RestView: View {
         guard width.isFinite else { return false }
         let half = (width - 2 * Theme.Spacing.lg - Theme.Spacing.md) / 2 - Self.buttonLabelInset
         return ["+\(ActiveSessionViewModel.restExtension)s", "Skip rest"].contains {
-            ActiveSessionView.textWidth($0, style: .headline, size: dynamicTypeSize) > half
+            ActiveSessionView.textWidth($0, style: .headline, size: dynamicTypeSize, weight: legibilityWeight) > half
         }
     }
 

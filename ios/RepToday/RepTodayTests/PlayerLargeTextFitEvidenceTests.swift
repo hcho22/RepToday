@@ -55,14 +55,71 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         try assertPlayerFits(session, primary: "Stop hold", ring: "Hold, ", name: "running-hold")
     }
 
-    private func assertPlayerFits(_ session: Workout, primary: String, ring: String, name: String,
-                                  file: StaticString = #filePath, line: UInt = #line) throws {
+    /// The same widest row with Bold Text on, which draws every title heavier: the controls still fit,
+    /// apart and with no word broken, at the sizes where the row and the column trade places.
+    func testRunningHoldControlsFitWithBoldText() throws {
+        let session = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 2), try prescription("push_wall", sets: 2)])])
+        try assertPlayerFits(session, primary: "Stop hold", ring: "Hold, ", name: "running-hold-bold",
+                             sizes: [.xxxLarge, .accessibility1, .accessibility2, .accessibility3], styles: [.light], weight: .bold)
+    }
+
+    /// Stopping a running hold never moves the controls: the primary action stays where it was (now
+    /// "Start hold") and every secondary control stays in the pinned row or the column it was in, so
+    /// a second tap lands on what the user meant rather than on a control that slid under the thumb.
+    func testStoppingAHoldNeverMovesTheControls() throws {
+        let session = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 2), try prescription("push_wall", sets: 2)])])
+        for size in [DynamicTypeSize.accessibility1, .accessibility2, .accessibility3, .accessibility5] {
+            let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
+            host(ActiveSessionView(workout: session, workoutEngine: engine, user: user()), .light, size: size)
+            XCTAssertTrue(pump(until: { self.labels().contains("Stop hold") }, timeout: 5), "\(size): no running hold; \(labels())")
+            HostedSurface.pump(for: 0.5)
+            scrollPlayerToEnd()
+            let running = try XCTUnwrap(frame(of: "Stop hold"))
+            let inRowWhileRunning = rowMembership(below: running)
+
+            activate("Stop hold")
+            XCTAssertTrue(pump(until: { self.labels().contains("Start hold") }, timeout: 5), "\(size): the hold did not stop; \(labels())")
+            HostedSurface.pump(for: 0.5)
+            scrollPlayerToEnd()
+            let stopped = try XCTUnwrap(frame(of: "Start hold"))
+            XCTAssertEqual(stopped.minY, running.minY, accuracy: 0.5, "\(size): the primary action moved when the hold stopped")
+            let inRowWhenStopped = rowMembership(below: stopped)
+            for (label, wasInRow) in inRowWhileRunning {
+                guard let isInRow = inRowWhenStopped[label] else { continue }
+                XCTAssertEqual(isInRow, wasInRow, "\(size): \"\(label)\" moved between the pinned row and the column when the hold stopped")
+            }
+        }
+    }
+
+    /// Bold Text widens what the controls are measured at, the way it widens what they draw, so the
+    /// row-or-column choice and each column's minimum account for the heavier glyphs.
+    func testBoldTextMeasuresWider() {
         for size in sizes {
-            for style in styles {
+            let regular = ActiveSessionView.longestWordWidth("Complete set", size: size, weight: .regular)
+            let bold = ActiveSessionView.longestWordWidth("Complete set", size: size, weight: .bold)
+            XCTAssertGreaterThan(bold, regular, "\(size): Bold Text measures no wider than regular")
+            XCTAssertEqual(ActiveSessionView.longestWordWidth("Complete set", size: size, weight: nil), regular, "\(size)")
+        }
+    }
+
+    /// For each secondary control, with the player scrolled to its end, whether it sits in the pinned
+    /// row below `primary` rather than in the scrolling column.
+    private func rowMembership(below primary: CGRect) -> [String: Bool] {
+        Dictionary(uniqueKeysWithValues: secondaryTitles.keys.compactMap { label in
+            frame(of: label).map { (label, $0.minY >= primary.maxY - 0.5) }
+        })
+    }
+
+    private func assertPlayerFits(_ session: Workout, primary: String, ring: String, name: String,
+                                  sizes: [DynamicTypeSize]? = nil, styles: [UIUserInterfaceStyle]? = nil,
+                                  weight: LegibilityWeight? = nil,
+                                  file: StaticString = #filePath, line: UInt = #line) throws {
+        for size in sizes ?? self.sizes {
+            for style in styles ?? self.styles {
                 let look = "\(size)-\(style == .dark ? "dark" : "light")"
                 // A swap engine wired, so Swap is offered as it is in the app.
                 let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
-                host(ActiveSessionView(workout: session, workoutEngine: engine, user: user()), style, size: size)
+                host(ActiveSessionView(workout: session, workoutEngine: engine, user: user()), style, size: size, weight: weight)
                 XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix(ring) } }, timeout: 5),
                               "\(look): no running countdown; tree reads \(labels())", file: file, line: line)
                 HostedSurface.pump(for: 0.5) // let the card settle on its fitted height
@@ -72,7 +129,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 for label in secondary {
                     assertNoWordBreak(label, look, file: file, line: line)
                 }
-                if size == .large {
+                if size == .large, weight == nil {
                     let rows = Set(secondary.compactMap { frame(of: $0)?.minY.rounded() })
                     XCTAssertEqual(rows.count, 1, "\(look): the default size keeps the secondary controls in one row", file: file, line: line)
                 }
@@ -118,7 +175,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 assertOnScreenAndApart(["End session", "Pause session", extend, "Skip rest"], look)
                 if let skip = frame(of: "Skip rest"), let more = frame(of: extend) {
                     for (control, title) in [(skip, "Skip rest"), (more, "+\(ActiveSessionViewModel.restExtension)s")] {
-                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size)
+                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size, weight: nil)
                         XCTAssertGreaterThanOrEqual(control.width, needed, "\(look): \"\(title)\" is wider than its button", file: #filePath, line: #line)
                     }
                     if size == .large {
@@ -157,8 +214,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     /// broken across lines.
     private func assertNoWordBreak(_ label: String, _ look: String, file: StaticString, line: UInt) {
         guard let control = frame(of: label), let title = secondaryTitles[label] else { return }
-        let size = hostedSize
-        let longest = title.split(separator: " ").map { ActiveSessionView.textWidth(String($0), style: .body, size: size) }.max() ?? 0
+        let longest = ActiveSessionView.longestWordWidth(title, size: hostedSize, weight: hostedWeight)
         XCTAssertGreaterThanOrEqual(control.width, longest, "\(look): \"\(title)\" breaks a word in its \(control.width) pt control", file: file, line: line)
     }
 
@@ -166,6 +222,8 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     /// The Dynamic Type size of the surface hosted now.
     private var hostedSize: DynamicTypeSize = .large
+    /// The legibility weight (Bold Text) of the surface hosted now.
+    private var hostedWeight: LegibilityWeight?
 
     private func catalog() throws -> [String: Exercise] {
         let url = try XCTUnwrap(Bundle(for: AppState.self).url(forResource: "Exercises", withExtension: "json"))
@@ -200,11 +258,12 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     // MARK: - Hosting
 
     /// Hosts `view` on the small screen at `size` and `style`.
-    private func host<V: View>(_ view: V, _ style: UIUserInterfaceStyle, size: DynamicTypeSize) {
+    private func host<V: View>(_ view: V, _ style: UIUserInterfaceStyle, size: DynamicTypeSize, weight: LegibilityWeight? = nil) {
         window = nil
         hostedSize = size
+        hostedWeight = weight
         let (_, hosted) = HostedSurface.host(
-            view.environment(\.dynamicTypeSize, size), size: screen, settleFor: 1.5, style: style,
+            view.environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight), size: screen, settleFor: 1.5, style: style,
             emulatingSafeArea: UIEdgeInsets(top: statusBar, left: 0, bottom: 0, right: 0)
         )
         window = hosted

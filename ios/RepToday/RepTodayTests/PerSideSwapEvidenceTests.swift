@@ -1354,7 +1354,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "the control is gone at accessibility type; the player reads \(AccessibilityTree.labels(in: axHost.view))"
         ).accessibilityFrame
         let atAccessibilitySize = control.height
-        let fitsOnOneLine = ActiveSessionView.textWidth(title, style: .body, size: .accessibility3) <= control.width
+        let fitsOnOneLine = ActiveSessionView.textWidth(title, style: .body, size: .accessibility3, weight: nil) <= control.width
 
         print("=== Rep Today - \"\(title)\" is \(atDefault)pt tall at default type, "
               + "\(atAccessibilitySize)pt at accessibility3 ===")
