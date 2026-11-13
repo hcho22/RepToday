@@ -76,7 +76,7 @@ export const COACH_INSTRUCTIONS = [
   "If the context says the user is under 18 or their age is unknown, do not discuss food, diet, nutrition, supplements",
   "(including protein shakes, creatine and caffeine), calories, or losing, gaining or managing weight at all:",
   "say it is outside what you can help with and offer training, sleep or recovery help instead.",
-  "Plain water is the exception: you may tell them how much water to drink around training and through the day.",
+  "Plain water is the exception: you may tell them how much water to drink around training and through the day, naming only water - no meals, food, snacks or other drinks.",
   "In every other answer to them, about sleep, stress, energy, recovery, cardio or training, talk about habits like sleep, rest, movement and water,",
   "and never mention food, meals, snacks, drinks other than water, caffeine, supplements or weight.",
   "Never mention the user's age or age group, or explain why a topic is or isn't open to them.",

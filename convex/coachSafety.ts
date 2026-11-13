@@ -65,8 +65,7 @@ const CRISIS_TOPIC = wholeWords([
   "no reason to live",
   "self[- ]?harm(ing)?",
   "cutting myself",
-  "(took|take|taking) an overdose",
-  "overdos(e|ed|ing) on purpose",
+  "(?<!can (you|i|someone|people|a person) )overdos(e|ed|ing)(?!\\s+on\\s+(caffeine|creatine|coffee|protein|vitamins?|supplements?|energy drinks?|pre-?workout|water)\\b)",
 ]);
 
 const DISORDERED_EATING_TOPIC = wholeWords([
@@ -75,11 +74,12 @@ const DISORDERED_EATING_TOPIC = wholeWords([
   "bulimi[ac]",
   "binge[- ]?(eat|eating|ate|and purge)",
   "binging and purging",
-  "purg(e|ed) after (i eat|eating|meals?)",
-  "make myself (throw up|sick|vomit)",
-  "made myself (throw up|sick|vomit)",
-  "making myself (throw up|sick|vomit)",
-  "throw(ing)? up after (i eat|eating|meals?)",
+  "(purg(e|es|ed|ing)|vomit(s|ed|ing)?|throw(s|ing)? up|threw up) after (i eat|i ate|i've eaten|eating|every meal|meals?|breakfast|lunch|dinner|food)",
+  "(make|made|making) myself (throw up|throw (it|it all|everything|food) up|sick|vomit|puke)",
+  "skip(s|ped|ping)? (most |all |my |some |a lot of )?(meals?|breakfast|lunch|dinner|food|eating) (to|so i can|so i) (lose weight|make up|burn|get thin|be thin|stay thin|lose fat)",
+  "(guilty|ashamed|disgusted with myself) (whenever|when|after|every time|about|for) (i eat|i've eaten|i ate|eating|food)",
+  "hate my body[\\s\\S]*\\b(eat|eating|ate|food|meals?|throw|vomit|purg(e|ing))",
+  "(eat|eating|ate|food|meals?)\\b[\\s\\S]*\\bhate my body",
   "starv(e|ed|ing) myself",
   "stop(ped)? eating (completely|entirely|altogether)",
   "(haven'?t|have not|hardly|barely) eaten in (days|a week|\\w+ days)",

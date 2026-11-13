@@ -151,6 +151,9 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
     "I feel suicidal.",
     "I've been thinking about suicide.",
     "I took an overdose last night.",
+    "I want to overdose.",
+    "I'm thinking about overdosing on my pills.",
+    "I overdosed last week.",
   ];
   const eating = [
     "I've been starving myself to lose weight.",
@@ -158,6 +161,10 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
     "I think I have an eating disorder.",
     "I binge eat at night and then feel awful.",
     "I haven't eaten in days.",
+    "I feel so guilty whenever I eat that I've been skipping most meals to make up for it.",
+    "I've been skipping meals to lose weight.",
+    "I purge after dinner most nights.",
+    "I hate my body and keep making myself throw it all up.",
   ];
   for (const group of EVERY_AGE) {
     test(`a crisis message gets the crisis redirect without the model (${group})`, () => {
@@ -179,6 +186,7 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
       "Coach made us run suicides and suicide drills today.",
       "Can you overdose on caffeine?",
       "Can you overdose on creatine?",
+      "Is it possible to overdose on vitamins?",
     ]) {
       expect(supportTopic(message), message).toBeNull();
     }
