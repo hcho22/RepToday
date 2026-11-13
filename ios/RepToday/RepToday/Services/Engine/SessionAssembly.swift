@@ -4,17 +4,20 @@ import Foundation
 /// ADR-0012, ADR-0013): turn today's Training Day into a complete, playable `Workout` of a few movements
 /// done well, filled to the requested length by reps and rest.
 ///
-/// - **Slots** (decisions 7-11). Up to two warm-up stretches, then one circuit block: the main slots for
-///   the length (5-20 min 1, 30 min 2, 45 min 3, 60 min 4) plus one Core Sprinkle (none at 5-10 min),
-///   then up to two cooldown stretches. A Push or Pull Day has two ladders, so its third and fourth
-///   main slots are Practice Movements of the first and second ladder's next harder rung; a Legs Day
-///   fills its slots from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side
-///   ladder first. Each ladder contributes its current rung, unchanged until earned. A session never
-///   mixes groups: only the Core Sprinkle and the bookends cross days.
+/// - **Slots** (decisions 7-11, resized by ADR-0018). Up to two warm-up stretches, then one circuit
+///   block: the main slots for the length (5 min 1, 10-15 min 2, 20-30 min 3, 45 min 4, 60 min 5) plus
+///   the Core Sprinkles (none at 5-10 min, one at 15-30, two at 45-60), then up to two cooldown
+///   stretches. A Push or Pull Day has two ladders, so its third and fourth main slots are Practice
+///   Movements of the first and second ladder's next harder rung and its fifth is a **Variation** of a
+///   current rung, left empty until one with Trainer art exists; a Legs Day fills its slots from the
+///   squat, lunge, bridge and hip ladders, one squat-side and one hinge-side ladder first, and its fifth
+///   slot is its first ladder's Practice Movement. Each ladder contributes its current rung, unchanged
+///   until earned. A session never mixes groups: only the Core Sprinkle crosses days, and every bookend
+///   stretch complements the day's group while the catalog has enough that do.
 /// - **Focus Areas** (decision 20, M2). A movement a Focus Area covers (`FocusArea.covers`) is ordered
 ///   first among its kind of station - so on a short session it takes the slot - is given the Practice
-///   slot first, and is padded first (and cut last) by the fit. Abs adds a second Core Sprinkle. The
-///   Rotation never changes, and with no Focus Area the session is exactly the M1 session.
+///   slot first, and is padded first (and cut last) by the fit. Abs adds a Core Sprinkle wherever core
+///   appears. The Rotation never changes.
 /// - **Sets and reps** (decisions 13-16). Every main, Practice and core station runs
 ///   `RepGrammar.setsPerStation` (4) rounds. Main and core stations start at the user's served Earned
 ///   Reps (`AdaptiveOverload`); a Practice Movement runs at `RepGrammar.practiceValue`.
@@ -25,7 +28,8 @@ import Foundation
 ///   60 seconds on a session of 30 minutes or less, and on a 45 or 60 minute session the pause between
 ///   movements up to 60 seconds and the rest after a round up to the level cap (beginner 2:00,
 ///   intermediate 1:30, advanced 1:00). A session that still cannot fill runs short, honestly
-///   (`plannedSeconds`). The tolerance is `toleranceSeconds` (about three minutes).
+///   (`plannedSeconds`). The tolerance is `toleranceSeconds` (about three minutes), and a session never
+///   plans past it: one still over with every rep at the floor drops a station and runs short (ADR-0018).
 ///
 /// Identity and the reference clock enter here: ids are fresh `UUID`s and `createdAt` is the
 /// caller-supplied `asOf`. The *content* of the session is a pure, deterministic function of the inputs,
@@ -97,21 +101,24 @@ enum SessionAssembly {
     /// Sessions longer than this many minutes close with a cooldown.
     static let cooldownThresholdMinutes = 10
 
-    /// Main slots by length (decision 8): 5-10 min 1, 15-20 min 1, 30 min 2, 45 min 3, 60 min 4.
+    /// Main slots by length (ADR-0018): 5 min 1, 10-15 min 2, 20-30 min 3, 45 min 4, 60 min 5.
     static func mainSlotCount(forRequestedMinutes minutes: Int) -> Int {
         switch minutes {
-        case ...20: return 1
-        case ...30: return 2
-        case ...45: return 3
-        default: return 4
+        case ...5: return 1
+        case ...15: return 2
+        case ...30: return 3
+        case ...45: return 4
+        default: return 5
         }
     }
 
-    /// Core Sprinkles by length: none up to 10 minutes, one beyond - two with an Abs Focus Area
-    /// (decision 20).
+    /// Core Sprinkles by length (ADR-0018): none up to 10 minutes, one at 15-30, two at 45-60 - and one
+    /// more wherever core appears with an Abs Focus Area (decision 20), which at 45-60 minutes is one from
+    /// each core ladder.
     static func coreSprinkleCount(forRequestedMinutes minutes: Int, focusAreas: [FocusArea] = []) -> Int {
         guard minutes > cooldownThresholdMinutes else { return 0 }
-        return focusAreas.contains(.abs) ? 2 : 1
+        let base = minutes > shortSessionMaxMinutes ? 2 : 1
+        return base + (focusAreas.contains(.abs) ? 1 : 0)
     }
 
     /// The core ladders in canonical order, the Core Sprinkle's tie-break.
@@ -217,11 +224,16 @@ enum SessionAssembly {
     /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
     /// earlier presses showed are ranked behind their alternatives wherever the plan has a choice (which
     /// ladders fill a short session, which stretches, which core ladder), while every filter and the fit
-    /// still decide each pick. When that leaves nothing new the default session is returned, which is how
-    /// a sequence of presses cycles back.
+    /// still decide each pick. Its bookends stay inside the day's matching stretches; only when that would
+    /// rebuild exactly the session the press replaces does it bring in one unmatched stretch it has not
+    /// shown (ADR-0018). When the result shows nothing new the default session is returned, which is how a
+    /// sequence of presses cycles back.
     ///
     /// `activities` are the logged Outside Activities the Rotation reads (decision 21), for today's group
     /// and the Cycle the Core Sprinkle rotates on.
+    ///
+    /// `hasTrainerArt` answers whether both Trainers have a movement's full pose pair; a Variation is
+    /// offered only when it does (ADR-0018). It defaults to the app's own asset catalog.
     static func assemble(
         requestedMinutes: Int,
         user: User,
@@ -232,6 +244,7 @@ enum SessionAssembly {
         trainingDay: TrainingDay? = nil,
         history: [WorkoutLog]? = nil,
         activities: [OutsideActivity] = [],
+        hasTrainerArt: @escaping (Exercise) -> Bool = SessionAssembly.hasBundledTrainerArt,
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
@@ -243,20 +256,26 @@ enum SessionAssembly {
             calendar: calendar
         )
         if !variation.isNone {
-            let varied = assemblePass(
-                requestedMinutes: requestedMinutes,
-                user: user,
-                library: library,
-                recentLogs: recentLogs,
-                sessionPolicy: sessionPolicy,
-                offered: variation.offeredExerciseIds,
-                trainingDay: day,
-                history: history,
-                activities: activities,
-                asOf: asOf,
-                calendar: calendar
-            )
-            if variation.offersSomethingNew(varied) { return varied }
+            func varied(unmatchedStretchAllowance: Int) -> Workout {
+                assemblePass(
+                    requestedMinutes: requestedMinutes,
+                    user: user,
+                    library: library,
+                    recentLogs: recentLogs,
+                    sessionPolicy: sessionPolicy,
+                    offered: variation.offeredExerciseIds,
+                    unmatchedStretchAllowance: unmatchedStretchAllowance,
+                    trainingDay: day,
+                    history: history,
+                    activities: activities,
+                    hasTrainerArt: hasTrainerArt,
+                    asOf: asOf,
+                    calendar: calendar
+                )
+            }
+            let matched = varied(unmatchedStretchAllowance: 0)
+            let pressed = variation.repeatsReplacedSession(matched) ? varied(unmatchedStretchAllowance: 1) : matched
+            if variation.offersSomethingNew(pressed) { return pressed }
         }
         return assemblePass(
             requestedMinutes: requestedMinutes,
@@ -265,16 +284,25 @@ enum SessionAssembly {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: [],
+            unmatchedStretchAllowance: 0,
             trainingDay: day,
             history: history,
             activities: activities,
+            hasTrainerArt: hasTrainerArt,
             asOf: asOf,
             calendar: calendar
         )
     }
 
+    /// Whether both Trainers have the full start/end pose pair for `exercise` in the app's asset catalog,
+    /// asked through the same resolver every Trainer surface uses (`TrainerPoseResolver`).
+    static func hasBundledTrainerArt(_ exercise: Exercise) -> Bool {
+        TrainerPoseResolver.bundled.hasFullArt(exerciseId: exercise.id)
+    }
+
     /// One assembly pass, with `offered` (a `SessionVariation`'s moves) ranked behind their
-    /// alternatives; empty for the default session.
+    /// alternatives and up to `unmatchedStretchAllowance` unshown unmatched stretches ranked ahead of the
+    /// matches it already showed; both empty for the default session.
     private static func assemblePass(
         requestedMinutes: Int,
         user: User,
@@ -282,9 +310,11 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         offered: Set<String>,
+        unmatchedStretchAllowance: Int,
         trainingDay: TrainingDay,
         history: [WorkoutLog]?,
         activities: [OutsideActivity],
+        hasTrainerArt: @escaping (Exercise) -> Bool,
         asOf: Date,
         calendar: Calendar
     ) -> Workout {
@@ -295,9 +325,11 @@ enum SessionAssembly {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: offered,
+            unmatchedStretchAllowance: unmatchedStretchAllowance,
             trainingDay: trainingDay,
             history: history,
             activities: activities,
+            hasTrainerArt: hasTrainerArt,
             asOf: asOf,
             calendar: calendar
         )
@@ -350,6 +382,8 @@ enum SessionAssembly {
             sitsLong: user.profile.sitsLong,
             focusAreas: [],
             offered: [],
+            unmatchedStretchAllowance: 0,
+            hasTrainerArt: { _ in false },
             asOf: asOf,
             calendar: .current
         )
@@ -448,9 +482,11 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
         offered: Set<String> = [],
+        unmatchedStretchAllowance: Int = 0,
         trainingDay: TrainingDay,
         history: [WorkoutLog]? = nil,
         activities: [OutsideActivity] = [],
+        hasTrainerArt: @escaping (Exercise) -> Bool = SessionAssembly.hasBundledTrainerArt,
         asOf: Date,
         calendar: Calendar = .current
     ) -> SessionPlan {
@@ -502,6 +538,8 @@ enum SessionAssembly {
             sitsLong: user.profile.sitsLong,
             focusAreas: user.profile.focusAreas,
             offered: offered,
+            unmatchedStretchAllowance: unmatchedStretchAllowance,
+            hasTrainerArt: hasTrainerArt,
             asOf: asOf,
             calendar: calendar
         )
@@ -525,6 +563,12 @@ enum SessionAssembly {
     static func isPostureHipOpener(_ exercise: Exercise) -> Bool {
         guard let complements = exercise.complements else { return false }
         return complements.contains { postureHipPatterns.contains($0) }
+    }
+
+    /// Whether the stretch `exercise` complements one of `patterns` (its US-M02 `complements` tag) - the
+    /// test every day-matched bookend stretch passes while the catalog has enough that do (ADR-0018).
+    static func complements(_ exercise: Exercise, anyOf patterns: Set<MovementPattern>) -> Bool {
+        exercise.complements?.contains(where: patterns.contains) == true
     }
 
     /// A warm-up, cooldown or Recovery stretch's per-set number: its catalog length on the grid of
@@ -707,9 +751,30 @@ enum SessionAssembly {
     /// 3. **Rest** - then grow the rest after a round, and on a 45 or 60 minute session the pause between
     ///    movements, five seconds at a time up to their caps.
     /// Each step is taken only if it brings the session closer to the target, so the loop ends at the
-    /// closest landing its levers allow; whatever gap is left is the session's honest shortfall or
-    /// overrun.
+    /// closest landing its levers allow; whatever gap is left is the session's honest shortfall.
+    /// 4. **Drop** - a session still past the tolerance once every station is at its short-session floor
+    ///    would overrun, which a session never does (ADR-0018): it drops a station and fits again, so it
+    ///    runs short instead - the Abs Focus Area's extra Core Sprinkle first, then the last main slot
+    ///    (a Variation, then a Practice Movement, then a ladder's rung), never the last main station.
     static func fit(_ plan: inout SessionPlan, targetSeconds: Int) {
+        fitLevers(&plan, targetSeconds: targetSeconds)
+        let baseCore = coreSprinkleCount(forRequestedMinutes: targetSeconds / 60)
+        while plan.totalSeconds - targetSeconds > toleranceSeconds {
+            let core = plan.stations.indices.filter { plan.stations[$0].role == .core }
+            let main = plan.stations.indices.filter { plan.stations[$0].role != .core }
+            if core.count > baseCore, let last = core.last {
+                plan.stations.remove(at: last)
+            } else if main.count > 1, let last = main.last {
+                plan.stations.remove(at: last)
+            } else {
+                break
+            }
+            fitLevers(&plan, targetSeconds: targetSeconds)
+        }
+    }
+
+    /// Steps 1-3 of `fit`: cut, pad, then grow rest.
+    private static func fitLevers(_ plan: inout SessionPlan, targetSeconds: Int) {
         func distance(_ candidate: SessionPlan) -> Int { abs(candidate.totalSeconds - targetSeconds) }
 
         // 1. Cut reps toward the short-session floor.
@@ -967,11 +1032,16 @@ private struct Builder {
     /// openers, never a sizing lever.
     let sitsLong: Bool
     /// The user's Focus Areas (decision 20): what they cover is ordered first, given the Practice slot
-    /// first and padded first; Abs adds a second Core Sprinkle.
+    /// first and padded first; Abs adds one more Core Sprinkle.
     let focusAreas: [FocusArea]
     /// The moves a **Different workout** press asks the session to avoid: ranked behind their
     /// alternatives wherever the plan has a choice, never filtered.
     let offered: Set<String>
+    /// How many unshown unmatched stretches a **Different workout** press may still rank ahead of the
+    /// matches it already showed: one on the press's second pass, spent as the bookends take it (ADR-0018).
+    var unmatchedStretchAllowance: Int
+    /// Whether both Trainers have a movement's full pose pair: a Variation is offered only when they do.
+    let hasTrainerArt: (Exercise) -> Bool
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier slot.
@@ -997,6 +1067,8 @@ private struct Builder {
         sitsLong: Bool,
         focusAreas: [FocusArea],
         offered: Set<String>,
+        unmatchedStretchAllowance: Int,
+        hasTrainerArt: @escaping (Exercise) -> Bool,
         asOf: Date,
         calendar: Calendar
     ) {
@@ -1019,6 +1091,8 @@ private struct Builder {
         self.sitsLong = sitsLong
         self.focusAreas = focusAreas
         self.offered = offered
+        self.unmatchedStretchAllowance = unmatchedStretchAllowance
+        self.hasTrainerArt = hasTrainerArt
         self.asOf = asOf
         self.calendar = calendar
     }
@@ -1026,17 +1100,18 @@ private struct Builder {
     // MARK: Plan
 
     mutating func plan(day: TrainingDay, requestedMinutes: Int) -> SessionPlan {
-        // Both bookends lead with a stretch complementing the day's lead pattern (US-M02).
-        let lead: MovementPattern = day == .legs ? .squat : (day == .push ? .push : .pull)
-        let warmup = mobilityItems(
-            from: orderedMobility(holdsOnly: false, complementing: lead),
-            cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
-        )
-        var cooldownPool = orderedMobility(holdsOnly: true, complementing: lead)
-        if cooldownPool.isEmpty { cooldownPool = orderedMobility(holdsOnly: false, complementing: lead) }
+        // Every bookend stretch complements the day's group; the others fill only once those run out
+        // (ADR-0018). The cooldown picks first and takes holds first, so the day's matching holds close the
+        // session and the warm-up does not use them up when only a few match (a beginner's Push Day has
+        // four); the warm-up then takes the freshest matches left.
         let cooldown = mobilityItems(
-            from: cooldownPool,
+            matching: day.patterns,
+            holdsFirst: true,
             cap: SessionAssembly.cooldownExerciseCount(forRequestedMinutes: requestedMinutes)
+        )
+        let warmup = mobilityItems(
+            matching: day.patterns,
+            cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
         )
 
         let stations = mainStations(day: day, slots: SessionAssembly.mainSlotCount(forRequestedMinutes: requestedMinutes))
@@ -1061,12 +1136,12 @@ private struct Builder {
     /// The Recovery flow's stretches: two moving stretches then two holds where the pool allows, freshest
     /// first, each one set at its catalog length.
     mutating func recoveryStretches(count: Int) -> [PlannedItem] {
-        let moving = orderedMobility(holdsOnly: false, complementing: nil).filter { !$0.isHold }
-        var picked = Array(moving.prefix(count / 2))
-        let holds = orderedMobility(holdsOnly: true, complementing: nil).filter { hold in !picked.contains { $0.id == hold.id } }
+        let ordered = orderedMobility(matching: nil)
+        var picked = Array(ordered.filter { !$0.isHold }.prefix(count / 2))
+        let holds = ordered.filter { hold in hold.isHold && !picked.contains { $0.id == hold.id } }
         picked += holds.prefix(count - picked.count)
         if picked.count < count {
-            let rest = orderedMobility(holdsOnly: false, complementing: nil).filter { stretch in !picked.contains { $0.id == stretch.id } }
+            let rest = ordered.filter { stretch in !picked.contains { $0.id == stretch.id } }
             picked += rest.prefix(count - picked.count)
         }
         return picked.map { exercise in
@@ -1077,9 +1152,11 @@ private struct Builder {
 
     // MARK: Main stations
 
-    /// The main and Practice stations (decisions 8-11): each due ladder's current rung, in slot order,
-    /// then - for the slots the day's ladders cannot fill - a Practice Movement for the first ladder, then
-    /// the second. A ladder with no eligible rung (movement access, an injury) contributes nothing.
+    /// The main, Practice and Variation stations (decisions 8-11, ADR-0018): each due ladder's current
+    /// rung, in slot order, then - for the slots the day's ladders cannot fill - a Practice Movement for
+    /// the first ladder, then the second, then - on the slots beyond a rung and a Practice Movement for
+    /// every ladder (a Push or Pull Day's fifth) - a Variation of a current rung, or nothing. A ladder
+    /// with no eligible rung (movement access, an injury) contributes nothing.
     ///
     /// Focus Areas (decision 20): a ladder whose current rung a Focus Area covers goes ahead of the others
     /// (behind only a Different workout press, which asks for other moves), and the Practice slot goes
@@ -1106,7 +1183,76 @@ private struct Builder {
         for main in practiceOrder.prefix(max(0, slots - mains.count)) {
             if let practice = practiceItem(for: main) { items.append(practice) }
         }
+        let variationSlots = max(0, slots - 2 * day.ladders.count)
+        return items + variationStations(count: variationSlots, mains: items.filter { $0.role == .main })
+    }
+
+    /// The Variation slots (ADR-0018): Variations of the day's current rungs (`Exercise.variationOf`) that
+    /// the eligible pool offers - so every movement-access, injury and skip rule applies - and that both
+    /// Trainers have art for, least recently done first. A rung's Variations rotate that way; with none
+    /// eligible the slot stays empty and the fit fills the time with reps and rest.
+    private mutating func variationStations(count: Int, mains: [PlannedItem]) -> [PlannedItem] {
+        guard count > 0 else { return [] }
+        let parentOrder = Dictionary(mains.enumerated().map { ($1.exercise.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let lastDone = lastDoneDates()
+        let candidates = pool
+            .filter { variation in
+                variation.variationOf.map { parentOrder[$0] != nil } == true
+                    && !usedIds.contains(variation.id)
+                    && hasTrainerArt(variation)
+            }
+            .sorted { lhs, rhs in
+                // A Variation a Different workout press already showed goes behind the others.
+                let lOffered = offered.contains(lhs.id)
+                let rOffered = offered.contains(rhs.id)
+                if lOffered != rOffered { return !lOffered }
+                let l = lastDone[lhs.id]
+                let r = lastDone[rhs.id]
+                if (l == nil) != (r == nil) { return l == nil }
+                if let l, let r, l != r { return l < r }
+                let lParent = lhs.variationOf.flatMap { parentOrder[$0] } ?? 0
+                let rParent = rhs.variationOf.flatMap { parentOrder[$0] } ?? 0
+                return lParent != rParent ? lParent < rParent : lhs.id < rhs.id
+            }
+        var items: [PlannedItem] = []
+        for variation in candidates where items.count < count {
+            guard let parent = mains.first(where: { $0.exercise.id == variation.variationOf }) else { continue }
+            items.append(variationItem(for: variation, parent: parent))
+        }
         return items
+    }
+
+    /// A Variation station: four sets at its parent rung's number when the two are counted alike (reps,
+    /// reps per side, or a hold), else at the opening number of its own range, cut and padded like a main
+    /// station. It records no Earned Reps, so nothing it logs moves a rung or the Rep Ramp.
+    private mutating func variationItem(for variation: Exercise, parent: PlannedItem) -> PlannedItem {
+        usedIds.insert(variation.id)
+        let kind = RepGrammar.kind(of: variation)
+        let isHeld = reentryScale < AdaptiveOverload.neutralReentryScale
+        let value: Int
+        if kind == RepGrammar.kind(of: parent.exercise) {
+            value = parent.start
+        } else {
+            value = AdaptiveOverload.target(
+                for: variation,
+                level: level,
+                recentLogs: [],
+                progressionRate: progressionRate,
+                reentryScale: reentryScale,
+                steppedDownSince: nil,
+                startingRepMultiplier: startingRepMultiplier
+            ).value
+        }
+        return PlannedItem(
+            exercise: variation,
+            role: .variation,
+            value: value,
+            earned: nil,
+            sets: RepGrammar.setsPerStation,
+            floor: RepGrammar.shortSessionFloor(for: kind),
+            ceiling: isHeld ? value : RepGrammar.earnedRange(for: kind, level: level).upperBound,
+            isFocused: parent.isFocused
+        )
     }
 
     /// `items` with the focused ones first, each group keeping its incoming order. `isFocused` returns
@@ -1276,8 +1422,11 @@ private struct Builder {
     // MARK: Bookends
 
     /// One-set stretches at their catalog lengths, claiming each id so no later slot reuses it.
-    private mutating func mobilityItems(from exercises: [Exercise], cap: Int) -> [PlannedItem] {
-        exercises.prefix(cap).map { exercise in
+    private mutating func mobilityItems(matching patterns: Set<MovementPattern>, holdsFirst: Bool = false, cap: Int) -> [PlannedItem] {
+        let picked = orderedMobility(matching: patterns, holdsFirst: holdsFirst).prefix(cap)
+        let spent = picked.filter { !offered.contains($0.id) && !SessionAssembly.complements($0, anyOf: patterns) }.count
+        unmatchedStretchAllowance = max(0, unmatchedStretchAllowance - spent)
+        return picked.map { exercise in
             usedIds.insert(exercise.id)
             return .fixed(exercise, role: nil, value: SessionAssembly.bookendValue(for: exercise), sets: 1)
         }
@@ -1287,41 +1436,31 @@ private struct Builder {
 
     /// Eligible, not-yet-claimed mobility movements ordered for variety: never-worked and longest-ago
     /// first, movements used in the last few sessions pushed back, then shortest (finest timing
-    /// granularity) and id as deterministic tie-breaks. Ahead of all of that, a stretch a **Different
-    /// workout** press already showed (`offered`) goes behind every stretch that press has not.
+    /// granularity) and id as deterministic tie-breaks.
     ///
-    /// `complementing` biases the result prefer-then-fill (US-M02): when the day's lead strength
-    /// pattern is supplied, the single best-variety stretch that complements it is promoted to the
-    /// front so the bookend *leads* with a matched stretch, with every remaining slot left in this
-    /// same staleness / no-repeat order. The bias is a pure, stable reorder that never drops a
-    /// stretch, so a bookend is never starved: when no ordered stretch complements the lead (or the
-    /// lead is `nil`) the general variety ordering stands unchanged as the fallback.
+    /// `matching` makes the bookends day-matched (ADR-0018, replacing US-M02's prefer-then-fill lead):
+    /// given the day's patterns, every stretch whose `complements` names one of them comes first - those a
+    /// **Different workout** press has not shown (`offered`) ahead of those it has, each in that variety
+    /// order - and the others follow only as the fallback for when the matches run out, so a bookend is
+    /// never starved, and never holds an unmatched stretch while a match is left. The one exception is
+    /// `unmatchedStretchAllowance`: when a press staying inside the matches would rebuild exactly the session
+    /// it replaces, `assemble` re-plans it with an allowance of one, which ranks the first unshown unmatched stretch
+    /// right after the unshown matches, so the press changes the fewest bookend stretches it can. `nil`
+    /// (the Recovery flow) keeps the plain variety order. `holdsFirst` (the cooldown) puts holds ahead of
+    /// moving stretches inside each of those groups, never across them.
     ///
-    /// `sitsLong` layers the US-M03 posture/hip bias underneath that: a desk worker's bookend pool is
-    /// first reordered to lead with posture/hip openers (`postureHipLean`), then the US-M02
-    /// lead-complement promotion runs on top of the reordered pool. Composing the two this way keeps
-    /// US-M02's slot-0 authority intact (the pattern-matched lead stretch still wins the first slot)
-    /// while every *following* bookend slot fills with hip relief first. Both steps are pure, stable
-    /// reorders of a deterministically-sorted array, so the assembled session stays an `asOf`-pure
-    /// function of its inputs, and neither changes the bookend's count - though the posture/hip reorder
-    /// does change which stretches fill it, so bookend duration (and, through the timing fit, a strength
-    /// set count) can differ between profiles (see `sitsLong`/`postureHipLean`).
-    private func orderedMobility(holdsOnly: Bool, complementing lead: MovementPattern? = nil) -> [Exercise] {
-        let lastWorked = mobilityLastWorked()
+    /// `sitsLong` layers the US-M03 posture/hip bias inside each group (`postureHipLean`): a desk worker's
+    /// matching stretches lead with posture/hip openers, but the bias never brings an unmatched stretch
+    /// ahead of a match. Every step is a pure, stable reorder of a deterministically-sorted array, so the
+    /// assembled session stays an `asOf`-pure function of its inputs, and none changes a bookend's count -
+    /// though the reorder does change which stretches fill it, so bookend duration (and, through the timing
+    /// fit, the reps and rest) can differ between profiles.
+    private func orderedMobility(matching patterns: Set<MovementPattern>?, holdsFirst: Bool = false) -> [Exercise] {
+        let lastWorked = lastDoneDates()
         let recent = recentlyUsedIds()
         let ordered = pool
-            .filter {
-                $0.pillar == .mobility
-                    && !usedIds.contains($0.id)
-                    && (!holdsOnly || $0.isHold)
-            }
+            .filter { $0.pillar == .mobility && !usedIds.contains($0.id) }
             .sorted { lhs, rhs in
-                // A Different workout press: a stretch an earlier press already showed goes behind every
-                // other, ahead of the variety window, since the user has just asked for other moves.
-                let lhsOffered = offered.contains(lhs.id)
-                let rhsOffered = offered.contains(rhs.id)
-                if lhsOffered != rhsOffered { return !lhsOffered }
-
                 let lhsRecent = recent.contains(lhs.id)
                 let rhsRecent = recent.contains(rhs.id)
                 if lhsRecent != rhsRecent { return !lhsRecent }
@@ -1336,31 +1475,23 @@ private struct Builder {
                 }
                 return lhs.id < rhs.id
             }
-        let leaned = Self.postureHipLean(ordered, apply: sitsLong)
-        return Self.leadingComplement(leaned, complementing: lead)
-    }
-
-    /// Prefer-then-fill (US-M02): promote the first (best-variety) stretch in `ordered` whose
-    /// `complements` contains `lead` to the front, leaving every other stretch in its existing
-    /// relative order. A no-op when `lead` is `nil` or no stretch complements it, so the general
-    /// mobility ordering is the fallback and the bookend is never starved or emptied. Pure and
-    /// deterministic: it reorders a deterministically-sorted array by an array `contains`, with no
-    /// set-iteration order dependence and no clock, so the assembled session stays an `asOf`-pure
-    /// function of its inputs. When several complementary stretches tie on freshness the tie is
-    /// already resolved by `ordered`'s existing staleness / no-repeat ordering, so no new
-    /// nondeterminism enters here.
-    private static func leadingComplement(
-        _ ordered: [Exercise],
-        complementing lead: MovementPattern?
-    ) -> [Exercise] {
-        guard
-            let lead,
-            let leadIndex = ordered.firstIndex(where: { $0.complements?.contains(lead) == true })
-        else { return ordered }
-        var reordered = ordered
-        let complement = reordered.remove(at: leadIndex)
-        reordered.insert(complement, at: 0)
-        return reordered
+        func arranged(_ group: [Exercise]) -> [Exercise] {
+            let leaned = Self.postureHipLean(group, apply: sitsLong)
+            guard holdsFirst else { return leaned }
+            return leaned.filter(\.isHold) + leaned.filter { !$0.isHold }
+        }
+        guard let patterns else { return arranged(ordered) }
+        let fresh = ordered.filter { !offered.contains($0.id) }
+        let shown = ordered.filter { offered.contains($0.id) }
+        func matched(_ group: [Exercise]) -> [Exercise] {
+            arranged(group.filter { SessionAssembly.complements($0, anyOf: patterns) })
+        }
+        func unmatched(_ group: [Exercise]) -> [Exercise] {
+            arranged(group.filter { !SessionAssembly.complements($0, anyOf: patterns) })
+        }
+        let freshUnmatched = unmatched(fresh)
+        let allowed = Array(freshUnmatched.prefix(unmatchedStretchAllowance))
+        return matched(fresh) + allowed + matched(shown) + Array(freshUnmatched.dropFirst(allowed.count)) + unmatched(shown)
     }
 
     /// The US-M03 desk-worker bias: when `apply` (the user's `sitsLong`), stable-partition `ordered` so
@@ -1373,22 +1504,22 @@ private struct Builder {
     /// starved), every block's count and the bookend stretch count are untouched (a short session cannot
     /// be re-inflated with stretching), and no path here can create a mobility middle block - the reorder
     /// only ever feeds the warm-up and cooldown pools. It does change bookend *composition*, so a desk
-    /// worker's bookend duration - and, through the timing fit, a training block's round count - can differ
-    /// from the general profile's, which since US-CC08's generous pace it actually does at 45/60 min. What
-    /// is guarded is the movements and their per-set targets, not the round count
-    /// (`testSitsLongChangesNoTrainingMovementOrTarget`). It runs *before*
-    /// `leadingComplement`, which retains final authority over the lead
-    /// slot (US-M02). Pure and deterministic: a stable partition of an already deterministically-sorted
-    /// array (`filter` preserves order), with no set-iteration dependence and no clock, so the assembled
-    /// session stays an `asOf`-pure function of its inputs.
+    /// worker's bookend duration - and, through the timing fit, the reps and rest - can differ from the
+    /// general profile's. What is guarded is the training movements and their Earned Reps
+    /// (`testSitsLongChangesNoTrainingMovementOrEarnedLevel`). `orderedMobility` applies it inside the
+    /// day's matching stretches and inside the fallback separately, so it never brings an unmatched
+    /// stretch ahead of a match (ADR-0018). Pure and deterministic: a stable partition of an already
+    /// deterministically-sorted array (`filter` preserves order), with no set-iteration dependence and no
+    /// clock, so the assembled session stays an `asOf`-pure function of its inputs.
     private static func postureHipLean(_ ordered: [Exercise], apply: Bool) -> [Exercise] {
         guard apply else { return ordered }
         return ordered.filter(SessionAssembly.isPostureHipOpener)
             + ordered.filter { !SessionAssembly.isPostureHipOpener($0) }
     }
 
-    /// Most recent completed (non-skipped) date per mobility exercise id, for variety ordering.
-    private func mobilityLastWorked() -> [String: Date] {
+    /// Most recent completed (non-skipped) date per exercise id, for the variety order of the bookends and
+    /// the Variation slot.
+    private func lastDoneDates() -> [String: Date] {
         var lastWorked: [String: Date] = [:]
         for log in recentLogs {
             for logged in log.exercises where !logged.skipped {

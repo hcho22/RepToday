@@ -23,9 +23,14 @@ struct SessionVariation: Equatable {
     /// The moves the earlier presses of this sequence already showed. Empty means "no press": the
     /// default session, byte-for-byte what the engine built before this input existed.
     let offeredExerciseIds: Set<String>
+    /// The moves of the session this press replaces (the one on screen). A press that staying inside the
+    /// day's matching stretches would rebuild exactly that session brings in one unmatched stretch instead
+    /// (`SessionAssembly.assemble`, ADR-0018).
+    let replacedExerciseIds: Set<String>
 
-    init(offeredExerciseIds: Set<String>) {
+    init(offeredExerciseIds: Set<String>, replacedExerciseIds: Set<String> = []) {
         self.offeredExerciseIds = offeredExerciseIds
+        self.replacedExerciseIds = replacedExerciseIds
     }
 
     /// The default session - no press yet.
@@ -42,9 +47,14 @@ struct SessionVariation: Equatable {
     func advanced(past shown: Workout) -> SessionVariation {
         let shownIds = Self.exerciseIds(in: shown)
         if !isNone, shownIds.isSubset(of: offeredExerciseIds) {
-            return SessionVariation(offeredExerciseIds: shownIds)
+            return SessionVariation(offeredExerciseIds: shownIds, replacedExerciseIds: shownIds)
         }
-        return SessionVariation(offeredExerciseIds: offeredExerciseIds.union(shownIds))
+        return SessionVariation(offeredExerciseIds: offeredExerciseIds.union(shownIds), replacedExerciseIds: shownIds)
+    }
+
+    /// Whether `workout` has exactly the moves of the session this press replaces.
+    func repeatsReplacedSession(_ workout: Workout) -> Bool {
+        Self.exerciseIds(in: workout) == replacedExerciseIds
     }
 
     /// Whether `workout` shows at least one move this variation has not already offered.

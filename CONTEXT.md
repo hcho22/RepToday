@@ -12,7 +12,7 @@ The training families a session draws from - `strength`, `mobility`, `primal` (`
 Single-focus, blend, cold-start, and Return sessions all lead with strength; mobility is **supporting** - the structural warm-up and the cooldown bookends only, never a training block and never the lead.
 This is the strength-primary decision that superseded the earlier co-primary framing (see [ADR-0001](docs/adr/0001-strength-primary-sessions.md)); it is captain-accepted, and the term "co-primary" is retired for describing current behavior.
 Since **US-M01** the strength lead is *structural*, and since M1 every session is a **Training Day**: Warm-Up -> one strength circuit for one group -> Cooldown, with no strength-vs-mobility split machinery. Since **US-M03** the `sitsLong` (desk-worker signal) *biases* bookend selection toward posture/hip openers - never a sizing lever, so it can never reintroduce a mobility middle block (`SessionAssembly.postureHipLean`; see AGENTS.md section 2).
-Since **US-M02** the bookends are *pattern-matched*: each mobility movement carries a `complements: [MovementPattern]` tag (`Exercises.json`), and the warm-up and cooldown **lead** with a stretch complementing the day's lead strength pattern, then fill with the existing staleness / no-repeat ordering - a preference, never a filter (`SessionAssembly.leadingComplement`); the general pool is the fallback so a bookend is never starved.
+Since **US-M02** each mobility movement carries a `complements: [MovementPattern]` tag (`Exercises.json`), and since [ADR-0018](docs/adr/0018-session-sizing-and-day-matched-bookends.md) the bookends are *day-matched*: every warm-up and cooldown stretch complements the day's group (push on a Push Day, pull on a Pull Day, squat or hinge on a Legs Day), the existing variety order picks among the matching stretches, and an unmatched stretch fills only once the matches the user is offered run out, so a bookend is never starved (`SessionAssembly.complements`, `orderedMobility`); a **Different workout** press stays inside the matches too (the unshown ones first) and brings in one unmatched stretch only when it would otherwise rebuild exactly the session it replaces. The `sitsLong` lean reorders only inside the matches and inside that fallback.
 
 `primal` is **retired** as a training family ([ADR-0014](docs/adr/0014-retire-primal-pillar.md), M1): crawls need floor space a home or hotel room does not have.
 Every locomotion movement carries `audience: retired` and stays in the catalog only so old logs and paused sessions still resolve; Bear Hold stays on the core ladder.
@@ -153,9 +153,9 @@ No gamification (no XP, levels, badges, or a streak to break); a miss dents but 
 
 A session dedicated to one group: a **Push Day** (push), a **Pull Day** (pull), or a **Legs Day** (squat and hinge).
 A Training Day never mixes groups; its only extras are the **Core Sprinkle** and the warm-up and cooldown bookends.
-Its main slots by length are 1 (5-20 min), 2 (30), 3 (45) and 4 (60); a Push or Pull Day has two ladders, so its third and fourth slots are **Practice Movements**, and a Legs Day uses the squat, lunge, bridge and hip ladders.
+Its main slots by length are 1 (5 min), 2 (10-15), 3 (20-30), 4 (45) and 5 (60); a Push or Pull Day has two ladders, so its third and fourth slots are **Practice Movements** and its fifth is a **Variation**, and a Legs Day uses the squat, lunge, bridge and hip ladders, its fifth slot the first ladder's Practice Movement.
 Every main and core station runs 4 rounds.
-Decided in [ADR-0012](docs/adr/0012-push-pull-legs-rotation-with-rest-day.md) and [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md); the owning code is `Services/Engine/SessionAssembly.swift` and `Models/TrainingDay.swift`.
+Decided in [ADR-0012](docs/adr/0012-push-pull-legs-rotation-with-rest-day.md) and [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md), with the counts by length from [ADR-0018](docs/adr/0018-session-sizing-and-day-matched-bookends.md); the owning code is `Services/Engine/SessionAssembly.swift` and `Models/TrainingDay.swift`.
 
 ## Rotation / Cycle
 
@@ -175,7 +175,7 @@ Since M4 the user can also choose to rest on a Training Day (the Coach's "rest t
 
 ## Core Sprinkle
 
-The one core movement added to every Training Day (two when Abs is a **Focus Area**), rotating across core ladders from Cycle to Cycle.
+The core movement added to a Training Day: one at 15-30 minutes and two at 45-60 (none at 5-10), plus one when Abs is a **Focus Area**, each from a different core ladder, rotating across core ladders from Cycle to Cycle ([ADR-0018](docs/adr/0018-session-sizing-and-day-matched-bookends.md)).
 
 ## Practice Movement
 
@@ -183,10 +183,11 @@ The next harder rung of a ladder, prescribed at low reps beside the current rung
 It runs at 4 x 10 (per side 4 x 5, holds 15 seconds), previews progression but never advances it (`LoggedExercise.countsForProgression`), and may sit above the user's staple level ([ADR-0015](docs/adr/0015-practice-movement-bypasses-staple-gate.md)).
 With no harder rung the slot takes the rung below at volume reps; with neither, the session has one fewer movement.
 
-## Variation (planned)
+## Variation
 
-A same-difficulty alternative to a rung (Standard -> Wide or One-legged push-up) that joins longer sessions as an extra movement once its Trainer art exists.
-It unlocks with its parent rung and never advances the ladder.
+A same-difficulty alternative to a rung (Standard -> Wide or One-legged push-up) that fills a 60-minute Push or Pull Day's fifth slot once its Trainer art exists for both Trainers, rotating among a rung's Variations, least recently done first.
+It unlocks with its parent rung (a catalog entry's `variationOf`), sits alone in its own chain, and never advances the ladder, Earned Reps or a Foundation (`StationRole.variation`); with none eligible the slot stays empty.
+Landing a Variation's catalog entry and its art is the only step that makes it live ([ADR-0018](docs/adr/0018-session-sizing-and-day-matched-bookends.md)); the catalog carries none yet.
 
 ## Earned Reps / Rep Ramp
 
@@ -221,7 +222,7 @@ The owning code is `Models/CustomWorkout.swift`, `Services/Coach/CustomWorkoutSe
 
 A body part the user wants to improve: Chest, Shoulders, Arms, Back, Abs, Legs, or Glutes - multi-select and optional, asked in onboarding and editable in Settings.
 It replaced the never-read goal list (`primaryGoal`, whose key profiles still carry so older builds can read them).
-It changes emphasis within Training Days, never the Rotation: a movement it covers is ordered first among its kind of station, padded first (and cut last) by the fit, and given the Practice slot first; Abs adds a second Core Sprinkle.
+It changes emphasis within Training Days, never the Rotation: a movement it covers is ordered first among its kind of station, padded first (and cut last) by the fit, and given the Practice slot first; Abs adds one more Core Sprinkle.
 Chest covers the horizontal push ladder, Shoulders the vertical push ladder, Arms the diamond push-up, dips and rows, Back both pull ladders, Abs core, Legs the squat and lunge ladders, Glutes the bridge and hip-hinge ladders.
 The owning code is `Models/FocusArea.swift` and `Services/Engine/SessionAssembly.swift`.
 

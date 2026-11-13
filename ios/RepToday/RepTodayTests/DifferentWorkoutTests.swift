@@ -166,17 +166,21 @@ final class DifferentWorkoutTests: XCTestCase {
     // MARK: - Every rule still governs every press
 
     /// The session lands within `toleranceSeconds` of `minutes`, or runs short only because the same plan,
-    /// re-fit with the press's variation, has no lever left (`isSaturated`) - an honest shortfall.
+    /// re-fit with the press's variation (and the unmatched-stretch allowance it was assembled with), has no
+    /// lever left (`isSaturated`) - an honest shortfall.
     private func fillsOrRunsHonestlyShort(_ workout: Workout, _ scenario: Scenario, minutes: Int, offered: Set<String>, library: [Exercise]) -> Bool {
         let gap = SessionAssembly.plannedSeconds(of: workout) - minutes * 60
         if abs(gap) <= SessionAssembly.toleranceSeconds { return true }
         guard gap < 0, let day = workout.trainingDay else { return false }
-        var plan = SessionAssembly.planSession(
-            requestedMinutes: minutes, user: scenario.user, library: library, recentLogs: scenario.recentLogs,
-            offered: offered, trainingDay: day, asOf: asOf, calendar: calendar
-        )
-        SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
-        return plan.isSaturated
+        let ids = SessionVariation.exerciseIds(in: workout)
+        return [0, 1].contains { allowance in
+            var plan = SessionAssembly.planSession(
+                requestedMinutes: minutes, user: scenario.user, library: library, recentLogs: scenario.recentLogs,
+                offered: offered, unmatchedStretchAllowance: allowance, trainingDay: day, asOf: asOf, calendar: calendar
+            )
+            SessionAssembly.fit(&plan, targetSeconds: minutes * 60)
+            return Set(plan.materialize().flatMap(\.exercises).map(\.exercise.id)) == ids && plan.isSaturated
+        }
     }
 
     func testEveryPressKeepsTheLengthShapeDayAccessInjuriesRungsSetsAndEarnedReps() async throws {

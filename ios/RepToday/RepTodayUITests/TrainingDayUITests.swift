@@ -80,7 +80,8 @@ final class TrainingDayUITests: XCTestCase {
         attachScreenshot(named: "03-complete")
 
         XCTAssertGreaterThanOrEqual(illustrations.count, 6, "too few movements seen: \(illustrations)")
-        XCTAssertLessThanOrEqual(illustrations.count, 8, "a 45 minute session serves at most 8 movements: \(illustrations.keys.sorted())")
+        // ADR-0018: 2 warm-up + 4 main + 2 Core Sprinkles + 2 cooldown (no Focus Areas picked here).
+        XCTAssertLessThanOrEqual(illustrations.count, 10, "a 45 minute session serves at most 10 movements: \(illustrations.keys.sorted())")
         for (name, label) in illustrations {
             XCTAssertTrue(label.contains("trainer showing"), "\(name) shows no Trainer art: \(label)")
         }

@@ -72,4 +72,16 @@ enum StationRole: String, Codable, CaseIterable, Hashable {
     case core
     /// A stretch in the Recovery flow offered on a Rest Day (US-TD05).
     case recovery
+    /// A Variation of one of the day's current rungs, in a 60-minute Push or Pull Day's fifth slot
+    /// (ADR-0018). Like a Practice Movement it never advances progression.
+    case variation
+
+    /// Whether a station in this role may move a rung, the Rep Ramp or a Foundation: everything but a
+    /// Practice Movement and a Variation, which only preview or vary the ladder.
+    var advancesProgression: Bool {
+        switch self {
+        case .main, .core, .recovery: return true
+        case .practice, .variation: return false
+        }
+    }
 }

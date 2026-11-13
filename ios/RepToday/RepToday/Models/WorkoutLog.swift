@@ -69,10 +69,11 @@ struct LoggedExercise: Codable, Equatable, Identifiable {
 
 extension LoggedExercise {
     /// The one predicate for what counts toward progression (US-TD02): not skipped and not a Practice
-    /// Movement. Chain frontiers, Earned Reps, plateau diagnosis, the Progress surfaces and Foundation
-    /// clearing all read it, so a Practice station never moves a rung or the Rep Ramp.
+    /// Movement or a Variation (`StationRole.advancesProgression`). Chain frontiers, Earned Reps, plateau
+    /// diagnosis, the Progress surfaces and Foundation clearing all read it, so neither ever moves a rung
+    /// or the Rep Ramp.
     var countsForProgression: Bool {
-        !skipped && role != .practice
+        !skipped && role?.advancesProgression != false
     }
 
     /// The earned per-set value this station recorded: its Earned Reps (or hold seconds) when the log

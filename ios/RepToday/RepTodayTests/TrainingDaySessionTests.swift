@@ -39,9 +39,11 @@ final class TrainingDaySessionTests: XCTestCase {
 
     /// Every main, Practice and core station runs exactly 4 sets; every rep and hold number is a multiple
     /// of 5; no session mixes groups; no primal; no `pull_ytw`; the bookends hold at most two stretches
-    /// each; and the movement counts follow decision 8. Bound to literals so a changed constant cannot
-    /// silently loosen it. Focus Areas (US-HO03) keep every invariant; Abs adds one Core Sprinkle, so its
-    /// 45/60 minute sessions hold at most 9/10 distinct movements instead of 8/9.
+    /// each; and the movement counts follow ADR-0018: main slots 1 (5 min), 2 (10-15), 3 (20-30), 4 (45)
+    /// and 5 (60), where a Push or Pull Day's fifth is a Variation the shipping catalog does not yet carry,
+    /// so it serves 4; Core Sprinkles 0 (5-10 min), 1 (15-30) and 2 (45-60), plus one with Abs, bounded by
+    /// the core ladders the user is offered. Bound to literals so a changed constant cannot silently loosen
+    /// it. A 45/60 minute session holds at most 10/11 distinct movements, 11/12 with Abs.
     func testEverySessionKeepsTheTrainingDayInvariants() {
         let focusSets: [[FocusArea]] = [[], [.abs], FocusArea.allCases, [.arms, .glutes, .shoulders]]
         for focusAreas in focusSets {
@@ -71,18 +73,23 @@ final class TrainingDaySessionTests: XCTestCase {
                             )
                             let core = circuit.filter { $0.role == .core }
                             XCTAssertTrue(core.allSatisfy { $0.exercise.movementPattern == .core }, label)
-                            XCTAssertEqual(core.count, minutes <= 10 ? 0 : (hasAbs ? 2 : 1), "\(label): Core Sprinkle")
+                            let coreAsked = (minutes <= 10 ? 0 : (minutes <= 30 ? 1 : 2)) + (minutes > 10 && hasAbs ? 1 : 0)
+                            // The hollow ladder is advanced-only until the Strength Phase (ADR-0007).
+                            let coreLadders = level == .advanced || phase == .strength ? 3 : 2
+                            XCTAssertEqual(core.count, min(coreAsked, coreLadders), "\(label): Core Sprinkle")
+                            XCTAssertEqual(Set(core.map(\.exercise.progressionChainId)).count, core.count, "\(label): a core ladder twice")
 
-                            let mains = [5: 1, 10: 1, 15: 1, 20: 1, 30: 2, 45: 3, 60: 4][minutes]!
+                            let mains = [5: 1, 10: 2, 15: 2, 20: 3, 30: 3, 45: 4, 60: day == .legs ? 5 : 4][minutes]!
                             XCTAssertEqual(worked.count, mains, "\(label): main slots")
+                            XCTAssertFalse(circuit.contains { $0.role == .variation }, "\(label): the shipping catalog carries no Variation")
 
                             let warmup = workout.blocks.first { $0.category == .warmup }?.exercises.count ?? 0
                             let cooldown = workout.blocks.first { $0.category == .cooldown }?.exercises.count ?? 0
                             XCTAssertLessThanOrEqual(warmup, 2, label)
                             XCTAssertLessThanOrEqual(cooldown, 2, label)
                             let distinct = Set(all.map(\.exercise.id)).count
-                            if minutes == 45 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 9 : 8, label) }
-                            if minutes == 60 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 10 : 9, label) }
+                            if minutes == 45 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 11 : 10, label) }
+                            if minutes == 60 { XCTAssertLessThanOrEqual(distinct, hasAbs ? 12 : 11, label) }
                         }
                     }
                 }
@@ -90,12 +97,14 @@ final class TrainingDaySessionTests: XCTestCase {
         }
     }
 
-    // MARK: Slots (decisions 8-11)
+    // MARK: Slots (decisions 8-11, ADR-0018)
 
     func testAPushDayFillsSlotsThreeAndFourWithPracticeOfTheNextRung() throws {
-        let workout = session(.push, minutes: 60, level: .beginner)
+        let workout = session(.push, minutes: 45, level: .beginner)
         let circuit = stations(workout)
-        XCTAssertEqual(circuit.map { $0.role }, [.main, .main, .practice, .practice, .core])
+        XCTAssertEqual(circuit.map { $0.role }, [.main, .main, .practice, .practice, .core, .core])
+        // With no Variation in the catalog, the 60-minute session's fifth slot stays empty.
+        XCTAssertEqual(stations(session(.push, minutes: 60, level: .beginner)).map { $0.role }, [.main, .main, .practice, .practice, .core, .core])
 
         for (mainIndex, practiceIndex) in [(0, 2), (1, 3)] {
             let main = circuit[mainIndex]
@@ -140,11 +149,26 @@ final class TrainingDaySessionTests: XCTestCase {
     }
 
     func testALegsDayLeadsWithOneSquatSideAndOneHingeSideLadder() {
-        let circuit = stations(session(.legs, minutes: 30))
+        let circuit = stations(session(.legs, minutes: 15))
         let sides = circuit.filter { $0.role == .main }.map(\.exercise.movementPattern)
+        XCTAssertEqual(sides.count, 2)
         XCTAssertEqual(Set(sides), [.squat, .hinge])
-        let full = stations(session(.legs, minutes: 60)).filter { $0.role == .main }.map(\.exercise.progressionChainId)
+        let full = stations(session(.legs, minutes: 45)).filter { $0.role == .main }.map(\.exercise.progressionChainId)
         XCTAssertEqual(Set(full), ["squat", "lunge", "hinge_bridge", "hinge_hip"])
+    }
+
+    /// A Legs Day's fifth slot (60 min) is its first ladder's Practice Movement (ADR-0018, decision 4).
+    func testALegsDaysFifthSlotIsItsFirstLaddersPracticeMovement() throws {
+        for level in FitnessLevel.allCases {
+            let circuit = stations(session(.legs, minutes: 60, level: level))
+            let mains = circuit.filter { $0.role == .main }
+            XCTAssertEqual(mains.count, 4, "\(level)")
+            let practice = try XCTUnwrap(circuit.first { $0.role == .practice }, "\(level)")
+            XCTAssertEqual(circuit.filter { $0.role == .practice }.count, 1, "\(level)")
+            let first = try XCTUnwrap(mains.first)
+            XCTAssertEqual(practice.exercise.progressionChainId, first.exercise.progressionChainId, "\(level)")
+            XCTAssertEqual(practice.exercise.progressionOrder, first.exercise.progressionOrder + 1, "\(level)")
+        }
     }
 
     func testEachLadderContributesItsCurrentRungUntilEarned() {

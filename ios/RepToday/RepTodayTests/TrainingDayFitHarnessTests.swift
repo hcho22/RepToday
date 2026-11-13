@@ -7,9 +7,11 @@ import XCTest
 ///
 /// Decision 17: a session lands within about three minutes of the request, or - when even the top of the
 /// range and the longest rests cannot fill it - runs short and says so (an honest shortfall). It never
-/// overruns past the tolerance unless every rep is already at the short-session floor.
+/// plans past the tolerance: a session still over with every rep at the short-session floor drops a
+/// station and runs short instead (ADR-0018).
 ///
-/// Each run prints a transcript (`FIT HARNESS` lines) of planned against requested minutes.
+/// Each run prints a transcript (`FIT HARNESS` lines) of planned against requested minutes, for a fresh
+/// history, a cold-start one and a seasoned one.
 final class TrainingDayFitHarnessTests: XCTestCase {
 
     private let lengths = [5, 10, 15, 20, 30, 45, 60]
@@ -25,7 +27,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
     }
 
     /// The Focus Area sets the harness prices beside no focus (US-HO03): each area alone, Abs with its
-    /// second Core Sprinkle among them, and every area at once.
+    /// extra Core Sprinkle among them, and every area at once.
     private let focusSets: [[FocusArea]] = [[]] + FocusArea.allCases.map { [$0] } + [FocusArea.allCases]
 
     func testEveryLengthLevelAndDayFillsWithinToleranceOrReportsAnHonestShortfall() async throws {
@@ -35,7 +37,9 @@ final class TrainingDayFitHarnessTests: XCTestCase {
             let focusLabel = focusAreas.isEmpty ? "none" : focusAreas.count == FocusArea.allCases.count ? "all" : focusAreas.map(\.rawValue).joined(separator: "+")
             for history in History.allCases {
                 for level in FitnessLevel.allCases {
-                    let user = TrainingDayFixtures.user(level: level, focusAreas: focusAreas, asOf: asOf)
+                    var user = TrainingDayFixtures.user(level: level, focusAreas: focusAreas, asOf: asOf)
+                    if history == .coldStart { user.coldStart = User.ColdStart(sessionsLogged: 0, active: true) }
+                    let policy = history == .coldStart ? SessionPolicy.seeded(forFitnessLevel: level) : .default
                     let logs = history.logs(library: library, level: level, asOf: asOf, calendar: calendar)
                     for day in TrainingDay.rotation {
                         for minutes in lengths {
@@ -44,6 +48,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
                                 user: user,
                                 library: library,
                                 recentLogs: logs,
+                                sessionPolicy: policy,
                                 trainingDay: day,
                                 asOf: asOf,
                                 calendar: calendar
@@ -62,10 +67,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
                                 )
                             } else {
                                 status = "overrun"
-                                XCTAssertTrue(
-                                    plan.stations.allSatisfy { $0.value - RepGrammar.step < $0.floor },
-                                    "\(focusLabel) \(history) \(level) \(day) \(minutes) min overruns \(gap)s with reps above the floor"
-                                )
+                                XCTFail("\(focusLabel) \(history) \(level) \(day) \(minutes) min plans \(gap)s past its length, beyond the tolerance")
                             }
                             let line = String(
                                 format: "FIT HARNESS focus:%@ %@ %@ %@ %2d min: planned %5.1f min (%+4ds) stations %d rest %ds pause %ds - %@",
@@ -85,14 +87,17 @@ final class TrainingDayFitHarnessTests: XCTestCase {
     }
 
     /// The two ends of a user's history: a fresh start (every Earned Reps at the bottom of the range) and
-    /// a seasoned one (Earned Reps climbed to the top of the range, without yet clearing a rung).
+    /// a seasoned one (Earned Reps climbed to the top of the range, without yet clearing a rung) - plus a
+    /// brand-new user still inside the cold-start window, under their level's seeded Start Seed policy
+    /// (its difficulty band and cap), which is what every user's first sessions are built from.
     private enum History: String, CaseIterable {
         case fresh
+        case coldStart
         case seasoned
 
         func logs(library: [Exercise], level: FitnessLevel, asOf: Date, calendar: Calendar) -> [WorkoutLog] {
             switch self {
-            case .fresh:
+            case .fresh, .coldStart:
                 return []
             case .seasoned:
                 let worked = library.filter { $0.pillar == .strength && MovementAccess.isAvailable($0, level: level, phase: .discipline) }

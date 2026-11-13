@@ -7,7 +7,7 @@ import Foundation
 ///
 /// A Focus Area changes emphasis *within* a Training Day and never the Rotation: on its day a focused
 /// movement is ordered first among its kind of station, is padded first when the fit has reps to add,
-/// and is given the Practice slot first; Abs adds a second Core Sprinkle (`SessionAssembly`). The raw
+/// and is given the Practice slot first; Abs adds one more Core Sprinkle (`SessionAssembly`). The raw
 /// value is the stored form.
 enum FocusArea: String, Codable, CaseIterable, Identifiable, Hashable {
     case chest

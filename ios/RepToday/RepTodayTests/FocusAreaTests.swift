@@ -123,26 +123,36 @@ final class FocusAreaTests: XCTestCase {
 
     func testAFocusedLadderIsOrderedFirstAndTakesTheSlotOnAShortSession() {
         let mains = { (plan: SessionPlan) in plan.stations.filter { $0.role == .main }.map(\.exercise.progressionChainId) }
-        XCTAssertEqual(mains(plan(.push, minutes: 15)), ["push_horizontal"])
-        XCTAssertEqual(mains(plan(.push, minutes: 15, focusAreas: [.shoulders])), ["push_vertical"])
-        XCTAssertEqual(mains(plan(.push, minutes: 30, focusAreas: [.shoulders])), ["push_vertical", "push_horizontal"])
+        XCTAssertEqual(mains(plan(.push, minutes: 5)), ["push_horizontal"])
+        XCTAssertEqual(mains(plan(.push, minutes: 5, focusAreas: [.shoulders])), ["push_vertical"])
+        XCTAssertEqual(mains(plan(.push, minutes: 15, focusAreas: [.shoulders])), ["push_vertical", "push_horizontal"])
 
-        XCTAssertEqual(mains(plan(.legs, minutes: 15)), ["squat"])
-        XCTAssertEqual(mains(plan(.legs, minutes: 15, focusAreas: [.glutes])).first.map { ["hinge_bridge", "hinge_hip"].contains($0) }, true)
+        XCTAssertEqual(mains(plan(.legs, minutes: 5)), ["squat"])
+        XCTAssertEqual(mains(plan(.legs, minutes: 5, focusAreas: [.glutes])).first.map { ["hinge_bridge", "hinge_hip"].contains($0) }, true)
         // Legs puts both squat-side ladders ahead of the hinge side.
-        XCTAssertEqual(Set(mains(plan(.legs, minutes: 30, focusAreas: [.legs]))), ["squat", "lunge"])
+        XCTAssertEqual(Set(mains(plan(.legs, minutes: 15, focusAreas: [.legs]))), ["squat", "lunge"])
     }
 
+    /// A focused station is padded first (decision 20): an unfocused station carries Padding only when no
+    /// focused station could take another step and land the session closer to its length - a focused
+    /// step that would overshoot the remaining gap gives way to a smaller unfocused one, since the fit
+    /// always takes the closest landing.
     func testFocusedStationsArePaddedFirst() {
         for level in FitnessLevel.allCases {
             for (day, focus) in [(TrainingDay.push, FocusArea.chest), (.pull, .back), (.legs, .glutes), (.push, .abs)] {
                 for minutes in [30, 45, 60] {
                     let fitted = plan(day, minutes: minutes, level: level, focusAreas: [focus])
-                    let paddable = fitted.stations.filter { $0.ceiling > $0.floor }
-                    let focusedRoomLeft = paddable.contains { $0.isFocused && $0.value + RepGrammar.step <= $0.ceiling }
-                    let unfocusedPadded = paddable.contains { !$0.isFocused && $0.padSteps > 0 }
+                    let target = minutes * 60
+                    let unfocusedPadded = fitted.stations.contains { !$0.isFocused && $0.padSteps > 0 }
+                    let focusedStepWouldLandCloser = fitted.stations.indices.contains { index in
+                        let station = fitted.stations[index]
+                        guard station.isFocused, station.value + RepGrammar.step <= station.ceiling else { return false }
+                        var trial = fitted
+                        trial.stations[index].value += RepGrammar.step
+                        return abs(trial.totalSeconds - target) < abs(fitted.totalSeconds - target)
+                    }
                     XCTAssertFalse(
-                        focusedRoomLeft && unfocusedPadded,
+                        unfocusedPadded && focusedStepWouldLandCloser,
                         "\(level) \(day) \(focus) \(minutes) min padded an unfocused station before a focused one"
                     )
                     XCTAssertTrue(fitted.stations.contains { $0.isFocused }, "\(level) \(day) \(focus) \(minutes) min")
@@ -160,12 +170,12 @@ final class FocusAreaTests: XCTestCase {
     }
 
     func testThePracticeSlotGoesToTheFocusedLadderFirst() {
-        // Push, 45 min: two mains and one Practice Movement, for the first ladder by default.
+        // Push, 30 min: two mains and one Practice Movement, for the first ladder by default.
         let practiceLadder = { (plan: SessionPlan) in
             plan.stations.filter { $0.role == .practice }.map(\.exercise.progressionChainId)
         }
-        XCTAssertEqual(practiceLadder(plan(.push, minutes: 45)), ["push_horizontal"])
-        XCTAssertEqual(practiceLadder(plan(.push, minutes: 45, focusAreas: [.shoulders])), ["push_vertical"])
+        XCTAssertEqual(practiceLadder(plan(.push, minutes: 30)), ["push_horizontal"])
+        XCTAssertEqual(practiceLadder(plan(.push, minutes: 30, focusAreas: [.shoulders])), ["push_vertical"])
 
         // Arms covers rows: with the row ladder worked most recently it would lose the Practice slot to
         // the postural ladder, but the rung above its current one is a row, so Arms hands it the slot.
@@ -174,22 +184,54 @@ final class FocusAreaTests: XCTestCase {
             completedAt: TrainingDayFixtures.date(daysAgo: 1)
         )
         let beginnerPull = { (focus: [FocusArea]) in
-            practiceLadder(self.plan(.pull, minutes: 45, level: .beginner, focusAreas: focus, logs: [rowsYesterday]))
+            practiceLadder(self.plan(.pull, minutes: 30, level: .beginner, focusAreas: focus, logs: [rowsYesterday]))
         }
         XCTAssertEqual(beginnerPull([]), ["pull_postural"])
         XCTAssertEqual(beginnerPull([.arms]), ["pull_horizontal"])
     }
 
-    func testAbsAddsASecondCoreSprinkle() {
-        for day in TrainingDay.rotation {
-            for minutes in [5, 10, 15, 30, 45, 60] {
-                let core = plan(day, minutes: minutes, focusAreas: [.abs]).stations.filter { $0.role == .core }
-                XCTAssertEqual(core.count, minutes <= 10 ? 0 : 2, "\(day) \(minutes) min")
-                XCTAssertEqual(Set(core.map(\.exercise.progressionChainId)).count, core.count, "two different core ladders")
+    /// Abs adds one Core Sprinkle wherever core appears (ADR-0018): 2 at 15-30 minutes and 3 at 45-60, one
+    /// per core ladder. A Discipline-Phase beginner or intermediate is offered only two core ladders (the
+    /// hollow ladder is advanced-only, ADR-0007), so their 45-60 minute session holds both and runs one
+    /// movement fewer rather than repeating a ladder.
+    func testAbsAddsACoreSprinkleWhereverCoreAppears() {
+        for (level, ladders) in [(FitnessLevel.intermediate, 2), (.advanced, 3)] {
+            for day in TrainingDay.rotation {
+                for minutes in [5, 10, 15, 20, 30, 45, 60] {
+                    let core = plan(day, minutes: minutes, level: level, focusAreas: [.abs]).stations.filter { $0.role == .core }
+                    let asked = minutes <= 10 ? 0 : (minutes <= 30 ? 2 : 3)
+                    XCTAssertEqual(core.count, min(asked, ladders), "\(level) \(day) \(minutes) min")
+                    XCTAssertEqual(Set(core.map(\.exercise.progressionChainId)).count, core.count, "every Core Sprinkle on its own ladder")
+                }
             }
         }
         XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: 30, focusAreas: [.abs, .chest]), 2)
         XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: 30, focusAreas: [.chest]), 1)
+        XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: 45, focusAreas: [.abs]), 3)
+        XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: 60, focusAreas: [.chest]), 2)
+    }
+
+    /// Why a Discipline-Phase beginner or intermediate gets two Core Sprinkles, not three, at 45-60 minutes
+    /// with Abs: every rung of the hollow core ladder is advanced-only (Hollow Hold, Hollow Rock,
+    /// Tuck L-Sit) or Strength-Phase-gated (One-Leg L-Sit, L-Sit), so movement access offers them nothing on
+    /// it (ADR-0007), and the session holds the plank and stability ladders' rungs rather than repeating a
+    /// ladder. An advanced user, or anyone once the Strength Phase is earned, gets all three.
+    func testTheHollowLadderIsWhyABeginnerOrIntermediateGetsTwoCoreSprinkles() throws {
+        let hollow = library.filter { $0.progressionChainId == "core_hollow" }
+        XCTAssertFalse(hollow.isEmpty)
+        for level in [FitnessLevel.beginner, .intermediate] {
+            XCTAssertTrue(hollow.allSatisfy { !MovementAccess.isAvailable($0, level: level, phase: .discipline) }, "\(level)")
+            for day in TrainingDay.rotation {
+                for minutes in [45, 60] {
+                    let core = plan(day, minutes: minutes, level: level, focusAreas: [.abs]).stations.filter { $0.role == .core }
+                    XCTAssertEqual(Set(core.map(\.exercise.progressionChainId)), ["core_plank", "core_stability"], "\(level) \(day) \(minutes) min")
+                }
+            }
+        }
+        XCTAssertTrue(hollow.contains { MovementAccess.isAvailable($0, level: .advanced, phase: .discipline) })
+        XCTAssertTrue(hollow.contains { MovementAccess.isAvailable($0, level: .beginner, phase: .strength) })
+        let advanced = plan(.push, minutes: 45, level: .advanced, focusAreas: [.abs]).stations.filter { $0.role == .core }
+        XCTAssertEqual(Set(advanced.map(\.exercise.progressionChainId)), Set(SessionAssembly.coreLadders))
     }
 
     func testFocusAreasNeverChangeTheRotation() {

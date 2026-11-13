@@ -13,16 +13,15 @@ struct Exercise: Codable, Equatable, Identifiable {
     var displayName: String
     var pillar: Pillar
     var movementPattern: MovementPattern
-    /// The strength `MovementPattern`(s) this movement's stretch complements, used by the
-    /// prefer-then-fill bookend selection (US-M02) to *lead* the warm-up and cooldown with a
-    /// stretch matching the day's lead strength pattern before filling the rest with the general
-    /// variety ordering. Only the 26 mobility movements carry it in `Exercises.json` (a mobility
-    /// stretch that matches no pattern would carry `[]`); strength/primal movements omit the key,
-    /// so it is optional with a `nil` default and an already-persisted `Exercise` (an active
-    /// session written before it existed) decodes unchanged. Read it as "which strength pattern
-    /// does this stretch relieve"; the mapping is captain-approved in the follow-on PRD. The match
-    /// is a preference, never a filter - an absent/empty value simply means this stretch is only
-    /// ever chosen by the general mobility pool ordering.
+    /// The strength `MovementPattern`(s) this movement's stretch complements, used by the day-matched
+    /// bookend selection (ADR-0018): every warm-up and cooldown stretch complements the Training Day's
+    /// group, and a stretch that does not is used only once the matching ones run out. Only the 26
+    /// mobility movements carry it in `Exercises.json` (a mobility stretch that matches no pattern
+    /// would carry `[]`); strength/primal movements omit the key, so it is optional with a `nil`
+    /// default and an already-persisted `Exercise` (an active session written before it existed)
+    /// decodes unchanged. Read it as "which strength pattern does this stretch relieve"; the mapping
+    /// is captain-approved in the US-M02 follow-on PRD. An absent/empty value means this stretch only
+    /// ever fills a bookend once the day's matching stretches run out.
     var complements: [MovementPattern]? = nil
     var category: ExerciseCategory
     /// Difficulty band 1...5, the tier's relative hardness. Who may *get* the movement is not derived
@@ -83,6 +82,13 @@ struct Exercise: Codable, Equatable, Identifiable {
     var advancementCriteria: String
     /// True when the movement is doable in a small space with only a floor and wall.
     var apartmentFriendly: Bool
+    /// The id of the rung this movement is a **Variation** of (ADR-0018, `CONTEXT.md` "Variation"): a
+    /// same-difficulty alternative such as a Wide push-up beside the Standard one. A Variation sits alone
+    /// in its own one-rung chain, never in a ladder, and fills a 60-minute Push or Pull Day's fifth slot
+    /// only while its parent is the user's current rung and Trainer art exists for both Trainers. It never
+    /// advances anything (`StationRole.variation`). `nil` for every other movement; optional so the
+    /// catalog and an already-persisted `Exercise` decode unchanged.
+    var variationOf: String? = nil
 
     /// How many times a set's prescribed per-set value is actually performed: twice for an `isPerSide`
     /// movement, once otherwise (including when the flag is absent). Read by the timing model, which has
