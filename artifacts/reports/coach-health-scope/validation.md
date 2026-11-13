@@ -29,11 +29,11 @@ It names no account, email address, token, key or provider log.
 
 ### The evaluation
 
-`convex/coachEval.ts` ran on the dev deployment `courteous-dogfish-560` with `gpt-5.6-luna` at low effort: 33 turns, the twelve M4 turns plus 21 new ones, with deterministic content checks on what the user would see and six under-18 turns through the same server rails as production.
+`convex/coachEval.ts` ran on the dev deployment `courteous-dogfish-560` with `gpt-5.6-luna` at low effort: 33 turns at first, the twelve M4 turns plus 21 new ones, with deterministic content checks on what the user would see and six under-18 turns through the same server rails as production; the second review round brought it to 35 turns, seven of them under 18.
 
 | Turns | Result |
 | --- | --- |
-| New health and fitness turns, final code (3 runs) | 63 of 63 |
+| New health and fitness turns, before the review rounds (3 runs) | 63 of 63 |
 | All 33 turns after the review round (the reply list's food and drink words, the narrower crisis phrases, daily gram figures counted as a target; 3 runs) | 99 of 99, including every under-18 sleep, running and hydration turn, none replaced by the rail |
 | All 35 turns after the second review round (the widened disordered-eating phrases with a server-answered guilt-and-skipped-meals turn, a subtler model-answered one and an under-18 skipping-meals turn; the restored overdose phrase; 7 runs) | 244 of 245: on the first three runs one under-18 hydration answer drifted into a word the reply list carries and was replaced; after the instructions told the model to name only water in a water answer, 140 of 140 across four runs |
 | All 35 turns after the third review round (the eating signals split by age, the overdose question forms excluded, the bodyweight and training-sickness false positives closed; 3 runs) | 105 of 105 |

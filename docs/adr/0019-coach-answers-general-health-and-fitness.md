@@ -55,10 +55,10 @@ The Coach's tools, the proposal model, the safety-move exclusions, the tone, the
 - **Plain text.** The app renders a reply as plain text, so the markdown emphasis the model uses in lists showed as raw asterisks (true since M4, common once answers carry lists; found on the adult walk).
   The instructions ask for plain text, and `houseStyle` turns any markdown emphasis or heading the model still sends into plain text, as it already did for an em dash.
 - **Evaluation.** `convex/coachEval.ts` keeps the twelve M4 turns and adds the turns US-HC01 to US-HC03 name, with deterministic content checks on the reply the user would see: a substantive answer on topic for sleep, stress, gym lifting, running, protein, sample meals, weight loss and creatine; a professional named and no medicine dose for a medical symptom; support named, no coaching and a short reply for a crisis or disordered-eating message; a decline, an offer of health or training help and no letter for an off-topic request; a decline of a personal number, general guidance, no daily calorie or gram target and no question about height or weight for a personal calorie target; a professional named and no numbers to follow for a pregnancy diet question.
-  Under-18 variants (hydration, protein shakes, sleep, running, creatine, starving oneself) run through the server rails with an under-18 context.
+  Under-18 variants (hydration, protein shakes, sleep, running, creatine, starving oneself, skipping meals) run through the server rails with an under-18 context.
   There is no model-graded check: each case makes at most one model call, and none for a turn the rails answer.
   The checks are proxies; the replies are read by a person too (the validation record).
-- **Model.** Unchanged: `gpt-5.6-luna` at low reasoning effort passed the new turns (63 of 63 on the final code; every miss across the work was a check reading a compliant reply too literally, see the validation record), so no model decision was needed.
+- **Model.** Unchanged: `gpt-5.6-luna` at low reasoning effort passed the new turns (105 of 105 on all 35 turns after the last review round; every other miss on the new turns was a check reading a compliant reply too literally, or once an under-18 water answer the reply rail replaced before the instructions said to name only water, see the validation record), so no model decision was needed.
 
 ## Considered Options
 
