@@ -65,7 +65,7 @@ const CRISIS_TOPIC = wholeWords([
   "no reason to live",
   "self[- ]?harm(ing)?",
   "cutting myself",
-  "(?<!can (you|i|someone|people|a person) )overdos(e|ed|ing)(?!\\s+on\\s+(caffeine|creatine|coffee|protein|vitamins?|supplements?|energy drinks?|pre-?workout|water)\\b)",
+  "(?<!(can|could) (you|i|someone|people|a person) |possible to )overdos(e|ed|ing)",
 ]);
 
 const DISORDERED_EATING_TOPIC = wholeWords([
@@ -74,12 +74,8 @@ const DISORDERED_EATING_TOPIC = wholeWords([
   "bulimi[ac]",
   "binge[- ]?(eat|eating|ate|and purge)",
   "binging and purging",
-  "(purg(e|es|ed|ing)|vomit(s|ed|ing)?|throw(s|ing)? up|threw up) after (i eat|i ate|i've eaten|eating|every meal|meals?|breakfast|lunch|dinner|food)",
-  "(make|made|making) myself (throw up|throw (it|it all|everything|food) up|sick|vomit|puke)",
-  "skip(s|ped|ping)? (most |all |my |some |a lot of )?(meals?|breakfast|lunch|dinner|food|eating) (to|so i can|so i) (lose weight|make up|burn|get thin|be thin|stay thin|lose fat)",
-  "(guilty|ashamed|disgusted with myself) (whenever|when|after|every time|about|for) (i eat|i've eaten|i ate|eating|food)",
-  "hate my body[\\s\\S]*\\b(eat|eating|ate|food|meals?|throw|vomit|purg(e|ing))",
-  "(eat|eating|ate|food|meals?)\\b[\\s\\S]*\\bhate my body",
+  "(purg(e|es|ed|ing)|(make|made|making) myself sick) after (i eat|i ate|i've eaten|eating|every meal|meals?|breakfast|lunch|dinner|food)",
+  "(make|made|making) myself (throw up|throw (it|it all|everything|food) up|vomit|puke)",
   "starv(e|ed|ing) myself",
   "stop(ped)? eating (completely|entirely|altogether)",
   "(haven'?t|have not|hardly|barely) eaten in (days|a week|\\w+ days)",
@@ -88,13 +84,36 @@ const DISORDERED_EATING_TOPIC = wholeWords([
   "hate myself (after|for) eating",
 ]);
 
+const MEAL = "(meals?|breakfast|lunch|dinner|food|eating)";
+const TO_LOSE_OR_MAKE_UP = "(to|so i can|so i) (lose weight|make up|burn|get thin|be thin|stay thin|lose fat)";
+
+/** Wider signals for anyone not known to be an adult, whose food question would otherwise meet the diet decline. */
+const YOUNG_EATING_SIGNAL = wholeWords([
+  `(vomit(s|ed|ing)?|throw(s|ing)? up|threw up) after (i eat|i ate|i've eaten|eating|every meal|${MEAL})`,
+  `skip(s|ped|ping)? (most |all |my |some |a lot of )?${MEAL} ${TO_LOSE_OR_MAKE_UP}`,
+  "(guilty|ashamed|disgusted with myself) (whenever|when|after|every time|about|for) (i eat|i've eaten|i ate|eating|food)",
+  "hate my body\\b[\\s\\S]*\\b(eat|eating|ate|food|meals?|vomit|purg(e|ing))",
+  `(eat|eating|ate|food|meals?)\\b[\\s\\S]*\\bhate my body`,
+]);
+
+/** For an adult, only first-person disclosures: a question about skipping a meal or feeling guilty reaches the model. */
+const ADULT_EATING_DISCLOSURE = wholeWords([
+  `i('ve| have|'m| am)? (been |keep |kept |always |often )?skip(s|ped|ping)? (most |all |my |some |a lot of )?${MEAL} ${TO_LOSE_OR_MAKE_UP}`,
+  "i (feel|felt|get) (so |really |very )?(guilty|ashamed|disgusted with myself) (whenever|every time|each time) (i eat|i've eaten|i ate)",
+]);
+
 /** Which professional-help redirect a message calls for, if any. */
 export type SupportTopic = "crisis" | "disorderedEating";
 
-/** Whether a user's message plainly speaks of a crisis or disordered eating. */
-export function supportTopic(message: string): SupportTopic | null {
+/**
+ * Whether a user's message plainly speaks of a crisis or disordered eating. For anyone not known to be an
+ * adult the eating signals are wider, so a disclosure never meets the diet decline; an adult's question
+ * about skipping meals or eating guilt reaches the model, whose instructions carry the same redirect.
+ */
+export function supportTopic(message: string, group: AgeGroup): SupportTopic | null {
   if (CRISIS_TOPIC.test(message)) return "crisis";
   if (DISORDERED_EATING_TOPIC.test(message)) return "disorderedEating";
+  if ((mayDiscussDiet(group) ? ADULT_EATING_DISCLOSURE : YOUNG_EATING_SIGNAL).test(message)) return "disorderedEating";
   return null;
 }
 
@@ -276,7 +295,7 @@ export const DIET_DECLINE_REPLY =
  * the model: the crisis rail first, at every age, then the diet rail for anyone not known to be an adult.
  */
 export function replyBeforeModel(message: string, group: AgeGroup): string | null {
-  const support = supportTopic(message);
+  const support = supportTopic(message, group);
   if (support !== null) return supportReply(support);
   if (!mayDiscussDiet(group) && isDietTopic(message)) return DIET_DECLINE_REPLY;
   return null;

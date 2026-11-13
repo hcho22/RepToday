@@ -154,6 +154,9 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
     "I want to overdose.",
     "I'm thinking about overdosing on my pills.",
     "I overdosed last week.",
+    "I'm going to overdose on caffeine pills tonight.",
+    "I want to overdose on caffeine pills.",
+    "I overdosed on caffeine pills on purpose.",
   ];
   const eating = [
     "I've been starving myself to lose weight.",
@@ -175,6 +178,20 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
     });
   }
 
+  const eatingQuestions = [
+    "Is skipping breakfast to lose weight a good idea?",
+    "I feel guilty about eating junk food on weekends, how do I get back on track?",
+    "I always throw up after breakfast when I run, how long should I wait?",
+  ];
+  test("an adult's question about skipping meals, eating guilt or exercise nausea reaches the model", () => {
+    for (const message of eatingQuestions) expect(replyBeforeModel(message, "adult"), message).toBeNull();
+  });
+  for (const group of YOUNG) {
+    test(`the same questions get the eating redirect, not the diet decline (${group})`, () => {
+      for (const message of eatingQuestions) expect(replyBeforeModel(message, group), message).toBe(EATING_SUPPORT_REPLY);
+    });
+  }
+
   test("training talk that sounds dramatic is neither", () => {
     for (const message of [
       "This workout is killing me",
@@ -187,9 +204,19 @@ describe("the crisis rail, at every age and ahead of the diet rail", () => {
       "Can you overdose on caffeine?",
       "Can you overdose on creatine?",
       "Is it possible to overdose on vitamins?",
+      "Could you overdose on protein powder?",
+      "I ran so hard on intervals that I made myself sick.",
+      "I hate my bodyweight squats, they make me throw up.",
+      "I hate my body and want to throw myself into training.",
     ]) {
-      expect(supportTopic(message), message).toBeNull();
+      for (const group of EVERY_AGE) expect(supportTopic(message, group), `${message} (${group})`).toBeNull();
     }
+  });
+
+  test("a message about bodyweight training that names food meets only the diet rail", () => {
+    const message = "I hate my bodyweight routine lately. What should I eat before training?";
+    expect(replyBeforeModel(message, "adult")).toBeNull();
+    for (const group of YOUNG) expect(replyBeforeModel(message, group)).toBe(DIET_DECLINE_REPLY);
   });
 
   test("the redirects point to professional help and name no phone number", () => {
