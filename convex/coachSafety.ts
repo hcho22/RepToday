@@ -65,7 +65,7 @@ const CRISIS_TOPIC = wholeWords([
   "no reason to live",
   "self[- ]?harm(ing)?",
   "cutting myself",
-  "(?<!(can|could) (you|i|someone|people|a person) |possible to )overdos(e|ed|ing)",
+  "(?<!(^|[.!?]\\s*)(can|could) (you|i|someone|people|a person) |possible to )overdos(e|ed|ing)",
 ]);
 
 const DISORDERED_EATING_TOPIC = wholeWords([
@@ -85,11 +85,13 @@ const DISORDERED_EATING_TOPIC = wholeWords([
 ]);
 
 const MEAL = "(meals?|breakfast|lunch|dinner|food|eating)";
+const AFTER_MEAL = `after (i eat|i ate|i've eaten|eating|every meal|${MEAL})`;
 const TO_LOSE_OR_MAKE_UP = "(to|so i can|so i) (lose weight|make up|burn|get thin|be thin|stay thin|lose fat)";
+const SPEAKER = "(?<!(should|can|could|would|will|may|do|does|did|if|why|how) )i";
 
 /** Wider signals for anyone not known to be an adult, whose food question would otherwise meet the diet decline. */
 const YOUNG_EATING_SIGNAL = wholeWords([
-  `(vomit(s|ed|ing)?|throw(s|ing)? up|threw up) after (i eat|i ate|i've eaten|eating|every meal|${MEAL})`,
+  `(vomit(s|ed|ing)?|throw(s|ing)? up|threw up) ${AFTER_MEAL}`,
   `skip(s|ped|ping)? (most |all |my |some |a lot of )?${MEAL} ${TO_LOSE_OR_MAKE_UP}`,
   "(guilty|ashamed|disgusted with myself) (whenever|when|after|every time|about|for) (i eat|i've eaten|i ate|eating|food)",
   "hate my body\\b[\\s\\S]*\\b(eat|eating|ate|food|meals?|vomit|purg(e|ing))",
@@ -98,8 +100,10 @@ const YOUNG_EATING_SIGNAL = wholeWords([
 
 /** For an adult, only first-person disclosures: a question about skipping a meal or feeling guilty reaches the model. */
 const ADULT_EATING_DISCLOSURE = wholeWords([
-  `i('ve| have|'m| am)? (been |keep |kept |always |often )?skip(s|ped|ping)? (most |all |my |some |a lot of )?${MEAL} ${TO_LOSE_OR_MAKE_UP}`,
-  "i (feel|felt|get) (so |really |very )?(guilty|ashamed|disgusted with myself) (whenever|every time|each time) (i eat|i've eaten|i ate)",
+  `${SPEAKER}('ve| have|'m| am)? (been |keep |kept |always |often )?skip(s|ped|ping)? (most |all |my |some |a lot of )?${MEAL} ${TO_LOSE_OR_MAKE_UP}`,
+  `${SPEAKER} (feel|felt|get) (so |really |very )?(guilty|ashamed|disgusted with myself) (whenever|every time|each time) (i eat|i've eaten|i ate)`,
+  `${SPEAKER}(('ve| have) been| keep| kept) (vomiting|throwing up) ${AFTER_MEAL}`,
+  `${SPEAKER}( always| often)? (vomit|vomited|throw up|threw up) ${AFTER_MEAL}[^.!?]*\\b(so i (don't|do not|won't) gain weight|to lose weight|to keep my weight down|on purpose)`,
 ]);
 
 /** Which professional-help redirect a message calls for, if any. */
