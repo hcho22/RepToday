@@ -20,8 +20,8 @@
  *   before it is stored or shown.
  *
  * Plain hydration - how much water to drink around training - is open to every age (decision 12), so
- * water, drinking and hydration are on neither word list; protein shakes, supplements, caffeine,
- * weight loss and weight management stay on both. Sleep, stress, recovery, cardio and other training
+ * water, drinking and hydration are on neither word list; food and meals, drinks other than water,
+ * protein shakes, supplements, caffeine, weight loss and weight management are on both. Sleep, stress, recovery, cardio and other training
  * are open to every age and must never trip the rail. Otherwise the lists are deliberately broad: a
  * false positive only means a young user gets the decline and a pointer back to training, sleep and
  * recovery, which is the safe direction.
@@ -50,7 +50,7 @@ function wholeWords(alternatives: string[]): RegExp {
 // MARK: - The crisis rail (every age)
 
 const CRISIS_TOPIC = wholeWords([
-  "suicide",
+  "suicide(?!\\s+(sprints?|runs?|drills?|squeeze))",
   "suicidal",
   "kill myself",
   "killing myself",
@@ -65,7 +65,8 @@ const CRISIS_TOPIC = wholeWords([
   "no reason to live",
   "self[- ]?harm(ing)?",
   "cutting myself",
-  "overdose",
+  "(took|take|taking) an overdose",
+  "overdos(e|ed|ing) on purpose",
 ]);
 
 const DISORDERED_EATING_TOPIC = wholeWords([
@@ -74,7 +75,6 @@ const DISORDERED_EATING_TOPIC = wholeWords([
   "bulimi[ac]",
   "binge[- ]?(eat|eating|ate|and purge)",
   "binging and purging",
-  "purging",
   "purg(e|ed) after (i eat|eating|meals?)",
   "make myself (throw up|sick|vomit)",
   "made myself (throw up|sick|vomit)",
@@ -171,6 +171,11 @@ const DIET_TOPIC = wholeWords([
   "milkshakes?",
   "smoothies?",
   "soda",
+  "sports drinks?",
+  "juices?",
+  "milk",
+  "beers?",
+  "wine",
   "alcohol",
   "lose weight",
   "losing weight",
@@ -208,7 +213,19 @@ const DIET_REPLY = wholeWords([
   "carbohydrates?",
   "calories?",
   "macros?",
+  "meals?",
   "meal plan",
+  "eat",
+  "eats",
+  "eating",
+  "ate",
+  "foods?",
+  "snacks?",
+  "breakfast",
+  "lunch",
+  "dinner",
+  "fruits?",
+  "smoothies?",
   "sugar",
   "vegetables",
   "veggies",
@@ -220,11 +237,23 @@ const DIET_REPLY = wholeWords([
   "caffeine",
   "coffee",
   "energy drinks?",
+  "sports drinks?",
+  "juices?",
+  "milk",
+  "beers?",
+  "wine",
+  "alcohol",
   "weight loss",
   "lose weight",
   "losing weight",
+  "gain weight",
+  "gaining weight",
+  "weight gain",
   "weight management",
   "fat loss",
+  "body fat",
+  "bulk",
+  "bulking",
 ]);
 
 /** Whether a model reply discusses diet, supplements or weight. Plain water and hydration do not count. */

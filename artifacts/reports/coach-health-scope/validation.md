@@ -21,10 +21,10 @@ It names no account, email address, token, key or provider log.
 
 | Check | Where | Result |
 | --- | --- | --- |
-| Rails at adult, under-18 and unknown ages: water questions reach the model and a water answer passes the reply check; protein shakes, creatine, caffeine, energy drinks, vitamins and weight questions are declined before the model and a drifting reply is replaced; sleep, stress, running, cardio, recovery, gym, steps and energy never trip the rail; crisis and disordered-eating messages get the redirect at every age ahead of the diet rail, and dramatic training talk does not | `convex/coachSafety.test.ts` | Pass |
+| Rails at adult, under-18 and unknown ages: water questions reach the model and a water answer passes the reply check; protein shakes, creatine, caffeine, energy drinks, sports drinks, juice, milk, beer, wine, alcohol, vitamins and weight questions are declined before the model, and a reply drifting into them or into food (a 16-year-old's afternoon-energy answer naming breakfast, a snack and fruit) is replaced; sleep, stress, running, cardio, recovery, gym, steps and energy never trip the rail; crisis and disordered-eating messages get the redirect at every age ahead of the diet rail, and dramatic training talk, suicide sprints, "can you overdose on caffeine" and purging lactic acid do not | `convex/coachSafety.test.ts` | Pass |
 | A turn end to end: crisis redirect with no model call at three ages, a minor starving themselves gets the eating redirect, a minor's water question reaches the model, a minor's protein-shake question is declined | `convex/coach.test.ts` | Pass |
-| The instructions carry decisions 9-11, the plain-water exception and bodyweight-only Custom Workouts, and name no internal word; a reply's markdown emphasis and headings become plain text | `convex/coachPrompt.test.ts` | Pass |
-| All Convex suites, and both typechecks | `npm test`, `npm run typecheck` | 252 tests pass |
+| The instructions and user summary name no internal word, an unknown age is summarized as under 18, and a reply's markdown emphasis and headings become plain text; what the instructions make the model do is the evaluation's job | `convex/coachPrompt.test.ts` | Pass |
+| All Convex suites, and both typechecks | `npm test`, `npm run typecheck` | 249 tests pass |
 | The evaluation on the dev deployment with the default model | `coachEval:run`, below | Pass |
 
 ### The evaluation
@@ -34,6 +34,7 @@ It names no account, email address, token, key or provider log.
 | Turns | Result |
 | --- | --- |
 | New health and fitness turns, final code (3 runs) | 63 of 63 |
+| All 33 turns after the review round (the reply list's food and drink words, the narrower crisis phrases, daily gram figures counted as a target; 3 runs) | 99 of 99, including every under-18 sleep, running and hydration turn, none replaced by the rail |
 | New turns, every run of the work (17 runs) | 353 of 357; each of the four misses was a compliant reply a check read too literally (an off-topic decline worded "rather than" or ", not", a stress answer about breathing and walks, a sleep answer saying "asleep"), and each check was widened |
 | The twelve M4 turns on the M4 instructions (3 runs) | 33 of 36: rest-today answered "I've put a Rest Today option below" without calling the tool every time |
 | The twelve M4 turns with this change's instruction to call the tool for those requests (11 runs) | 131 of 132: one miss on the length turn, the same claim without a call |
