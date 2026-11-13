@@ -225,8 +225,9 @@ enum SessionAssembly {
     /// earlier presses showed are ranked behind their alternatives wherever the plan has a choice (which
     /// ladders fill a short session, which stretches, which core ladder), while every filter and the fit
     /// still decide each pick. Its bookends stay inside the day's matching stretches; only when that would
-    /// show nothing new does it bring in one unmatched stretch it has not shown (ADR-0018). When even that
-    /// leaves nothing new the default session is returned, which is how a sequence of presses cycles back.
+    /// rebuild exactly the session the press replaces does it bring in one unmatched stretch it has not
+    /// shown (ADR-0018). When the result shows nothing new the default session is returned, which is how a
+    /// sequence of presses cycles back.
     ///
     /// `activities` are the logged Outside Activities the Rotation reads (decision 21), for today's group
     /// and the Cycle the Core Sprinkle rotates on.
@@ -255,8 +256,8 @@ enum SessionAssembly {
             calendar: calendar
         )
         if !variation.isNone {
-            for unmatchedStretchAllowance in [0, 1] {
-                let varied = assemblePass(
+            func varied(unmatchedStretchAllowance: Int) -> Workout {
+                assemblePass(
                     requestedMinutes: requestedMinutes,
                     user: user,
                     library: library,
@@ -271,8 +272,10 @@ enum SessionAssembly {
                     asOf: asOf,
                     calendar: calendar
                 )
-                if variation.offersSomethingNew(varied) { return varied }
             }
+            let matched = varied(unmatchedStretchAllowance: 0)
+            let pressed = variation.repeatsReplacedSession(matched) ? varied(unmatchedStretchAllowance: 1) : matched
+            if variation.offersSomethingNew(pressed) { return pressed }
         }
         return assemblePass(
             requestedMinutes: requestedMinutes,
@@ -1440,8 +1443,8 @@ private struct Builder {
     /// **Different workout** press has not shown (`offered`) ahead of those it has, each in that variety
     /// order - and the others follow only as the fallback for when the matches run out, so a bookend is
     /// never starved, and never holds an unmatched stretch while a match is left. The one exception is
-    /// `unmatchedStretchAllowance`: when a press staying inside the matches would show nothing new,
-    /// `assemble` re-plans it with an allowance of one, which ranks the first unshown unmatched stretch
+    /// `unmatchedStretchAllowance`: when a press staying inside the matches would rebuild exactly the session
+    /// it replaces, `assemble` re-plans it with an allowance of one, which ranks the first unshown unmatched stretch
     /// right after the unshown matches, so the press changes the fewest bookend stretches it can. `nil`
     /// (the Recovery flow) keeps the plain variety order. `holdsFirst` (the cooldown) puts holds ahead of
     /// moving stretches inside each of those groups, never across them.

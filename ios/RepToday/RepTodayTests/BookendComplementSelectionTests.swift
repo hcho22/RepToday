@@ -15,7 +15,7 @@ import XCTest
 ///       one real shortfall pinned (a Discipline beginner or intermediate is offered three pull stretches);
 ///   (b) a pool with too few matches falls back without emptying or shortening a bookend;
 ///   (c) the variety order and a Different workout press pick among the matches, a press bringing in one
-///       unmatched stretch only when it would otherwise show nothing new;
+///       unmatched stretch only when it would otherwise rebuild the session it replaces;
 ///   (d) the coverage invariant and the mapping on all 26 mobility movements;
 ///   (e) determinism and `asOf`-purity.
 final class BookendComplementSelectionTests: XCTestCase {
@@ -224,8 +224,8 @@ final class BookendComplementSelectionTests: XCTestCase {
         XCTAssertTrue(unshown.isSubset(of: pressedStretches.map(\.id)), "\(pressedStretches.map(\.id))")
     }
 
-    /// Only a press that staying inside the matches would leave showing nothing new brings in an unmatched
-    /// stretch, and then exactly one: a Discipline beginner or intermediate's 45 and 60 minute Push Day
+    /// Only a press that staying inside the matches would leave rebuilding the session it replaces brings in
+    /// an unmatched stretch, and then exactly one: a Discipline beginner or intermediate's 45 and 60 minute Push Day
     /// already holds all four push stretches they are offered, both push ladders and both core ladders, and
     /// on main a press changed that session, so it still does - by swapping one bookend stretch for an
     /// unmatched one it has not shown and keeping the other three matches. The default session stays all
@@ -258,6 +258,59 @@ final class BookendComplementSelectionTests: XCTestCase {
                     "\(label): \(pressedStretches.map(\.id))"
                 )
             }
+        }
+    }
+
+    /// The default session followed by `count` Different workout presses, folded as the Ready Screen folds
+    /// them.
+    private func pressSequence(_ count: Int, minutes: Int, day: TrainingDay, user: User, library: [Exercise]) -> [Workout] {
+        var variation = SessionVariation.none
+        var shown = assemble(minutes: minutes, day: day, library: library, user: user)
+        var result = [shown]
+        for _ in 0..<count {
+            variation = variation.advanced(past: shown)
+            shown = assemble(minutes: minutes, day: day, library: library, user: user, variation: variation)
+            result.append(shown)
+        }
+        return result
+    }
+
+    /// Press after press, a Discipline beginner's 15 and 20 minute Pull Day stays all-pull: the first press
+    /// rotates the Core Sprinkle, the second differs from the session it replaces only by going back to the
+    /// default (so it never needs an unmatched stretch), and the sequence alternates between the two.
+    func testRepeatedPressesOnABeginnerShortPullDayStayAllPull() async throws {
+        let library = try await library()
+        let user = TrainingDayFixtures.user(level: .beginner)
+        for minutes in [15, 20] {
+            let sequence = pressSequence(5, minutes: minutes, day: .pull, user: user, library: library)
+            let ids = sequence.map(SessionVariation.exerciseIds(in:))
+            for (index, workout) in sequence.enumerated() {
+                let stretches = bookendStretches(workout)
+                XCTAssertTrue(stretches.allSatisfy { matches($0, .pull) }, "\(minutes) min press \(index): \(stretches.map(\.id))")
+            }
+            XCTAssertNotEqual(ids[1], ids[0], "\(minutes) min: the first press changed nothing")
+            for index in 2..<ids.count {
+                XCTAssertEqual(ids[index], ids[index - 2], "\(minutes) min press \(index)")
+            }
+        }
+    }
+
+    /// Press after press, a Discipline beginner's 45 and 60 minute Push Day alternates: the first press would
+    /// rebuild the default, so it swaps exactly one bookend stretch for an unmatched one; the next press
+    /// would rebuild the default, not the session it replaces, so it returns the default; and so on.
+    func testRepeatedPressesOnABeginnerLongPushDayAlternateWithOneUnmatchedSwap() async throws {
+        let library = try await library()
+        let user = TrainingDayFixtures.user(level: .beginner)
+        for minutes in [45, 60] {
+            let sequence = pressSequence(5, minutes: minutes, day: .push, user: user, library: library)
+            let ids = sequence.map(SessionVariation.exerciseIds(in:))
+            for (index, workout) in sequence.enumerated() {
+                let label = "\(minutes) min press \(index)"
+                let unmatched = bookendStretches(workout).filter { !matches($0, .push) }
+                XCTAssertEqual(unmatched.count, index.isMultiple(of: 2) ? 0 : 1, "\(label): \(bookendStretches(workout).map(\.id))")
+                XCTAssertEqual(ids[index], ids[index % 2], label)
+            }
+            XCTAssertEqual(ids[1].subtracting(ids[0]).count, 1, "\(minutes) min: \(ids[1].subtracting(ids[0]))")
         }
     }
 
