@@ -7,7 +7,8 @@ import XCTest
 ///
 /// Decision 17: a session lands within about three minutes of the request, or - when even the top of the
 /// range and the longest rests cannot fill it - runs short and says so (an honest shortfall). It never
-/// overruns past the tolerance unless every rep is already at the short-session floor.
+/// plans past the tolerance: a session still over with every rep at the short-session floor drops a
+/// station and runs short instead (ADR-0018).
 ///
 /// Each run prints a transcript (`FIT HARNESS` lines) of planned against requested minutes, for a fresh
 /// history, a cold-start one and a seasoned one.
@@ -66,10 +67,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
                                 )
                             } else {
                                 status = "overrun"
-                                XCTAssertTrue(
-                                    plan.stations.allSatisfy { $0.value - RepGrammar.step < $0.floor },
-                                    "\(focusLabel) \(history) \(level) \(day) \(minutes) min overruns \(gap)s with reps above the floor"
-                                )
+                                XCTFail("\(focusLabel) \(history) \(level) \(day) \(minutes) min plans \(gap)s past its length, beyond the tolerance")
                             }
                             let line = String(
                                 format: "FIT HARNESS focus:%@ %@ %@ %@ %2d min: planned %5.1f min (%+4ds) stations %d rest %ds pause %ds - %@",

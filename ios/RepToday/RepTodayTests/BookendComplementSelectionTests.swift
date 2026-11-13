@@ -181,6 +181,39 @@ final class BookendComplementSelectionTests: XCTestCase {
         XCTAssertTrue(Set(stretches.map(\.id)).isDisjoint(with: bookendStretches(shown).map(\.id)), "\(stretches.map(\.id))")
     }
 
+    /// A press that has already shown every match counts them as used up (decision 7) and reaches the
+    /// unmatched stretches it has not shown, so it still brings something new: a Discipline beginner or
+    /// intermediate's 45 and 60 minute Push Day already holds all four push stretches they are offered,
+    /// both push ladders and both core ladders, and on main a press changed that session, so it still
+    /// does. The default session stays all matches.
+    func testAPressThatHasShownEveryMatchFallsToUnshownUnmatchedStretches() async throws {
+        let library = try await library()
+        for level in [FitnessLevel.beginner, .intermediate] {
+            let user = TrainingDayFixtures.user(level: level)
+            let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: [])
+            let offered = pool.filter { $0.pillar == .mobility && matches($0, .push) }
+            for minutes in [45, 60] {
+                let label = "\(level) \(minutes) min"
+                let shown = assemble(minutes: minutes, day: .push, library: library, user: user)
+                let shownStretches = bookendStretches(shown)
+                XCTAssertTrue(shownStretches.allSatisfy { matches($0, .push) }, label)
+                XCTAssertEqual(Set(shownStretches.map(\.id)), Set(offered.map(\.id)), "\(label): every push stretch offered is in the default")
+
+                let pressed = assemble(
+                    minutes: minutes, day: .push, library: library, user: user,
+                    variation: SessionVariation.none.advanced(past: shown)
+                )
+                XCTAssertNotEqual(SessionVariation.exerciseIds(in: pressed), SessionVariation.exerciseIds(in: shown), "\(label): the press changed nothing")
+                let pressedStretches = bookendStretches(pressed)
+                XCTAssertEqual(pressedStretches.count, shownStretches.count, label)
+                XCTAssertTrue(
+                    pressedStretches.allSatisfy { !matches($0, .push) && !shownStretches.map(\.id).contains($0.id) },
+                    "\(label): \(pressedStretches.map(\.id))"
+                )
+            }
+        }
+    }
+
     /// The cooldown is static holds, chosen first so the day's matching holds close the session even when
     /// few match: a beginner's Push Day (four push stretches offered, three of them holds) closes on two
     /// matching holds and warms up on the other two matches.

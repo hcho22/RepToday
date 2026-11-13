@@ -28,7 +28,8 @@ import Foundation
 ///   60 seconds on a session of 30 minutes or less, and on a 45 or 60 minute session the pause between
 ///   movements up to 60 seconds and the rest after a round up to the level cap (beginner 2:00,
 ///   intermediate 1:30, advanced 1:00). A session that still cannot fill runs short, honestly
-///   (`plannedSeconds`). The tolerance is `toleranceSeconds` (about three minutes).
+///   (`plannedSeconds`). The tolerance is `toleranceSeconds` (about three minutes), and a session never
+///   plans past it: one still over with every rep at the floor drops a station and runs short (ADR-0018).
 ///
 /// Identity and the reference clock enter here: ids are fresh `UUID`s and `createdAt` is the
 /// caller-supplied `asOf`. The *content* of the session is a pure, deterministic function of the inputs,
@@ -736,9 +737,30 @@ enum SessionAssembly {
     /// 3. **Rest** - then grow the rest after a round, and on a 45 or 60 minute session the pause between
     ///    movements, five seconds at a time up to their caps.
     /// Each step is taken only if it brings the session closer to the target, so the loop ends at the
-    /// closest landing its levers allow; whatever gap is left is the session's honest shortfall or
-    /// overrun.
+    /// closest landing its levers allow; whatever gap is left is the session's honest shortfall.
+    /// 4. **Drop** - a session still past the tolerance once every station is at its short-session floor
+    ///    would overrun, which a session never does (ADR-0018): it drops a station and fits again, so it
+    ///    runs short instead - the Abs Focus Area's extra Core Sprinkle first, then the last main slot
+    ///    (a Variation, then a Practice Movement, then a ladder's rung), never the last main station.
     static func fit(_ plan: inout SessionPlan, targetSeconds: Int) {
+        fitLevers(&plan, targetSeconds: targetSeconds)
+        let baseCore = coreSprinkleCount(forRequestedMinutes: targetSeconds / 60)
+        while plan.totalSeconds - targetSeconds > toleranceSeconds {
+            let core = plan.stations.indices.filter { plan.stations[$0].role == .core }
+            let main = plan.stations.indices.filter { plan.stations[$0].role != .core }
+            if core.count > baseCore, let last = core.last {
+                plan.stations.remove(at: last)
+            } else if main.count > 1, let last = main.last {
+                plan.stations.remove(at: last)
+            } else {
+                break
+            }
+            fitLevers(&plan, targetSeconds: targetSeconds)
+        }
+    }
+
+    /// Steps 1-3 of `fit`: cut, pad, then grow rest.
+    private static func fitLevers(_ plan: inout SessionPlan, targetSeconds: Int) {
         func distance(_ candidate: SessionPlan) -> Int { abs(candidate.totalSeconds - targetSeconds) }
 
         // 1. Cut reps toward the short-session floor.
@@ -1397,8 +1419,11 @@ private struct Builder {
     /// `matching` makes the bookends day-matched (ADR-0018, replacing US-M02's prefer-then-fill lead):
     /// given the day's patterns, every stretch whose `complements` names one of them comes first, in that
     /// variety order, and the others follow only as the fallback for when the matches run out - so a
-    /// bookend is never starved, and never holds an unmatched stretch while a match is left. `nil` (the
-    /// Recovery flow) keeps the plain variety order. `holdsFirst` (the cooldown) puts holds ahead of moving
+    /// bookend is never starved, and never holds an unmatched stretch while a match is left. A Different
+    /// workout press counts the matches it already showed as used: it takes the fresh matches, then the
+    /// unmatched stretches it has not shown, and only then shows a match again, so a press can still bring
+    /// something new when every match is already in the session. `nil` (the Recovery flow) keeps the plain
+    /// variety order. `holdsFirst` (the cooldown) puts holds ahead of moving
     /// stretches inside each of those two groups, never across them.
     ///
     /// `sitsLong` layers the US-M03 posture/hip bias inside each group (`postureHipLean`): a desk worker's
@@ -1439,9 +1464,14 @@ private struct Builder {
             return leaned.filter(\.isHold) + leaned.filter { !$0.isHold }
         }
         guard let patterns else { return arranged(ordered) }
-        let matches = ordered.filter { SessionAssembly.complements($0, anyOf: patterns) }
-        let others = ordered.filter { !SessionAssembly.complements($0, anyOf: patterns) }
-        return arranged(matches) + arranged(others)
+        // A Different workout press counts the matches it already showed as used up, so once the fresh
+        // matches run out it reaches the unmatched stretches it has not shown before showing a match again.
+        let fresh = ordered.filter { !offered.contains($0.id) }
+        let shown = ordered.filter { offered.contains($0.id) }
+        return [fresh, shown].flatMap { group in
+            arranged(group.filter { SessionAssembly.complements($0, anyOf: patterns) })
+                + arranged(group.filter { !SessionAssembly.complements($0, anyOf: patterns) })
+        }
     }
 
     /// The US-M03 desk-worker bias: when `apply` (the user's `sitsLong`), stable-partition `ordered` so

@@ -247,6 +247,45 @@ final class SessionAssemblyTests: XCTestCase {
 
     // MARK: - Timing fit
 
+    /// A session that would still run past the tolerance with every rep at the short-session floor drops
+    /// a station and runs short instead (ADR-0018): a cold-start intermediate's 15-minute Pull Day with
+    /// Abs gives up the Abs extra Core Sprinkle, keeping its two main slots and the base Core Sprinkle.
+    func testAnOverlongSessionDropsTheAbsExtraCoreSprinkleFirst() {
+        var coldStart = TrainingDayFixtures.user(level: .intermediate, focusAreas: [.abs])
+        coldStart.coldStart = User.ColdStart(sessionsLogged: 0, active: true)
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: 15, user: coldStart, library: library, recentLogs: [],
+            sessionPolicy: .seeded(forFitnessLevel: .intermediate), trainingDay: .pull,
+            asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar
+        )
+        XCTAssertEqual(plan.stations.filter { $0.role == .core }.count, 2, "Abs asks for two Core Sprinkles at 15 minutes")
+        let before = plan.stations.map(\.exercise.id)
+        SessionAssembly.fit(&plan, targetSeconds: 15 * 60)
+        XCTAssertLessThanOrEqual(plan.totalSeconds - 15 * 60, SessionAssembly.toleranceSeconds)
+        XCTAssertEqual(plan.stations.filter { $0.role == .core }.count, 1)
+        XCTAssertEqual(plan.stations.filter { $0.role != .core }.count, 2)
+        XCTAssertEqual(plan.stations.map(\.exercise.id), Array(before.dropLast()), "the last-added Core Sprinkle goes")
+    }
+
+    /// With no Abs extra to give up, the drop takes the Core Sprinkles a length has no room for and then
+    /// the last main slot, one at a time, never the first main station: a 60-minute Legs Day squeezed
+    /// into 10 minutes keeps a prefix of its main slots.
+    func testAnOverlongSessionDropsTheLastMainSlotsAndNeverTheFirst() throws {
+        var plan = SessionAssembly.planSession(
+            requestedMinutes: 60, user: user(level: .beginner), library: library, recentLogs: [], trainingDay: .legs,
+            asOf: TrainingDayFixtures.asOf, calendar: TrainingDayFixtures.calendar
+        )
+        let mains = plan.stations.filter { $0.role != .core }.map(\.exercise.id)
+        XCTAssertEqual(mains.count, 5)
+        SessionAssembly.fit(&plan, targetSeconds: 10 * 60)
+        XCTAssertLessThanOrEqual(plan.totalSeconds - 10 * 60, SessionAssembly.toleranceSeconds)
+        XCTAssertFalse(plan.stations.contains { $0.role == .core })
+        let kept = plan.stations.map(\.exercise.id)
+        XCTAssertFalse(kept.isEmpty)
+        XCTAssertEqual(kept, Array(mains.prefix(kept.count)), "main slots go from the last one")
+    }
+
+
     /// Every length, Training Day and history - with and without the desk-worker bias - lands within the
     /// tolerance of the request, or runs honestly short.
     func testEveryLengthFillsWithinToleranceOrRunsHonestlyShort() {

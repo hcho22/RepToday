@@ -211,6 +211,29 @@ final class FocusAreaTests: XCTestCase {
         XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: 60, focusAreas: [.chest]), 2)
     }
 
+    /// Why a Discipline-Phase beginner or intermediate gets two Core Sprinkles, not three, at 45-60 minutes
+    /// with Abs: every rung of the hollow core ladder is advanced-only (Hollow Hold, Hollow Rock,
+    /// Tuck L-Sit) or Strength-Phase-gated (One-Leg L-Sit, L-Sit), so movement access offers them nothing on
+    /// it (ADR-0007), and the session holds the plank and stability ladders' rungs rather than repeating a
+    /// ladder. An advanced user, or anyone once the Strength Phase is earned, gets all three.
+    func testTheHollowLadderIsWhyABeginnerOrIntermediateGetsTwoCoreSprinkles() throws {
+        let hollow = library.filter { $0.progressionChainId == "core_hollow" }
+        XCTAssertFalse(hollow.isEmpty)
+        for level in [FitnessLevel.beginner, .intermediate] {
+            XCTAssertTrue(hollow.allSatisfy { !MovementAccess.isAvailable($0, level: level, phase: .discipline) }, "\(level)")
+            for day in TrainingDay.rotation {
+                for minutes in [45, 60] {
+                    let core = plan(day, minutes: minutes, level: level, focusAreas: [.abs]).stations.filter { $0.role == .core }
+                    XCTAssertEqual(Set(core.map(\.exercise.progressionChainId)), ["core_plank", "core_stability"], "\(level) \(day) \(minutes) min")
+                }
+            }
+        }
+        XCTAssertTrue(hollow.contains { MovementAccess.isAvailable($0, level: .advanced, phase: .discipline) })
+        XCTAssertTrue(hollow.contains { MovementAccess.isAvailable($0, level: .beginner, phase: .strength) })
+        let advanced = plan(.push, minutes: 45, level: .advanced, focusAreas: [.abs]).stations.filter { $0.role == .core }
+        XCTAssertEqual(Set(advanced.map(\.exercise.progressionChainId)), Set(SessionAssembly.coreLadders))
+    }
+
     func testFocusAreasNeverChangeTheRotation() {
         let histories: [[WorkoutLog]] = [
             [],
