@@ -83,7 +83,7 @@ This reverses part of the 2026-11-10 PRD's goal of "at most 8 movements at 45 mi
 - [x] Slot order follows the 2026-11-10 decisions 9-11: a Push or Pull Day's slots 1-2 are its ladders' current rungs, slots 3-4 their Practice Movements; a Legs Day fills from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side first.
 - [x] Focus Area ordering, the Practice fallback (rung below at volume reps, else one fewer movement), every-station-4-sets, 5-step reps, and no-mixed-groups invariants are unchanged.
 - [x] The fit-feasibility harness reports planned time for every length x level x day, with particular attention to 5-20 minutes; a session that cannot fit runs short honestly, never over its tolerance.
-- [ ] Verify in the simulator, light and dark, Dynamic Type, on a 375x667 screen.
+- [x] Verify in the simulator, light and dark, Dynamic Type, on a 375x667 screen. (Walked on commit 1fc5d31; `docs/implementation-log.md`, "Session sizing and day-matched bookends", records it.)
 
 #### US-SZ02: The Variation slot
 **Description:** As a user on a 60-minute Push or Pull Day, I want a fifth movement that varies my current rung once its art exists.
@@ -100,7 +100,7 @@ This reverses part of the 2026-11-10 PRD's goal of "at most 8 movements at 45 mi
 **Acceptance Criteria:**
 - [x] Every warm-up and cooldown stretch complements the day's group (decision 7); the variety order picks among matches; unmatched stretches fill only when matches run out.
 - [x] `sitsLong` reorders only within matches (decision 8).
-- [ ] Bookend counts, the Rest Day Recovery flow and the Different-workout press are unchanged.
+- [x] Bookend counts, the Rest Day Recovery flow and the Different-workout press are unchanged. (The press still always returns a different session; which stretches it picks now follows decision 7, see ADR-0018.)
 - [x] Tests assert that every bookend stretch matches on each day at every length and level, and that a pool with too few matches falls back without emptying a bookend.
 
 ### Part B - A general health and fitness Coach
