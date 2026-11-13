@@ -222,7 +222,7 @@ The owning code is `Models/CustomWorkout.swift`, `Services/Coach/CustomWorkoutSe
 
 A body part the user wants to improve: Chest, Shoulders, Arms, Back, Abs, Legs, or Glutes - multi-select and optional, asked in onboarding and editable in Settings.
 It replaced the never-read goal list (`primaryGoal`, whose key profiles still carry so older builds can read them).
-It changes emphasis within Training Days, never the Rotation: a movement it covers is ordered first among its kind of station, padded first (and cut last) by the fit, and given the Practice slot first; Abs adds a second Core Sprinkle.
+It changes emphasis within Training Days, never the Rotation: a movement it covers is ordered first among its kind of station, padded first (and cut last) by the fit, and given the Practice slot first; Abs adds one more Core Sprinkle.
 Chest covers the horizontal push ladder, Shoulders the vertical push ladder, Arms the diamond push-up, dips and rows, Back both pull ladders, Abs core, Legs the squat and lunge ladders, Glutes the bridge and hip-hinge ladders.
 The owning code is `Models/FocusArea.swift` and `Services/Engine/SessionAssembly.swift`.
 

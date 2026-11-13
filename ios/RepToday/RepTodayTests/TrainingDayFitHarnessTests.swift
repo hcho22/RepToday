@@ -27,7 +27,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
     }
 
     /// The Focus Area sets the harness prices beside no focus (US-HO03): each area alone, Abs with its
-    /// second Core Sprinkle among them, and every area at once.
+    /// extra Core Sprinkle among them, and every area at once.
     private let focusSets: [[FocusArea]] = [[]] + FocusArea.allCases.map { [$0] } + [FocusArea.allCases]
 
     func testEveryLengthLevelAndDayFillsWithinToleranceOrReportsAnHonestShortfall() async throws {

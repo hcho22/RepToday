@@ -1032,7 +1032,7 @@ private struct Builder {
     /// openers, never a sizing lever.
     let sitsLong: Bool
     /// The user's Focus Areas (decision 20): what they cover is ordered first, given the Practice slot
-    /// first and padded first; Abs adds a second Core Sprinkle.
+    /// first and padded first; Abs adds one more Core Sprinkle.
     let focusAreas: [FocusArea]
     /// The moves a **Different workout** press asks the session to avoid: ranked behind their
     /// alternatives wherever the plan has a choice, never filtered.

@@ -79,29 +79,29 @@ This reverses part of the 2026-11-10 PRD's goal of "at most 8 movements at 45 mi
 #### US-SZ01: Main movement and Core Sprinkle counts by length
 **Description:** As a user, I want more main work in each session length, and more core work in long sessions.
 **Acceptance Criteria:**
-- [ ] Main slots follow decision 1; Core Sprinkles follow decisions 2-3.
-- [ ] Slot order follows the 2026-11-10 decisions 9-11: a Push or Pull Day's slots 1-2 are its ladders' current rungs, slots 3-4 their Practice Movements; a Legs Day fills from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side first.
-- [ ] Focus Area ordering, the Practice fallback (rung below at volume reps, else one fewer movement), every-station-4-sets, 5-step reps, and no-mixed-groups invariants are unchanged.
-- [ ] The fit-feasibility harness reports planned time for every length x level x day, with particular attention to 5-20 minutes; a session that cannot fit runs short honestly, never over its tolerance.
+- [x] Main slots follow decision 1; Core Sprinkles follow decisions 2-3.
+- [x] Slot order follows the 2026-11-10 decisions 9-11: a Push or Pull Day's slots 1-2 are its ladders' current rungs, slots 3-4 their Practice Movements; a Legs Day fills from the squat, lunge, bridge and hip ladders, one squat-side and one hinge-side first.
+- [x] Focus Area ordering, the Practice fallback (rung below at volume reps, else one fewer movement), every-station-4-sets, 5-step reps, and no-mixed-groups invariants are unchanged.
+- [x] The fit-feasibility harness reports planned time for every length x level x day, with particular attention to 5-20 minutes; a session that cannot fit runs short honestly, never over its tolerance.
 - [ ] Verify in the simulator, light and dark, Dynamic Type, on a 375x667 screen.
 
 #### US-SZ02: The Variation slot
 **Description:** As a user on a 60-minute Push or Pull Day, I want a fifth movement that varies my current rung once its art exists.
 **Acceptance Criteria:**
-- [ ] A catalog entry can declare itself a Variation of a parent rung; it is eligible only when its parent rung is the user's current rung and Trainer art exists for both Trainers.
-- [ ] A 60-minute Push or Pull Day's fifth slot takes an eligible Variation, rotating least recently done first (decision 6); with none eligible the slot stays empty (decision 5).
-- [ ] A Variation never advances progression, Earned Reps or a foundation, and obeys injury exclusions and withdrawn-movement rules like any movement.
-- [ ] A Legs Day's fifth slot is its first ladder's Practice Movement (decision 4).
-- [ ] No Variation catalog entries or art are added by this story.
-- [ ] Tests prove both paths with a test-only Variation fixture.
+- [x] A catalog entry can declare itself a Variation of a parent rung; it is eligible only when its parent rung is the user's current rung and Trainer art exists for both Trainers.
+- [x] A 60-minute Push or Pull Day's fifth slot takes an eligible Variation, rotating least recently done first (decision 6); with none eligible the slot stays empty (decision 5).
+- [x] A Variation never advances progression, Earned Reps or a foundation, and obeys injury exclusions and withdrawn-movement rules like any movement.
+- [x] A Legs Day's fifth slot is its first ladder's Practice Movement (decision 4).
+- [x] No Variation catalog entries or art are added by this story.
+- [x] Tests prove both paths with a test-only Variation fixture.
 
 #### US-SZ03: Day-matched bookends
 **Description:** As a user, I want my warm-up and cooldown to prepare and relieve the muscles I train today.
 **Acceptance Criteria:**
-- [ ] Every warm-up and cooldown stretch complements the day's group (decision 7); the variety order picks among matches; unmatched stretches fill only when matches run out.
-- [ ] `sitsLong` reorders only within matches (decision 8).
+- [x] Every warm-up and cooldown stretch complements the day's group (decision 7); the variety order picks among matches; unmatched stretches fill only when matches run out.
+- [x] `sitsLong` reorders only within matches (decision 8).
 - [ ] Bookend counts, the Rest Day Recovery flow and the Different-workout press are unchanged.
-- [ ] Tests assert that every bookend stretch matches on each day at every length and level, and that a pool with too few matches falls back without emptying a bookend.
+- [x] Tests assert that every bookend stretch matches on each day at every length and level, and that a pool with too few matches falls back without emptying a bookend.
 
 ### Part B - A general health and fitness Coach
 
