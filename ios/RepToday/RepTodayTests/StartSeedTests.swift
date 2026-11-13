@@ -1468,7 +1468,8 @@ final class StartSeedTests: XCTestCase {
         for (level, plan) in [(FitnessLevel.beginner, beginnerPlan), (.advanced, advancedPlan)] {
             let multiplier = SessionPolicy.ColdStartContract.startingRepMultiplier(for: level)
             XCTAssertFalse(plan.stations.isEmpty)
-            for station in plan.stations {
+            // A Practice Movement runs at its fixed Practice value, not the seeded opening (ADR-0015).
+            for station in plan.stations where station.role != .practice {
                 XCTAssertEqual(station.sets, RepGrammar.setsPerStation, "\(level) \(station.exercise.id)")
                 let opening = AdaptiveOverload.target(
                     for: station.exercise,

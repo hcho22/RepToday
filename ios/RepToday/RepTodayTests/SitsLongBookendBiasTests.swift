@@ -7,15 +7,17 @@ import XCTest
 /// The flag's only job in the engine is an ordering **preference** on the warm-up/cooldown mobility
 /// pools: `SessionAssembly.postureHipLean` stable-promotes posture/hip openers (stretches whose US-M02
 /// `complements` name a hip-dominant pattern, `SessionAssembly.postureHipPatterns` = squat/hinge) ahead
-/// of the rest, *underneath* the US-M02 lead-complement promotion (which keeps final authority over the
-/// lead slot). It is reorder-only: no bookend count changes, so it cannot re-inflate a short session.
+/// of the rest *inside* the day's matching stretches and inside the fallback separately, so it never
+/// brings an unmatched stretch into a bookend (ADR-0018, decision 8). It is reorder-only: no bookend count
+/// changes, so it cannot re-inflate a short session.
 ///
 /// Coverage:
 ///   (a) the posture/hip-opener predicate is exactly the squat/hinge-complementing subset of the real
 ///       mobility catalog, and is a non-trivial, non-total slice of it;
 ///   (b) two otherwise-identical no-history profiles (`sitsLong` true / false) at 5 and 20 min: the
 ///       `sitsLong` bookends lean toward posture/hip openers while block structure and bookend counts
-///       stay identical, and the 5-min session is not re-inflated;
+///       stay identical, and the 5-min session is not re-inflated; on every day, length and level the
+///       lean stays inside the day's matching stretches;
 ///   (c) `sitsLong` is not a training lever: on every Training Day and length the circuit holds the same
 ///       movements in the same roles at the same Earned Reps for both profiles. The served reps and the
 ///       rests may differ, because the bookends can cost different seconds and the fit pads or rests to
@@ -126,8 +128,9 @@ final class SitsLongBookendBiasTests: XCTestCase {
     // MARK: - (b) The PRD validation test: lean, identical structure, lean short sessions
 
     /// Two otherwise-identical no-history profiles, `sitsLong` true and false, at 5 and 20 min:
-    ///   - the `sitsLong` bookends lean toward posture/hip openers (strictly more hip openers), and never
-    ///     fewer than the non-desk profile (the invariant the stable partition guarantees);
+    ///   - the `sitsLong` bookends never hold fewer posture/hip openers than the non-desk profile (the
+    ///     invariant the stable partition guarantees), and on the 5-minute Push Day strictly more: the one
+    ///     warm-up stretch is Downward Dog, the push match that also opens the hips, instead of Cobra;
     ///   - the block count and structure are otherwise identical (Warm-Up -> Strength [-> Cooldown]);
     ///   - neither profile grows a mobility *middle* block;
     ///   - the 5-min session is not re-inflated: its warm-up stays at the length-scaled single movement
@@ -160,14 +163,19 @@ final class SitsLongBookendBiasTests: XCTestCase {
                 )
             }
 
-            // The lean: the desk profile's bookends carry more hip openers, and never fewer.
+            // The lean: the desk profile's bookends never carry fewer hip openers. On a Push Day only one
+            // push stretch a Discipline intermediate is offered opens the hips, so the lean shows at 5
+            // minutes, where it decides the single warm-up stretch.
             let deskHips = hipOpenerCount(desk)
             let generalHips = hipOpenerCount(general)
             XCTAssertGreaterThanOrEqual(deskHips, generalHips, "\(minutes) min: sitsLong must never reduce hip openers")
-            XCTAssertGreaterThan(
-                deskHips, generalHips,
-                "\(minutes) min: sitsLong=true bookends (\(deskHips) hip openers) do not lean over sitsLong=false (\(generalHips))"
-            )
+            if minutes == 5 {
+                XCTAssertGreaterThan(
+                    deskHips, generalHips,
+                    "\(minutes) min: sitsLong=true bookends (\(deskHips) hip openers) do not lean over sitsLong=false (\(generalHips))"
+                )
+                XCTAssertEqual(block(desk, .warmup)?.exercises.map(\.exercise.id), ["mobility_down_dog"])
+            }
         }
 
         // The shortest session is not re-inflated with stretching, for either profile.
@@ -180,6 +188,42 @@ final class SitsLongBookendBiasTests: XCTestCase {
             )
             XCTAssertEqual(block(five, .warmup)?.exercises.count, 1, "sitsLong=\(sitsLong): the 5-min warm-up is a single movement")
             XCTAssertNil(block(five, .cooldown), "sitsLong=\(sitsLong): the 5-min session gains no cooldown")
+        }
+    }
+
+    /// Decision 8 (ADR-0018): the lean reorders only inside the day's matching stretches. On every day,
+    /// length and level the desk profile's bookends hold exactly as many matching stretches as the general
+    /// profile's - the lean never trades a match for an unmatched hip opener - and its bookend stretches are
+    /// the general profile's matches reordered or swapped for other matches.
+    func testSitsLongReordersOnlyWithinTheDaysMatches() async throws {
+        let library = try await library()
+        for level in FitnessLevel.allCases {
+            for day in TrainingDay.rotation {
+                for minutes in [5, 10, 15, 20, 30, 45, 60] {
+                    func stretches(_ sitsLong: Bool) -> [Exercise] {
+                        bookendExercises(SessionAssembly.assemble(
+                            requestedMinutes: minutes,
+                            user: TrainingDayFixtures.user(level: level, sitsLong: sitsLong),
+                            library: library,
+                            recentLogs: [],
+                            trainingDay: day,
+                            asOf: TrainingDayFixtures.asOf,
+                            calendar: TrainingDayFixtures.calendar
+                        ))
+                    }
+                    let desk = stretches(true)
+                    let general = stretches(false)
+                    let label = "\(level) \(day) \(minutes) min"
+                    let matched = { (list: [Exercise]) in list.filter { SessionAssembly.complements($0, anyOf: day.patterns) } }
+                    XCTAssertEqual(desk.count, general.count, label)
+                    XCTAssertEqual(matched(desk).count, matched(general).count, "\(label): \(desk.map(\.id)) vs \(general.map(\.id))")
+                    XCTAssertGreaterThanOrEqual(
+                        desk.filter(SessionAssembly.isPostureHipOpener).count,
+                        general.filter(SessionAssembly.isPostureHipOpener).count,
+                        label
+                    )
+                }
+            }
         }
     }
 

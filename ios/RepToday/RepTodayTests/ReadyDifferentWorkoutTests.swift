@@ -134,19 +134,19 @@ final class ReadyDifferentWorkoutTests: XCTestCase {
         await h.viewModel.load()
         await h.viewModel.showDifferentWorkout()
 
-        await h.viewModel.selectDuration(45)
+        await h.viewModel.selectDuration(30)
 
-        XCTAssertEqual(h.viewModel.selectedMinutes, 45)
-        XCTAssertEqual(h.viewModel.workout?.requestedMinutes, 45)
+        XCTAssertEqual(h.viewModel.selectedMinutes, 30)
+        XCTAssertEqual(h.viewModel.workout?.requestedMinutes, 30)
         XCTAssertEqual(h.viewModel.variation, .none, "a new length starts from its default session")
 
         let fresh = try harness()
         await fresh.viewModel.load()
-        await fresh.viewModel.selectDuration(45)
+        await fresh.viewModel.selectDuration(30)
         XCTAssertEqual(content(h.viewModel.workout), content(fresh.viewModel.workout))
 
         await h.viewModel.showDifferentWorkout()
-        XCTAssertEqual(h.viewModel.workout?.requestedMinutes, 45, "a press at the new length keeps the new length")
+        XCTAssertEqual(h.viewModel.workout?.requestedMinutes, 30, "a press at the new length keeps the new length")
         XCTAssertNotEqual(moves(h.viewModel.workout), moves(fresh.viewModel.workout))
     }
 

@@ -1,45 +1,47 @@
 import XCTest
 @testable import RepToday
 
-/// US-M02: pattern-matched, prefer-then-fill bookends.
+/// US-SZ03 (ADR-0018): day-matched bookends, replacing US-M02's prefer-then-fill lead.
 ///
-/// The warm-up and cooldown each *lead* with a stretch whose `complements: [MovementPattern]` metadata
-/// contains the Training Day's lead pattern (push on a Push Day, pull on a Pull Day, squat on a Legs
-/// Day), then fill the remaining slots with the staleness / no-repeat variety ordering. The match is a
-/// **preference, never an exclusive filter**: when no complementary stretch is available the general
-/// mobility pool fills the bookend, which is therefore never starved or emptied.
+/// Every warm-up and cooldown stretch complements the Training Day's group - push on a Push Day, pull on
+/// a Pull Day, squat or hinge on a Legs Day - read off each stretch's `complements` metadata. The variety
+/// order (a Different workout press's moves last, then no recent repeats, then least recently done) picks
+/// among the matching stretches, and an unmatched stretch fills a bookend only once the matches the user
+/// is offered run out, so a bookend is never emptied.
 ///
 /// Coverage, run end-to-end over the real bundled library:
-///   (a) the leading warm-up and cooldown stretch complements the day's lead pattern on every Training Day;
-///   (b) a general-pool fallback appears - never an empty bookend - when no complementary stretch is
-///       available (a library whose stretches complement no such pattern);
-///   (c) the >= 6-complementary-stretches-per-pattern coverage invariant, plus the whole mapping being
-///       tagged on all 26 mobility movements;
-///   (d) determinism and `asOf`-purity: identical inputs (and staleness-preserving `asOf` shifts) yield
-///       byte-identical bookend orderings.
+///   (a) on every day, length, level and phase, a bookend holds as many matching stretches as it has room
+///       for, and an unmatched one only after every offered match is in the session - with the catalog's
+///       one real shortfall pinned (a Discipline beginner or intermediate is offered three pull stretches);
+///   (b) a pool with too few matches falls back without emptying or shortening a bookend;
+///   (c) the variety order and a Different workout press pick among the matches;
+///   (d) the coverage invariant and the mapping on all 26 mobility movements;
+///   (e) determinism and `asOf`-purity.
 final class BookendComplementSelectionTests: XCTestCase {
 
     // MARK: - Fixtures
+
+    private let lengths = [5, 10, 15, 20, 30, 45, 60]
 
     private func library() async throws -> [Exercise] {
         try await MockExerciseService().exercises()
     }
 
-    /// The pattern each Training Day's bookends lead with.
-    private let leadPattern: [TrainingDay: MovementPattern] = [.push: .push, .pull: .pull, .legs: .squat]
-
     private func assemble(
         minutes: Int,
         day: TrainingDay,
         library: [Exercise],
+        user: User = TrainingDayFixtures.user(),
         logs: [WorkoutLog] = [],
+        variation: SessionVariation = .none,
         asOf: Date = TrainingDayFixtures.asOf
     ) -> Workout {
         SessionAssembly.assemble(
             requestedMinutes: minutes,
-            user: TrainingDayFixtures.user(),
+            user: user,
             library: library,
             recentLogs: logs,
+            variation: variation,
             trainingDay: day,
             asOf: asOf,
             calendar: TrainingDayFixtures.calendar
@@ -50,89 +52,152 @@ final class BookendComplementSelectionTests: XCTestCase {
         workout.blocks.first { $0.category == category }
     }
 
-    // MARK: - (a) The leading bookend stretch complements the day's lead pattern
+    private func bookendStretches(_ workout: Workout) -> [Exercise] {
+        workout.blocks
+            .filter { $0.category == .warmup || $0.category == .cooldown }
+            .flatMap { $0.exercises.map(\.exercise) }
+    }
 
-    /// On every Training Day, at every length that carries both bookends, the first warm-up stretch and
-    /// the first cooldown stretch each complement the day's lead pattern, and the circuit trains that day.
-    func testLeadingBookendStretchComplementsTheDaysLeadPattern() async throws {
+    private func matches(_ exercise: Exercise, _ day: TrainingDay) -> Bool {
+        SessionAssembly.complements(exercise, anyOf: day.patterns)
+    }
+
+    // MARK: - (a) Every bookend stretch matches the day while the catalog has enough
+
+    /// On every Training Day, length, level and phase, with and without a history: the bookends hold
+    /// `min(room, offered matches)` matching stretches, and an unmatched stretch appears only once every
+    /// match the user is offered is already in the session. Bookend counts are the length's.
+    func testEveryBookendStretchMatchesTheDayWhileMatchesRemain() async throws {
         let library = try await library()
-        for day in TrainingDay.rotation {
-            let target = try XCTUnwrap(leadPattern[day])
-            for minutes in [15, 20, 30, 45, 60] {
-                let workout = assemble(minutes: minutes, day: day, library: library)
-                let label = "\(day) \(minutes) min"
+        let history = [TrainingDayFixtures.log(
+            ["mobility_cat_cow", "mobility_childs_pose", "mobility_cobra", "mobility_butterfly"].map {
+                TrainingDayFixtures.station($0, pattern: .mobility, pillar: .mobility, role: nil, value: 10, sets: 1)
+            },
+            completedAt: TrainingDayFixtures.date(daysAgo: 1)
+        )]
+        for level in FitnessLevel.allCases {
+            for phase in [Phase.discipline, .strength] {
+                let user = TrainingDayFixtures.user(level: level, phase: phase)
+                for logs in [[], history] {
+                    let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: logs)
+                    for day in TrainingDay.rotation {
+                        let offered = pool.filter { $0.pillar == .mobility && matches($0, day) }
+                        for minutes in lengths {
+                            let workout = assemble(minutes: minutes, day: day, library: library, user: user, logs: logs)
+                            let label = "\(level) \(phase) \(day) \(minutes) min history:\(!logs.isEmpty)"
+                            XCTAssertEqual(block(workout, .warmup)?.exercises.count, SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes), label)
+                            XCTAssertEqual(block(workout, .cooldown)?.exercises.count ?? 0, SessionAssembly.cooldownExerciseCount(forRequestedMinutes: minutes), label)
 
-                let strength = try XCTUnwrap(block(workout, .strength), "\(label): no circuit")
-                XCTAssertEqual(strength.title, day.displayName, label)
-                XCTAssertTrue(
-                    strength.exercises.contains { $0.exercise.movementPattern == target },
-                    "\(label): the circuit does not train \(target)"
-                )
-
-                let warmup = try XCTUnwrap(block(workout, .warmup), "\(label): a session opens with a warm-up")
-                let firstWarm = try XCTUnwrap(warmup.exercises.first?.exercise, "\(label): the warm-up is never empty")
-                XCTAssertEqual(firstWarm.pillar, .mobility, "\(label): the leading warm-up item is a stretch")
-                XCTAssertTrue(
-                    firstWarm.complements?.contains(target) == true,
-                    "\(label): warm-up leads with '\(firstWarm.id)', which does not complement \(target)"
-                )
-
-                let cooldown = try XCTUnwrap(block(workout, .cooldown), "\(label): a cooldown closes the session")
-                let firstCool = try XCTUnwrap(cooldown.exercises.first?.exercise, "\(label): the cooldown is never empty")
-                XCTAssertTrue(
-                    firstCool.complements?.contains(target) == true,
-                    "\(label): cooldown leads with '\(firstCool.id)', which does not complement \(target)"
-                )
+                            let stretches = bookendStretches(workout)
+                            let matched = stretches.filter { matches($0, day) }
+                            XCTAssertEqual(matched.count, min(stretches.count, offered.count), "\(label): \(stretches.map(\.id))")
+                            if matched.count < stretches.count {
+                                XCTAssertEqual(Set(matched.map(\.id)), Set(offered.map(\.id)), "\(label): a fallback while a match was left")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // MARK: - (b) General-pool fallback, never an empty bookend
-
-    /// When no stretch in the pool complements the lead pattern, the bias is a no-op and the general
-    /// mobility ordering fills the bookend: the warm-up and cooldown are still present, still at their
-    /// length-scaled counts, and simply lead with the freshest general stretch. The library's stretches
-    /// are stripped of `squat` (the metadata is the only lever the bias reads), the state a fully-consumed
-    /// complementary pool would leave a Legs Day in.
-    func testFallsBackToGeneralPoolWhenNoComplementaryStretchIsAvailable() async throws {
-        let base = try await library()
-        let target = MovementPattern.squat
-        let stripped = base.map { exercise -> Exercise in
-            guard exercise.pillar == .mobility else { return exercise }
-            var copy = exercise
-            copy.complements = (exercise.complements ?? []).filter { $0 != target }
-            return copy
+    /// Where the catalog actually runs short: Push and Legs Days always fill every bookend stretch from
+    /// the matches, at every level; a Pull Day does for an advanced or Strength-Phase user, while a
+    /// Discipline beginner or intermediate is offered three pull stretches (Arm Circles, Child's Pose,
+    /// Supine Twist), so their 30-60 minute Pull Day's fourth bookend stretch is the one fallback.
+    func testOnlyABeginnerOrIntermediatePullDayFromThirtyMinutesFallsBack() async throws {
+        let library = try await library()
+        for level in FitnessLevel.allCases {
+            for phase in [Phase.discipline, .strength] {
+                let user = TrainingDayFixtures.user(level: level, phase: phase)
+                for day in TrainingDay.rotation {
+                    for minutes in lengths {
+                        let stretches = bookendStretches(assemble(minutes: minutes, day: day, library: library, user: user))
+                        let fallbacks = stretches.filter { !matches($0, day) }.count
+                        let staplesOnly = level != .advanced && phase == .discipline
+                        let expected = day == .pull && staplesOnly && minutes >= 30 ? 1 : 0
+                        XCTAssertEqual(fallbacks, expected, "\(level) \(phase) \(day) \(minutes) min: \(stretches.map(\.id))")
+                    }
+                }
+            }
         }
-        XCTAssertFalse(
-            stripped.contains { $0.pillar == .mobility && $0.complements?.contains(target) == true },
-            "the stripped library must contain no stretch complementing \(target)"
-        )
-
-        let workout = assemble(minutes: 20, day: .legs, library: stripped)
-
-        let warmup = try XCTUnwrap(block(workout, .warmup), "the warm-up is still built")
-        XCTAssertEqual(
-            warmup.exercises.count,
-            SessionAssembly.warmupExerciseCount(forRequestedMinutes: 20),
-            "the fallback warm-up keeps its length-scaled count, not a starved one"
-        )
-        let cooldown = try XCTUnwrap(block(workout, .cooldown), "the cooldown is still built")
-        XCTAssertEqual(
-            cooldown.exercises.count,
-            SessionAssembly.cooldownExerciseCount(forRequestedMinutes: 20),
-            "the fallback cooldown keeps its length-scaled count"
-        )
-        XCTAssertFalse(
-            warmup.exercises.first?.exercise.complements?.contains(target) == true,
-            "with no complementary stretch, the warm-up leads from the general pool"
-        )
+        let pullStaples = MovementAccess.available(in: library, level: .beginner, phase: .discipline)
+            .filter { $0.pillar == .mobility && matches($0, .pull) }
+        XCTAssertEqual(Set(pullStaples.map(\.id)), ["mobility_arm_circles", "mobility_childs_pose", "mobility_supine_twist"])
     }
 
-    // MARK: - (c) Coverage invariant: >= 6 complementary stretches per strength pattern
+    // MARK: - (b) Too few matches falls back without emptying a bookend
 
-    /// Every strength pattern resolves to at least six complementary mobility movements (so prefer-then-
-    /// fill never starves), and all 26 mobility movements carry the `complements` field - a mistyped
-    /// display name in the mapping would silently drop coverage, which this pins.
+    /// A library whose stretches leave only one pull match: a 30-minute Pull Day still opens and closes
+    /// with full, length-scaled bookends, the one match is in them, and the rest come from the general
+    /// pool. With none at all, the bookends are still full.
+    func testAPoolWithTooFewMatchesFallsBackWithoutEmptyingABookend() async throws {
+        let base = try await library()
+        for kept in [["mobility_childs_pose"], []] {
+            let thinned = base.map { exercise -> Exercise in
+                guard exercise.pillar == .mobility, !kept.contains(exercise.id) else { return exercise }
+                var copy = exercise
+                copy.complements = (exercise.complements ?? []).filter { $0 != .pull }
+                return copy
+            }
+            let workout = assemble(minutes: 30, day: .pull, library: thinned)
+            let label = "kept \(kept)"
+            XCTAssertEqual(block(workout, .warmup)?.exercises.count, 2, label)
+            XCTAssertEqual(block(workout, .cooldown)?.exercises.count, 2, label)
+            let stretches = bookendStretches(workout)
+            XCTAssertEqual(Set(stretches.map(\.id)).count, 4, "\(label): a stretch repeated")
+            XCTAssertEqual(stretches.filter { matches($0, .pull) }.map(\.id), kept, label)
+            XCTAssertTrue(stretches.allSatisfy { $0.pillar == .mobility }, label)
+        }
+    }
+
+    // MARK: - (c) The variety order and a press pick among the matches
+
+    /// Stretches done yesterday go behind fresh ones, but only among the matches: a Legs Day with every
+    /// fresh match still available never reaches for an unmatched stretch, and none of yesterday's.
+    func testTheVarietyOrderPicksAmongTheMatches() async throws {
+        let library = try await library()
+        let first = assemble(minutes: 30, day: .legs, library: library)
+        let yesterday = TrainingDayFixtures.log(
+            bookendStretches(first).map {
+                TrainingDayFixtures.station($0.id, pattern: .mobility, pillar: .mobility, role: nil, value: 10, sets: 1)
+            },
+            completedAt: TrainingDayFixtures.date(daysAgo: 1)
+        )
+        let next = assemble(minutes: 30, day: .legs, library: library, logs: [yesterday])
+        let stretches = bookendStretches(next)
+        XCTAssertTrue(stretches.allSatisfy { matches($0, .legs) }, "\(stretches.map(\.id))")
+        XCTAssertTrue(Set(stretches.map(\.id)).isDisjoint(with: bookendStretches(first).map(\.id)), "\(stretches.map(\.id))")
+    }
+
+    /// A Different workout press ranks the stretches it already showed behind the other matches, never
+    /// behind an unmatched stretch: a Legs Day's pressed bookends are new and still all match.
+    func testADifferentWorkoutPressPicksAmongTheMatches() async throws {
+        let library = try await library()
+        let shown = assemble(minutes: 30, day: .legs, library: library)
+        let pressed = assemble(minutes: 30, day: .legs, library: library, variation: SessionVariation.none.advanced(past: shown))
+        let stretches = bookendStretches(pressed)
+        XCTAssertTrue(stretches.allSatisfy { matches($0, .legs) }, "\(stretches.map(\.id))")
+        XCTAssertTrue(Set(stretches.map(\.id)).isDisjoint(with: bookendStretches(shown).map(\.id)), "\(stretches.map(\.id))")
+    }
+
+    /// The cooldown is static holds, chosen first so the day's matching holds close the session even when
+    /// few match: a beginner's Push Day (four push stretches offered, three of them holds) closes on two
+    /// matching holds and warms up on the other two matches.
+    func testTheCooldownTakesTheMatchingHolds() async throws {
+        let library = try await library()
+        let workout = assemble(minutes: 30, day: .push, library: library, user: TrainingDayFixtures.user(level: .beginner))
+        let cooldown = try XCTUnwrap(block(workout, .cooldown)).exercises.map(\.exercise)
+        let warmup = try XCTUnwrap(block(workout, .warmup)).exercises.map(\.exercise)
+        XCTAssertTrue(cooldown.allSatisfy { $0.isHold && matches($0, .push) }, "\(cooldown.map(\.id))")
+        XCTAssertTrue(warmup.allSatisfy { matches($0, .push) }, "\(warmup.map(\.id))")
+    }
+
+    // MARK: - (d) Coverage invariant
+
+    /// Every strength pattern resolves to at least six complementary mobility movements across the
+    /// catalog, and all 26 mobility movements carry the `complements` field - a mistyped display name in
+    /// the mapping would silently drop coverage, which this pins.
     func testEveryStrengthPatternHasAtLeastSixComplementaryStretches() async throws {
         let library = try await library()
         let mobility = library.filter { $0.pillar == .mobility }
@@ -164,10 +229,10 @@ final class BookendComplementSelectionTests: XCTestCase {
         )
     }
 
-    // MARK: - (d) Determinism and asOf-purity
+    // MARK: - (e) Determinism and asOf-purity
 
     /// A history that has used a few stretches, so the ordering is driven by staleness as well as the
-    /// complement bias.
+    /// day match.
     private func mobilityHistory(asOf: Date) -> [WorkoutLog] {
         let stretches = ["mobility_cat_cow", "mobility_worlds_greatest", "mobility_childs_pose"]
         return stretches.enumerated().map { index, id in
@@ -178,8 +243,8 @@ final class BookendComplementSelectionTests: XCTestCase {
         }
     }
 
-    /// The prefer-then-fill reorder adds no nondeterminism: identical inputs produce byte-identical
-    /// bookends across repeated assembly.
+    /// Day matching adds no nondeterminism: identical inputs produce byte-identical bookends across
+    /// repeated assembly.
     func testBookendSelectionIsDeterministic() async throws {
         let library = try await library()
         let logs = mobilityHistory(asOf: TrainingDayFixtures.asOf)
@@ -194,9 +259,9 @@ final class BookendComplementSelectionTests: XCTestCase {
         }
     }
 
-    /// `asOf`-purity: the bias reads no wall clock, only relative staleness. Shifting every input date -
-    /// the logs and the reference `asOf` - by the same offset preserves all staleness, so the bookend
-    /// ordering is byte-identical; a hidden absolute-clock read would perturb it.
+    /// `asOf`-purity: the selection reads no wall clock, only relative staleness. Shifting every input
+    /// date - the logs and the reference `asOf` - by the same offset preserves all staleness, so the
+    /// bookend ordering is byte-identical; a hidden absolute-clock read would perturb it.
     func testBookendSelectionIsAsOfPure() async throws {
         let library = try await library()
         let baseAsOf = TrainingDayFixtures.asOf

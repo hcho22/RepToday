@@ -182,19 +182,22 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
-    /// The length bands themselves (decisions 7-8), bound to literals so a drifted boundary fails here:
-    /// warm-up 1 stretch up to 10 minutes and 2 beyond; cooldown none up to 10, 1 at 15-20, 2 from 30; main
-    /// slots 1 up to 20, 2 at 30, 3 at 45, 4 at 60; one Core Sprinkle past 10 minutes.
+    /// The length bands themselves (decision 7, ADR-0018), bound to literals so a drifted boundary fails
+    /// here: warm-up 1 stretch up to 10 minutes and 2 beyond; cooldown none up to 10, 1 at 15-20, 2 from
+    /// 30; main slots 1 at 5, 2 at 10-15, 3 at 20-30, 4 at 45, 5 at 60; Core Sprinkles none up to 10, 1 at
+    /// 15-30, 2 at 45-60, and one more with Abs wherever core appears.
     func testLengthBandsAreLeanAndLengthScaled() {
         let warmup = [5: 1, 10: 1, 15: 2, 20: 2, 30: 2, 45: 2, 60: 2]
         let cooldown = [5: 0, 10: 0, 15: 1, 20: 1, 30: 2, 45: 2, 60: 2]
-        let mains = [5: 1, 10: 1, 15: 1, 20: 1, 30: 2, 45: 3, 60: 4]
-        let core = [5: 0, 10: 0, 15: 1, 20: 1, 30: 1, 45: 1, 60: 1]
+        let mains = [5: 1, 10: 2, 15: 2, 20: 3, 30: 3, 45: 4, 60: 5]
+        let core = [5: 0, 10: 0, 15: 1, 20: 1, 30: 1, 45: 2, 60: 2]
+        let coreWithAbs = [5: 0, 10: 0, 15: 2, 20: 2, 30: 2, 45: 3, 60: 3]
         for minutes in lengths {
             XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes), warmup[minutes], "\(minutes)")
             XCTAssertEqual(SessionAssembly.cooldownExerciseCount(forRequestedMinutes: minutes), cooldown[minutes], "\(minutes)")
             XCTAssertEqual(SessionAssembly.mainSlotCount(forRequestedMinutes: minutes), mains[minutes], "\(minutes)")
             XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: minutes), core[minutes], "\(minutes)")
+            XCTAssertEqual(SessionAssembly.coreSprinkleCount(forRequestedMinutes: minutes, focusAreas: [.abs]), coreWithAbs[minutes], "\(minutes)")
         }
         XCTAssertEqual(SessionAssembly.maxWarmupExercises, 2)
         XCTAssertEqual(SessionAssembly.maxCooldownExercises, 2)
@@ -343,8 +346,9 @@ final class SessionAssemblyTests: XCTestCase {
     }
 
     /// A long session fills by reps and rest, never by more sets: at 45 and 60 minutes a fresh user's
-    /// circuit keeps four sets per station while the rest after a round or the pause between stations
-    /// grows past its 15-second start.
+    /// circuit keeps four sets per station while its reps are padded above where they started, or the rest
+    /// after a round or the pause between stations grows past its 15-second start. (With four or five main
+    /// movements an advanced user's wide range can fill a 45-minute session by reps alone, ADR-0018.)
     func testLongSessionsFillWithRestNotSets() throws {
         for level in FitnessLevel.allCases {
             for day in TrainingDay.rotation {
@@ -355,9 +359,13 @@ final class SessionAssemblyTests: XCTestCase {
                     XCTAssertTrue(block.exercises.allSatisfy { $0.sets == RepGrammar.setsPerStation }, label)
                     let rest = block.exercises[0].restSeconds
                     let pause = block.transitionSeconds ?? SessionAssembly.transitionSeconds
+                    let padded = block.exercises.contains { item in
+                        guard let earned = item.earnedReps ?? item.earnedDurationSeconds else { return false }
+                        return (item.reps ?? item.durationSeconds ?? 0) > earned
+                    }
                     XCTAssertTrue(
-                        rest > SessionAssembly.baseRoundRestSeconds || pause > SessionAssembly.transitionSeconds,
-                        "\(label): rest \(rest)s, pause \(pause)s - the fit grew neither"
+                        padded || rest > SessionAssembly.baseRoundRestSeconds || pause > SessionAssembly.transitionSeconds,
+                        "\(label): rest \(rest)s, pause \(pause)s - the fit padded no reps and grew neither"
                     )
                 }
             }
@@ -397,6 +405,8 @@ final class SessionAssemblyTests: XCTestCase {
                             let value = item.reps ?? item.durationSeconds ?? 0
                             let kind = RepGrammar.kind(of: exercise)
                             switch item.role {
+                            case .variation?:
+                                XCTFail("\(label): the shipping catalog carries no Variation, so none is ever served")
                             case .main?, .core?:
                                 XCTAssertGreaterThanOrEqual(value, RepGrammar.shortSessionFloor(for: kind), "\(label): \(exercise.id)")
                                 XCTAssertLessThanOrEqual(value, RepGrammar.earnedRange(for: kind, level: level).upperBound, "\(label): \(exercise.id)")
@@ -567,8 +577,9 @@ final class SessionAssemblyTests: XCTestCase {
             completedAt: TrainingDayFixtures.date(daysAgo: 20)
         )
         var history = [preReturn]
+        // At 60 minutes, so the fit never has to cut reps below Earned Reps to fit the length.
         func standard() throws -> (workout: Workout, item: PrescribedExercise) {
-            let workout = assemble(minutes: 30, user: advanced, logs: history, day: .push)
+            let workout = assemble(minutes: 60, user: advanced, logs: history, day: .push)
             return (workout, try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_standard" }, "Standard Push-Up stays served"))
         }
 

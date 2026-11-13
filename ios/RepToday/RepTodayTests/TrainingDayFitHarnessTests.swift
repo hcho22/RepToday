@@ -9,7 +9,8 @@ import XCTest
 /// range and the longest rests cannot fill it - runs short and says so (an honest shortfall). It never
 /// overruns past the tolerance unless every rep is already at the short-session floor.
 ///
-/// Each run prints a transcript (`FIT HARNESS` lines) of planned against requested minutes.
+/// Each run prints a transcript (`FIT HARNESS` lines) of planned against requested minutes, for a fresh
+/// history, a cold-start one and a seasoned one.
 final class TrainingDayFitHarnessTests: XCTestCase {
 
     private let lengths = [5, 10, 15, 20, 30, 45, 60]
@@ -35,7 +36,9 @@ final class TrainingDayFitHarnessTests: XCTestCase {
             let focusLabel = focusAreas.isEmpty ? "none" : focusAreas.count == FocusArea.allCases.count ? "all" : focusAreas.map(\.rawValue).joined(separator: "+")
             for history in History.allCases {
                 for level in FitnessLevel.allCases {
-                    let user = TrainingDayFixtures.user(level: level, focusAreas: focusAreas, asOf: asOf)
+                    var user = TrainingDayFixtures.user(level: level, focusAreas: focusAreas, asOf: asOf)
+                    if history == .coldStart { user.coldStart = User.ColdStart(sessionsLogged: 0, active: true) }
+                    let policy = history == .coldStart ? SessionPolicy.seeded(forFitnessLevel: level) : .default
                     let logs = history.logs(library: library, level: level, asOf: asOf, calendar: calendar)
                     for day in TrainingDay.rotation {
                         for minutes in lengths {
@@ -44,6 +47,7 @@ final class TrainingDayFitHarnessTests: XCTestCase {
                                 user: user,
                                 library: library,
                                 recentLogs: logs,
+                                sessionPolicy: policy,
                                 trainingDay: day,
                                 asOf: asOf,
                                 calendar: calendar
@@ -85,14 +89,17 @@ final class TrainingDayFitHarnessTests: XCTestCase {
     }
 
     /// The two ends of a user's history: a fresh start (every Earned Reps at the bottom of the range) and
-    /// a seasoned one (Earned Reps climbed to the top of the range, without yet clearing a rung).
+    /// a seasoned one (Earned Reps climbed to the top of the range, without yet clearing a rung) - plus a
+    /// brand-new user still inside the cold-start window, under their level's seeded Start Seed policy
+    /// (its difficulty band and cap), which is what every user's first sessions are built from.
     private enum History: String, CaseIterable {
         case fresh
+        case coldStart
         case seasoned
 
         func logs(library: [Exercise], level: FitnessLevel, asOf: Date, calendar: Calendar) -> [WorkoutLog] {
             switch self {
-            case .fresh:
+            case .fresh, .coldStart:
                 return []
             case .seasoned:
                 let worked = library.filter { $0.pillar == .strength && MovementAccess.isAvailable($0, level: level, phase: .discipline) }

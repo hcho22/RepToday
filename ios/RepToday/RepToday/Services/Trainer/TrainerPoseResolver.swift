@@ -60,6 +60,15 @@ struct TrainerPoseResolver {
         case (false, false): return .none
         }
     }
+
+    /// Whether both Trainers have the full start/end pair for `exerciseId` - the bar a Variation must
+    /// clear before the engine offers it (ADR-0018), so landing its art is what makes it live.
+    func hasFullArt(exerciseId: String) -> Bool {
+        Trainer.allCases.allSatisfy { trainer in
+            if case .pair = art(exerciseId: exerciseId, trainer: trainer) { return true }
+            return false
+        }
+    }
 }
 
 /// The spoken copy for the pose art (US-TP09) - one source for the exercise card and the rest overlay.

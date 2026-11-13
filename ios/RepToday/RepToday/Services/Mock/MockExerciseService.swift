@@ -19,8 +19,8 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     case unresolvedChainLink(exerciseId: String, missingId: String, link: String)
     /// A chain's `progressionOrder` values are not a contiguous `0..<count` sequence.
     case chainNotContiguous(chainId: String, orders: [Int])
-    /// A `pillar == .mobility` movement is missing the `complements` field the prefer-then-fill
-    /// bookend selection reads (US-M02). Every mobility stretch must carry it (an empty `[]` is
+    /// A `pillar == .mobility` movement is missing the `complements` field the day-matched
+    /// bookend selection reads (US-M02, ADR-0018). Every mobility stretch must carry it (an empty `[]` is
     /// valid - "complements no pattern"); a *missing* key is a tagging omission, not "no matches".
     case mobilityMissingComplements(exerciseId: String)
     /// An exercise carries no `audience`, so the access rule (`MovementAccess`, ADR-0007) would have to
@@ -33,6 +33,12 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     /// chain, so withdrawing it would leave a hole in a live ladder. A withdrawn movement sits in a chain
     /// wholly withdrawn or in the withdrawn tail above a live ladder (US-TD01).
     case withdrawnMovementInLiveChain(exerciseId: String, withdrawnId: String)
+    /// A Variation (ADR-0018) names a parent that is not a strength rung of its own pattern: missing from
+    /// the library, a Variation itself, or a different pattern or pillar.
+    case variationParentInvalid(exerciseId: String, parentId: String)
+    /// A Variation sits in a ladder: it must be the only member of its chain, with no rung above or below,
+    /// so no ladder ever serves it as a current rung.
+    case variationInLadder(exerciseId: String)
 
     var errorDescription: String? {
         switch self {
@@ -56,6 +62,10 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
             return "Exercise '\(id)' and '\(linkedId)' are not adjacent, mutually linked rungs of one progression chain."
         case .withdrawnMovementInLiveChain(let id, let withdrawnId):
             return "Exercise '\(id)' is offered to users but links to '\(withdrawnId)', which is withdrawn and not at the top of its chain."
+        case .variationParentInvalid(let id, let parentId):
+            return "Variation '\(id)' names parent '\(parentId)', which is not a strength rung of the same pattern (ADR-0018)."
+        case .variationInLadder(let id):
+            return "Variation '\(id)' must sit alone in its own chain with no regression or progression (ADR-0018)."
         }
     }
 }
@@ -153,7 +163,8 @@ final class MockExerciseService: ExerciseServiceProtocol {
     // MARK: - Validation
 
     /// Integrity-checks a library, throwing the first violation found. Rules (in order):
-    /// unique ids, the Zero-Equipment Floor, resolvable chain links, contiguous chains.
+    /// unique ids, the Zero-Equipment Floor, resolvable chain links, contiguous chains, and Variations
+    /// standing outside every ladder.
     private static func validate(_ library: [Exercise]) throws {
         // Unique ids - checked first because every later rule relies on an id-keyed lookup.
         var seen = Set<String>()
@@ -168,7 +179,7 @@ final class MockExerciseService: ExerciseServiceProtocol {
         }
 
         // Every mobility stretch carries a `complements` tag (US-M02) - `[]` is valid, a missing
-        // key is not - so the prefer-then-fill bookend selection has an honest, uniform schema and
+        // key is not - so the day-matched bookend selection has an honest, uniform schema and
         // a newly added stretch cannot silently ship untagged.
         for exercise in library where exercise.pillar == .mobility && exercise.complements == nil {
             throw ExerciseLibraryError.mobilityMissingComplements(exerciseId: exercise.id)
@@ -238,6 +249,20 @@ final class MockExerciseService: ExerciseServiceProtocol {
                 guard above.allSatisfy(MovementAccess.isWithdrawn) else {
                     throw ExerciseLibraryError.withdrawnMovementInLiveChain(exerciseId: exercise.id, withdrawnId: nextId)
                 }
+            }
+        }
+
+        // A Variation (ADR-0018) varies one strength rung of its own pattern and sits outside every ladder,
+        // so a ladder can never serve it as a current rung or a Practice Movement.
+        for exercise in library.sorted(by: { $0.id < $1.id }) {
+            guard let parentId = exercise.variationOf else { continue }
+            guard let parent = byId[parentId], parent.variationOf == nil, parent.pillar == .strength,
+                  exercise.pillar == .strength, parent.movementPattern == exercise.movementPattern else {
+                throw ExerciseLibraryError.variationParentInvalid(exerciseId: exercise.id, parentId: parentId)
+            }
+            guard chains[exercise.progressionChainId]?.count == 1,
+                  exercise.regressionId == nil, exercise.progressionId == nil else {
+                throw ExerciseLibraryError.variationInLadder(exerciseId: exercise.id)
             }
         }
     }

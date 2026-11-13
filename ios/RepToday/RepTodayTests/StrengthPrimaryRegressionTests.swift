@@ -12,7 +12,7 @@ import XCTest
 ///      carries a mobility *middle* block - mobility survives only as the warm-up and cooldown bookends
 ///      (the originally-reported bug was a 5-minute desk-worker session generated as all stretches);
 ///   2. stays deterministic and a pure function of the injected `asOf`;
-///   3. opens and closes with a stretch complementing the day's lead pattern (US-M02 prefer-then-fill);
+///   3. opens and closes with stretches complementing the day's group (ADR-0018 day-matched bookends);
 ///   4. treats `sitsLong` as a bookend bias only - toggling it never changes the block structure.
 ///
 /// `BookendComplementSelectionTests` / `SitsLongBookendBiasTests` prove the bookend mechanisms per story
@@ -29,9 +29,6 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
     override func setUp() async throws {
         library = try await MockExerciseService().exercises()
     }
-
-    /// The pattern each Training Day's bookends lead with.
-    private let leadPattern: [TrainingDay: MovementPattern] = [.push: .push, .pull: .pull, .legs: .squat]
 
     /// A cold-start user inside the First-Week window: a desk-worker beginner with a mobility opening bias,
     /// the original bug's profile.
@@ -192,27 +189,33 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
         XCTAssertEqual(structuralSignature(a), structuralSignature(session(anchor: anchorB)))
     }
 
-    // MARK: - 3. The bookends lead with a stretch complementing the day
+    // MARK: - 3. The bookends match the day (ADR-0018)
 
-    /// Every regime leaves enough complementary stretches fresh that the leading bookend stretch resolves
-    /// to a complementary one rather than the general-pool fallback.
-    func testBookendsLeadWithAStretchComplementingTheDayAcrossRegimes() throws {
+    /// Every regime leaves the bookends day-matched: each warm-up and cooldown leads with a stretch that
+    /// complements the day's group, and every stretch does on a Push or Legs Day. These regimes' users are
+    /// all Discipline beginners or intermediates, offered only three pull stretches, so a 30-60 minute
+    /// Pull Day's four bookend stretches hold exactly one fallback.
+    func testBookendsMatchTheDayAcrossRegimes() throws {
         for regime in regimes {
             for day in TrainingDay.rotation {
-                let lead = try XCTUnwrap(leadPattern[day])
                 for minutes in [15, 20, 30, 45, 60] {
                     let workout = regime.generate(minutes, day)
+                    var fallbacks = 0
                     for category in [ExerciseCategory.warmup, .cooldown] {
                         let label = "[\(regime.name)] \(day) \(minutes) min \(category)"
-                        let first = try XCTUnwrap(
-                            workout.blocks.first { $0.category == category }?.exercises.first?.exercise,
-                            "\(label): missing or empty"
+                        let stretches = try XCTUnwrap(
+                            workout.blocks.first { $0.category == category }?.exercises.map(\.exercise),
+                            "\(label): missing"
                         )
+                        let first = try XCTUnwrap(stretches.first, "\(label): empty")
                         XCTAssertTrue(
-                            first.complements?.contains(lead) == true,
-                            "\(label) leads with '\(first.id)', which does not complement \(lead)"
+                            SessionAssembly.complements(first, anyOf: day.patterns),
+                            "\(label) leads with '\(first.id)', which does not complement \(day)"
                         )
+                        fallbacks += stretches.filter { !SessionAssembly.complements($0, anyOf: day.patterns) }.count
                     }
+                    let label = "[\(regime.name)] \(day) \(minutes) min"
+                    XCTAssertEqual(fallbacks, day == .pull && minutes >= 30 ? 1 : 0, label)
                 }
             }
         }

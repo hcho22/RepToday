@@ -197,7 +197,10 @@ enum ExerciseSwap {
                 candidate.pillar == target.pillar,
                 candidate.movementPattern == target.movementPattern,
                 abs(candidate.difficulty - target.difficulty) <= difficultyBandWidth,
-                !inSessionIds.contains(candidate.id)
+                !inSessionIds.contains(candidate.id),
+                // A Variation fills only its own slot (ADR-0018), so a swap never hands one into a slot
+                // whose role could advance it.
+                candidate.variationOf == nil
             else { return nil }
 
             let overload = overloadTarget(

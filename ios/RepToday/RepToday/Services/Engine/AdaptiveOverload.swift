@@ -204,7 +204,7 @@ enum AdaptiveOverload {
     }
 
     /// The sessions that worked `exercise`, newest first. A skip counts (it steps back) and a Practice
-    /// station never does. A log written before Training Days carries no Earned Reps and recorded
+    /// or Variation station never does. A log written before Training Days carries no Earned Reps and recorded
     /// earned = performed, so it is read only when it was not held under capacity by a Return or ramp
     /// (`ReturnOverride.splitHeld`) - a held session's performed number is not what the user earned.
     private static func entries(
@@ -219,7 +219,7 @@ enum AdaptiveOverload {
         var skipDates: [Date] = []
         for log in recentLogs.sorted(by: { $0.completedAt > $1.completedAt }) {
             if let since, log.completedAt <= since { continue }
-            guard let logged = log.exercises.first(where: { $0.exerciseId == exercise.id && $0.role != .practice })
+            guard let logged = log.exercises.first(where: { $0.exerciseId == exercise.id && $0.role?.advancesProgression != false })
             else { continue }
             if logged.skipped {
                 skipDates.append(log.completedAt)

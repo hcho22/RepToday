@@ -250,12 +250,42 @@ final class DifferentWorkoutTests: XCTestCase {
 
     // MARK: - Presses change the moves, then cycle back
 
+    /// Whether the default session already holds every move a press could bring: every day-matched
+    /// stretch the user is offered (and no fallback stretch a press could change), both a ladder's rung
+    /// and the rest of the day's ladders, and every core ladder they are offered. A press then has nothing
+    /// new to rank ahead, so it returns the default session (ADR-0018 strict bookends).
+    private func pressCanChangeNothing(_ workout: Workout, scenario: Scenario, library: [Exercise]) -> Bool {
+        guard let day = workout.trainingDay else { return false }
+        let pool = ExercisePoolFilter.eligiblePool(from: library, user: scenario.user, recentLogs: scenario.recentLogs)
+        let prescriptions = workout.blocks.flatMap(\.exercises)
+        let shownIds = Set(prescriptions.map(\.exercise.id))
+        let stretches = prescriptions.map(\.exercise).filter { $0.pillar == .mobility }
+        let matches = pool.filter { $0.pillar == .mobility && SessionAssembly.complements($0, anyOf: day.patterns) }
+        let offeredLadders = { (ladders: [String]) in Set(pool.map(\.progressionChainId).filter(ladders.contains)) }
+        let shownLadders = { (role: StationRole) in Set(prescriptions.filter { $0.role == role }.map(\.exercise.progressionChainId)) }
+        return matches.allSatisfy { shownIds.contains($0.id) }
+            && stretches.allSatisfy { SessionAssembly.complements($0, anyOf: day.patterns) }
+            && shownLadders(.main) == offeredLadders(day.ladders)
+            && shownLadders(.core) == offeredLadders(SessionAssembly.coreLadders)
+    }
+
+    /// A press shows something new whenever the eligible pool holds anything new to show. With strict
+    /// day-matched bookends (ADR-0018), a Discipline-Phase beginner or intermediate's 45 and 60 minute Push
+    /// Day is the exception: it already holds all four push stretches they are offered, both push ladders
+    /// with their Practice Movements and both core ladders they are offered, so a press returns the same
+    /// session. That set is pinned so a change to it is a deliberate one.
     func testAPressChangesTheMovesAndEachPressBeforeTheCycleShowsSomethingNew() async throws {
         let library = try await library()
+        var unchangeable: [String] = []
         for scenario in scenarios(library: library) {
             for minutes in lengths {
                 let presses = sequence(scenario, minutes: minutes, presses: pressCap, library: library)
                 let label = "\(scenario.name) \(minutes) min"
+                if pressCanChangeNothing(presses[0], scenario: scenario, library: library) {
+                    unchangeable.append(label)
+                    XCTAssertEqual(content(presses[1]), content(presses[0]), "\(label): a press with nothing new returns the default")
+                    continue
+                }
                 XCTAssertNotEqual(
                     SessionVariation.exerciseIds(in: presses[1]),
                     SessionVariation.exerciseIds(in: presses[0]),
@@ -270,6 +300,10 @@ final class DifferentWorkoutTests: XCTestCase {
                 }
             }
         }
+        XCTAssertEqual(unchangeable, [
+            "beginner new 45 min", "beginner new 60 min", "beginner with history 45 min", "beginner with history 60 min",
+            "intermediate new 45 min", "intermediate new 60 min", "intermediate with history 45 min", "intermediate with history 60 min",
+        ])
     }
 
     func testTheSequenceCyclesBackToTheDefaultAndRepeatsExactly() async throws {
