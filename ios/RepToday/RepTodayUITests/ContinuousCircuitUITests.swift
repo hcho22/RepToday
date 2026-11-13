@@ -112,15 +112,23 @@ final class ContinuousCircuitUITests: XCTestCase {
         // of each exercise per round, so within a round the exercise changes station to station, or the
         // round advances - either proves the rotation; grinding all sets of one exercise first would show
         // the same exercise repeat with an unchanged round.
+        // A station is either a rep-based set on its work window (advanced by Done) or a timed hold
+        // (advanced by banking the set), since the block's stations depend on the generated session.
+        let hold = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Hold, "))
+            .firstMatch
         var seen: [(round: String, exercise: String)] = []
         for _ in 0..<12 {
             guard let round = firstLabel(beginningWith: "Round "), let exercise = currentExerciseName() else { break }
             seen.append((round: round, exercise: exercise))
-            guard app.buttons["Done"].waitForExistence(timeout: 4) else { break }
-            app.buttons["Done"].tap()
-            // Clear the between-station transition / between-round rest, then reach the next work window.
+            guard let advance = ["Done", "Complete set", "Finish exercise", "Finish session"]
+                .map({ app.buttons[$0] })
+                .first(where: { $0.exists && $0.isHittable }) else { break }
+            advance.tap()
+            // Clear the between-station transition / between-round rest, then reach the next station.
             if app.buttons["Skip rest"].waitForExistence(timeout: 4) { app.buttons["Skip rest"].tap() }
-            if !workWindow.waitForExistence(timeout: 4) { break } // left the block (cooldown) or finished
+            if !(workWindow.waitForExistence(timeout: 4) || hold.exists) { break } // left the block or finished
         }
         attachScreenshot(named: "02-after-rotation")
 

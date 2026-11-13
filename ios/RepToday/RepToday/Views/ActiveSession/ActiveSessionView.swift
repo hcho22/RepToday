@@ -30,6 +30,7 @@ struct ActiveSessionView: View {
     /// where the flag can be read and written.
     @Environment(AppState.self) private var appState: AppState?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var viewModel: ActiveSessionViewModel
 
     /// The session's Trainer (US-TP06) and whether the one-time choice must be asked first (US-TP10).
@@ -58,6 +59,10 @@ struct ActiveSessionView: View {
     /// The height the player is laid out in, below the status bar - what tells a short screen
     /// (`isCompactColumn`). Unmeasured, the screen is tall.
     @State private var playerHeight = CGFloat.infinity
+
+    /// The width the player is laid out in - what tells whether the secondary row fits
+    /// (`stacksSecondaryActions`). Unmeasured, it fits.
+    @State private var playerWidth = CGFloat.infinity
 
     /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
     /// this to refresh the resumable session *without* racing the store's completion clear: a completed
@@ -359,28 +364,38 @@ struct ActiveSessionView: View {
             if let step = viewModel.currentStep {
                 let cardHeight = cardHeight
                 let rhythm = isCompactColumn ? Self.compactColumnRhythm : Self.columnRhythm
+                let stacksActions = stacksSecondaryActions
                 ScrollView {
-                    VStack(alignment: .leading, spacing: rhythm) {
-                        blockContext(step)
-                        // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
-                        // work window, a running or idle hold, a rep-based stretch. Any countdown sits
-                        // beside the exercise name below, so starting one never changes what the card
-                        // shows (on a short screen a name the ring wraps can cost it a few points,
-                        // `cardHeight`). The no-art glyph pulses only on an idle card, as the demo slot
-                        // always did.
-                        ExerciseDemoView(
-                            prescription: step.prescription,
-                            height: cardHeight,
-                            animatesGlyph: !(viewModel.isHolding || viewModel.currentStepAutoAdvances)
-                        )
-                        exerciseHeadline(step)
-                        setTracker(step)
-                    }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.top, rhythm)
-                    // Measured before the bottom padding: only the column's content has to show.
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
-                        if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
+                    VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: rhythm) {
+                            blockContext(step)
+                            // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
+                            // work window, a running or idle hold, a rep-based stretch. Any countdown sits
+                            // beside the exercise name below, so starting one never changes what the card
+                            // shows (on a short screen a name the ring wraps can cost it a few points,
+                            // `cardHeight`). The no-art glyph pulses only on an idle card, as the demo slot
+                            // always did.
+                            ExerciseDemoView(
+                                prescription: step.prescription,
+                                height: cardHeight,
+                                animatesGlyph: !(viewModel.isHolding || viewModel.currentStepAutoAdvances)
+                            )
+                            exerciseHeadline(step)
+                            setTracker(step)
+                        }
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.top, rhythm)
+                        // Measured before the bottom padding and any stacked actions: only the column's
+                        // content has to show, and the actions below it are reached by scrolling.
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
+                            if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
+                        }
+
+                        if stacksActions {
+                            stackedSecondaryActions
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.top, rhythm)
+                        }
                     }
                     .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -390,7 +405,10 @@ struct ActiveSessionView: View {
 
             controls
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { playerHeight = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            playerHeight = size.height
+            playerWidth = size.width
+        }
         // A swap on a hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
         // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
@@ -548,68 +566,15 @@ struct ActiveSessionView: View {
     /// row never reflows under the user's thumb mid-tap.
     private var controls: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            if viewModel.noSwapAlternative {
+            if viewModel.noSwapAlternative, !stacksSecondaryActions {
                 noAlternativeNotice
             }
 
             primaryAction
 
-            HStack(spacing: Theme.Spacing.md) {
-                // US-CC14 / FR-16: **+ More time** is first-class and always present on a live work
-                // window or hold - the "never rush anyone" hatch. It adds the same +15s the rest's
-                // "+ More time" uses, purely to the on-screen countdown; it changes nothing logged
-                // (US-CC09) and never touches the plan. Shown only while a window or hold is counting
-                // down (the rest overlay carries its own "+15s"), so the two never double up.
-                if viewModel.canExtendActiveCountdown {
-                    secondaryAction(
-                        title: "+ More time",
-                        accessibilityLabel: "More time",
-                        accessibilityHint: "Adds \(ActiveSessionViewModel.restExtension) seconds to the current timer",
-                        isEnabled: true
-                    ) {
-                        viewModel.extendActiveCountdown()
-                    }
-                }
-
-                // A swap reshapes the slot the countdown is timing, so it is offered between holds
-                // rather than during one - dimmed in place, so the row keeps its shape.
-                if viewModel.canSwap {
-                    secondaryAction(
-                        title: viewModel.isSwapping ? "Swapping…" : "Swap",
-                        accessibilityLabel: "Swap this exercise",
-                        accessibilityHint: "Replaces it with a similar movement",
-                        isEnabled: !viewModel.isSwapping && !viewModel.isHolding
-                    ) {
-                        Task { await viewModel.swapCurrentExercise() }
-                    }
-                }
-
-                // A timed movement records itself at zero, but the timer is an offer, not the only way
-                // out: a user who held it off-timer, or was interrupted part-way through a three-set
-                // plank, can still bank the work they did instead of losing it to a skip. It stays
-                // offered *while* a leg runs too - otherwise the only visible ways out of a running
-                // hold are "Stop hold", which records nothing, and "Skip", which discards every set
-                // already banked for the exercise. Tapping it ends the leg without firing the cue (the
-                // user came out of it early) and banks the set through the same path the countdown
-                // takes at zero.
-                if viewModel.holdSecondsPerSide != nil {
-                    secondaryAction(
-                        title: completeButtonTitle,
-                        accessibilityLabel: completeButtonTitle,
-                        accessibilityHint: "Records this set without the timer",
-                        isEnabled: true
-                    ) {
-                        viewModel.completeSet()
-                    }
-                }
-
-                secondaryAction(
-                    title: "Skip",
-                    accessibilityLabel: "Skip this exercise",
-                    accessibilityHint: nil,
-                    isEnabled: true
-                ) {
-                    viewModel.skipExercise()
+            if !stacksSecondaryActions {
+                HStack(spacing: Theme.Spacing.md) {
+                    secondaryActions
                 }
             }
         }
@@ -617,15 +582,136 @@ struct ActiveSessionView: View {
         .background(Theme.Colors.background)
     }
 
+    /// The secondary row's controls stacked as full-width rows in the scrolling column, below the round
+    /// tracker, for when they no longer fit side by side (`stacksSecondaryActions`). The "no alternative"
+    /// notice travels with them, since it answers the Swap among them.
+    private var stackedSecondaryActions: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            if viewModel.noSwapAlternative {
+                noAlternativeNotice
+            }
+            secondaryActions
+        }
+    }
+
+    /// Whether the secondary row gives up its side-by-side columns: when the columns cannot each hold the
+    /// longest word of their title, the row would break words in two at large Dynamic Type sizes and grow
+    /// past the screen, so its controls move into the scrolling column as full-width rows instead and only
+    /// the primary action stays pinned. A roomy screen at the default sizes keeps the row.
+    private var stacksSecondaryActions: Bool {
+        !Self.secondaryRowFits(
+            titles: secondaryTitles,
+            width: playerWidth - 2 * Theme.Spacing.lg,
+            size: dynamicTypeSize
+        )
+    }
+
+    /// The titles the secondary row shows at this step, one per slot. A swap in flight is measured by
+    /// its resting "Swap": the brief, dimmed "Swapping…" never moves the row.
+    private var secondaryTitles: [String] {
+        var titles: [String] = []
+        if viewModel.canExtendActiveCountdown { titles.append("+ More time") }
+        if viewModel.canSwap { titles.append("Swap") }
+        if viewModel.holdSecondsPerSide != nil { titles.append(completeButtonTitle) }
+        titles.append("Skip")
+        return titles
+    }
+
+    /// Whether `titles` fit side by side in `width`: each column at least as wide as the longest word of
+    /// its title (`longestWordWidth`), set in the row's type at `size`.
+    static func secondaryRowFits(titles: [String], width: CGFloat, size: DynamicTypeSize) -> Bool {
+        guard width.isFinite, !titles.isEmpty else { return true }
+        let words = titles.reduce(0) { $0 + longestWordWidth($1, size: size) }
+        return words + CGFloat(titles.count - 1) * Theme.Spacing.md <= width
+    }
+
+    /// The width of the longest word of a secondary control's `title` at `size`: the narrowest its
+    /// column may be, so the word is never broken across lines.
+    static func longestWordWidth(_ title: String, size: DynamicTypeSize) -> CGFloat {
+        title.split(separator: " ").map { textWidth(String($0), style: .body, size: size) }.max() ?? 0
+    }
+
+    /// The width `text` takes on one line in Theme's rounded type for `style` at `size` - the
+    /// measurement behind the player's and the rest overlay's choice between side-by-side and stacked
+    /// controls.
+    static func textWidth(_ text: String, style: UIFont.TextStyle, size: DynamicTypeSize) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+        let base = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits)
+        let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 0) } ?? base
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// The secondary row's controls, laid side by side in the pinned controls or stacked in the column.
+    @ViewBuilder
+    private var secondaryActions: some View {
+        // US-CC14 / FR-16: **+ More time** is first-class and always present on a live work
+        // window or hold - the "never rush anyone" hatch. It adds the same +15s the rest's
+        // "+ More time" uses, purely to the on-screen countdown; it changes nothing logged
+        // (US-CC09) and never touches the plan. Shown only while a window or hold is counting
+        // down (the rest overlay carries its own "+15s"), so the two never double up.
+        if viewModel.canExtendActiveCountdown {
+            secondaryAction(
+                title: "+ More time",
+                accessibilityLabel: "More time",
+                accessibilityHint: "Adds \(ActiveSessionViewModel.restExtension) seconds to the current timer",
+                isEnabled: true
+            ) {
+                viewModel.extendActiveCountdown()
+            }
+        }
+
+        // A swap reshapes the slot the countdown is timing, so it is offered between holds
+        // rather than during one - dimmed in place, so the row keeps its shape.
+        if viewModel.canSwap {
+            secondaryAction(
+                title: viewModel.isSwapping ? "Swapping…" : "Swap",
+                accessibilityLabel: "Swap this exercise",
+                accessibilityHint: "Replaces it with a similar movement",
+                isEnabled: !viewModel.isSwapping && !viewModel.isHolding
+            ) {
+                Task { await viewModel.swapCurrentExercise() }
+            }
+        }
+
+        // A timed movement records itself at zero, but the timer is an offer, not the only way
+        // out: a user who held it off-timer, or was interrupted part-way through a three-set
+        // plank, can still bank the work they did instead of losing it to a skip. It stays
+        // offered *while* a leg runs too - otherwise the only visible ways out of a running
+        // hold are "Stop hold", which records nothing, and "Skip", which discards every set
+        // already banked for the exercise. Tapping it ends the leg without firing the cue (the
+        // user came out of it early) and banks the set through the same path the countdown
+        // takes at zero.
+        if viewModel.holdSecondsPerSide != nil {
+            secondaryAction(
+                title: completeButtonTitle,
+                accessibilityLabel: completeButtonTitle,
+                accessibilityHint: "Records this set without the timer",
+                isEnabled: true
+            ) {
+                viewModel.completeSet()
+            }
+        }
+
+        secondaryAction(
+            title: "Skip",
+            accessibilityLabel: "Skip this exercise",
+            accessibilityHint: nil,
+            isEnabled: true
+        ) {
+            viewModel.skipExercise()
+        }
+    }
+
     /// One quiet control in the secondary row. Every slot is built here so they share their styling,
     /// their 60pt active-screen touch target, and their column width - and so a control that is
     /// unavailable right now still holds its place in the row rather than letting the others slide.
     ///
-    /// The columns are narrow - three of them on a timed movement - and the longest title in the row
-    /// ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
-    /// label wraps and the row grows rather than truncating it away at the largest Dynamic Type sizes.
-    /// Same remedy the target line uses, and the 60pt active-screen touch target is the floor, never
-    /// the ceiling.
+    /// The columns are narrow - four of them on a running timed movement - and the longest title in the
+    /// row ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
+    /// label wraps between words and the row grows rather than truncating it away. No column is narrower
+    /// than its title's longest word, so a word is never split; once the row cannot give every column that
+    /// much, the controls stack as full-width rows instead (`stacksSecondaryActions`). The 60pt
+    /// active-screen touch target is the floor, never the ceiling.
     private func secondaryAction(
         title: String,
         accessibilityLabel: String,
@@ -640,7 +726,7 @@ struct ActiveSessionView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .opacity(isEnabled ? 1 : 0.4)
-                .frame(maxWidth: .infinity)
+                .frame(minWidth: Self.longestWordWidth(title, size: dynamicTypeSize), maxWidth: .infinity)
                 .frame(minHeight: Theme.Spacing.workoutTouchTarget)
         }
         .disabled(!isEnabled)
@@ -1193,11 +1279,13 @@ private struct RingSize: ViewModifier {
             content.frame(width: diameter, height: diameter)
         } else {
             let range = CountdownRing.flexibleDiameterRange
+            // Ideally the smallest: asked how tall it would like to be, with no height on offer (the rest
+            // overlay's fit check, a scrolling parent), it answers its minimum rather than its width.
             content
                 .aspectRatio(1, contentMode: .fit)
                 .frame(
-                    minWidth: range.lowerBound, maxWidth: range.upperBound,
-                    minHeight: range.lowerBound, maxHeight: range.upperBound
+                    minWidth: range.lowerBound, idealWidth: range.lowerBound, maxWidth: range.upperBound,
+                    minHeight: range.lowerBound, idealHeight: range.lowerBound, maxHeight: range.upperBound
                 )
         }
     }
@@ -1315,6 +1403,12 @@ private struct RestView: View {
     @State private var currentDate = Date()
     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The width the overlay is laid out in - what tells whether the two controls fit side by side
+    /// (`stacksControls`). Unmeasured, they fit.
+    @State private var width = CGFloat.infinity
+
     var body: some View {
         let remaining = viewModel.restRemaining(asOf: currentDate)
         let total = max(viewModel.restTotalSeconds, 1)
@@ -1336,34 +1430,20 @@ private struct RestView: View {
 
             Spacer(minLength: Theme.Spacing.sm)
 
-            VStack(spacing: Theme.Spacing.md) {
-                // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
-                // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
-                // change position rather than read it as a plain between-set rest. Every other gap - a
-                // between-station transition (US-CC04) and a between-round rest - stays a "Rest" here; the
-                // transition beat earns its distinctness below, in `nextUp`'s prominent "Next: <exercise>"
-                // (US-CC11), rather than by renaming this shared header.
-                let heading = viewModel.isSwitchingSides ? "Switch sides" : "Rest"
-                Text(heading)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-
-                // The ring and the poses below are the two flexible pieces: each takes up to its full size
-                // on a roomy phone and both shrink, evenly, until heading, ring, next-up text, poses and
-                // both controls fit a 375x667 pt screen (US-TP08, decision 12).
-                CountdownRing(
-                    remaining: remaining,
-                    fraction: fraction,
-                    name: heading,
-                    diameter: nil
-                )
-                .padding(.horizontal, Theme.Spacing.lg)
-
-                nextUp
-
-                nextUpPoses
+            // The middle fits the screen by shrinking its ring and poses (below). When even their
+            // smallest sizes leave too little room - large Dynamic Type on a short phone - it scrolls
+            // between the pinned top bar and controls rather than pushing them off the screen.
+            ViewThatFits(in: .vertical) {
+                middle(remaining: remaining, fraction: fraction, ringDiameter: nil)
+                // Scrolling, the ring keeps its full size so its clock is never shrunk to fit.
+                ScrollView {
+                    middle(
+                        remaining: remaining,
+                        fraction: fraction,
+                        ringDiameter: CountdownRing.flexibleDiameterRange.upperBound
+                    )
+                }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
             // The middle claims the height first; the spacers above and below only take what is left,
             // so the ring and the poses grow before empty space does.
             .layoutPriority(1)
@@ -1372,10 +1452,44 @@ private struct RestView: View {
 
             controls
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onReceive(ticker) { date in
             currentDate = date
             viewModel.completeRestIfElapsed(asOf: date)
         }
+    }
+
+    /// The heading, ring, next-up text and the next movement's poses. A `nil` ring diameter lets the
+    /// ring shrink with the screen.
+    private func middle(remaining: Int, fraction: Double, ringDiameter: CGFloat?) -> some View {
+        VStack(spacing: Theme.Spacing.md) {
+            // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
+            // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
+            // change position rather than read it as a plain between-set rest. Every other gap - a
+            // between-station transition (US-CC04) and a between-round rest - stays a "Rest" here; the
+            // transition beat earns its distinctness below, in `nextUp`'s prominent "Next: <exercise>"
+            // (US-CC11), rather than by renaming this shared header.
+            let heading = viewModel.isSwitchingSides ? "Switch sides" : "Rest"
+            Text(heading)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.textSecondary)
+
+            // The ring and the poses below are the two flexible pieces: each takes up to its full size
+            // on a roomy phone and both shrink, evenly, until heading, ring, next-up text, poses and
+            // both controls fit a 375x667 pt screen (US-TP08, decision 12).
+            CountdownRing(
+                remaining: remaining,
+                fraction: fraction,
+                name: heading,
+                diameter: ringDiameter
+            )
+            .padding(.horizontal, Theme.Spacing.lg)
+
+            nextUp
+
+            nextUpPoses
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
     }
 
     /// A preview of the effort the rest is pacing toward, so the user knows what is next. Inside a
@@ -1440,16 +1554,24 @@ private struct RestView: View {
     private var nextUpPoses: some View {
         if let step = viewModel.currentStep {
             ExerciseDemoView(prescription: step.prescription, height: nil, animatesGlyph: false)
-                .frame(minHeight: Self.posesHeightRange.lowerBound, maxHeight: Self.posesHeightRange.upperBound)
+                .frame(
+                    minHeight: Self.posesHeightRange.lowerBound,
+                    idealHeight: Self.posesHeightRange.lowerBound,
+                    maxHeight: Self.posesHeightRange.upperBound
+                )
         }
     }
 
     /// The rest preview card's smallest and largest height.
     static let posesHeightRange: ClosedRange<CGFloat> = ExerciseDemoView.minHeight...ExerciseDemoView.height
 
-    /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target.
+    /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target. Side by side while both
+    /// titles fit their half on one line; stacked full width once either would wrap (`stacksControls`).
     private var controls: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        let layout = stacksControls
+            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+        return layout {
             Button {
                 viewModel.extendRest()
             } label: {
@@ -1458,8 +1580,10 @@ private struct RestView: View {
                     // Primary text rather than the bordered style's accent, which reads at 4.47:1 on this
                     // fill in dark mode (see "Stop hold").
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .buttonStyle(.bordered)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -1470,8 +1594,10 @@ private struct RestView: View {
             } label: {
                 Text("Skip rest")
                     .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -1479,6 +1605,19 @@ private struct RestView: View {
         }
         .padding(Theme.Spacing.lg)
     }
+
+    /// Whether the two controls stack: once either title no longer fits on one line inside its half of
+    /// the row (less the button's own inset), so a label is never cut by the button's edge.
+    private var stacksControls: Bool {
+        guard width.isFinite else { return false }
+        let half = (width - 2 * Theme.Spacing.lg - Theme.Spacing.md) / 2 - Self.buttonLabelInset
+        return ["+\(ActiveSessionViewModel.restExtension)s", "Skip rest"].contains {
+            ActiveSessionView.textWidth($0, style: .headline, size: dynamicTypeSize) > half
+        }
+    }
+
+    /// The room a bordered button keeps around its label, on both sides together.
+    private static let buttonLabelInset = 2 * Theme.Spacing.md
 }
 
 #Preview {
