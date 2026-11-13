@@ -224,8 +224,9 @@ enum SessionAssembly {
     /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
     /// earlier presses showed are ranked behind their alternatives wherever the plan has a choice (which
     /// ladders fill a short session, which stretches, which core ladder), while every filter and the fit
-    /// still decide each pick. When that leaves nothing new the default session is returned, which is how
-    /// a sequence of presses cycles back.
+    /// still decide each pick. Its bookends stay inside the day's matching stretches; only when that would
+    /// show nothing new does it bring in one unmatched stretch it has not shown (ADR-0018). When even that
+    /// leaves nothing new the default session is returned, which is how a sequence of presses cycles back.
     ///
     /// `activities` are the logged Outside Activities the Rotation reads (decision 21), for today's group
     /// and the Cycle the Core Sprinkle rotates on.
@@ -254,21 +255,24 @@ enum SessionAssembly {
             calendar: calendar
         )
         if !variation.isNone {
-            let varied = assemblePass(
-                requestedMinutes: requestedMinutes,
-                user: user,
-                library: library,
-                recentLogs: recentLogs,
-                sessionPolicy: sessionPolicy,
-                offered: variation.offeredExerciseIds,
-                trainingDay: day,
-                history: history,
-                activities: activities,
-                hasTrainerArt: hasTrainerArt,
-                asOf: asOf,
-                calendar: calendar
-            )
-            if variation.offersSomethingNew(varied) { return varied }
+            for unmatchedStretchAllowance in [0, 1] {
+                let varied = assemblePass(
+                    requestedMinutes: requestedMinutes,
+                    user: user,
+                    library: library,
+                    recentLogs: recentLogs,
+                    sessionPolicy: sessionPolicy,
+                    offered: variation.offeredExerciseIds,
+                    unmatchedStretchAllowance: unmatchedStretchAllowance,
+                    trainingDay: day,
+                    history: history,
+                    activities: activities,
+                    hasTrainerArt: hasTrainerArt,
+                    asOf: asOf,
+                    calendar: calendar
+                )
+                if variation.offersSomethingNew(varied) { return varied }
+            }
         }
         return assemblePass(
             requestedMinutes: requestedMinutes,
@@ -277,6 +281,7 @@ enum SessionAssembly {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: [],
+            unmatchedStretchAllowance: 0,
             trainingDay: day,
             history: history,
             activities: activities,
@@ -293,7 +298,8 @@ enum SessionAssembly {
     }
 
     /// One assembly pass, with `offered` (a `SessionVariation`'s moves) ranked behind their
-    /// alternatives; empty for the default session.
+    /// alternatives and up to `unmatchedStretchAllowance` unshown unmatched stretches ranked ahead of the
+    /// matches it already showed; both empty for the default session.
     private static func assemblePass(
         requestedMinutes: Int,
         user: User,
@@ -301,6 +307,7 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         offered: Set<String>,
+        unmatchedStretchAllowance: Int,
         trainingDay: TrainingDay,
         history: [WorkoutLog]?,
         activities: [OutsideActivity],
@@ -315,6 +322,7 @@ enum SessionAssembly {
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
             offered: offered,
+            unmatchedStretchAllowance: unmatchedStretchAllowance,
             trainingDay: trainingDay,
             history: history,
             activities: activities,
@@ -371,6 +379,7 @@ enum SessionAssembly {
             sitsLong: user.profile.sitsLong,
             focusAreas: [],
             offered: [],
+            unmatchedStretchAllowance: 0,
             hasTrainerArt: { _ in false },
             asOf: asOf,
             calendar: .current
@@ -470,6 +479,7 @@ enum SessionAssembly {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy = .default,
         offered: Set<String> = [],
+        unmatchedStretchAllowance: Int = 0,
         trainingDay: TrainingDay,
         history: [WorkoutLog]? = nil,
         activities: [OutsideActivity] = [],
@@ -525,6 +535,7 @@ enum SessionAssembly {
             sitsLong: user.profile.sitsLong,
             focusAreas: user.profile.focusAreas,
             offered: offered,
+            unmatchedStretchAllowance: unmatchedStretchAllowance,
             hasTrainerArt: hasTrainerArt,
             asOf: asOf,
             calendar: calendar
@@ -1023,6 +1034,9 @@ private struct Builder {
     /// The moves a **Different workout** press asks the session to avoid: ranked behind their
     /// alternatives wherever the plan has a choice, never filtered.
     let offered: Set<String>
+    /// How many unshown unmatched stretches a **Different workout** press may still rank ahead of the
+    /// matches it already showed: one on the press's second pass, spent as the bookends take it (ADR-0018).
+    var unmatchedStretchAllowance: Int
     /// Whether both Trainers have a movement's full pose pair: a Variation is offered only when they do.
     let hasTrainerArt: (Exercise) -> Bool
     let asOf: Date
@@ -1050,6 +1064,7 @@ private struct Builder {
         sitsLong: Bool,
         focusAreas: [FocusArea],
         offered: Set<String>,
+        unmatchedStretchAllowance: Int,
         hasTrainerArt: @escaping (Exercise) -> Bool,
         asOf: Date,
         calendar: Calendar
@@ -1073,6 +1088,7 @@ private struct Builder {
         self.sitsLong = sitsLong
         self.focusAreas = focusAreas
         self.offered = offered
+        self.unmatchedStretchAllowance = unmatchedStretchAllowance
         self.hasTrainerArt = hasTrainerArt
         self.asOf = asOf
         self.calendar = calendar
@@ -1086,11 +1102,12 @@ private struct Builder {
         // session and the warm-up does not use them up when only a few match (a beginner's Push Day has
         // four); the warm-up then takes the freshest matches left.
         let cooldown = mobilityItems(
-            from: orderedMobility(matching: day.patterns, holdsFirst: true),
+            matching: day.patterns,
+            holdsFirst: true,
             cap: SessionAssembly.cooldownExerciseCount(forRequestedMinutes: requestedMinutes)
         )
         let warmup = mobilityItems(
-            from: orderedMobility(matching: day.patterns),
+            matching: day.patterns,
             cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
         )
 
@@ -1402,8 +1419,11 @@ private struct Builder {
     // MARK: Bookends
 
     /// One-set stretches at their catalog lengths, claiming each id so no later slot reuses it.
-    private mutating func mobilityItems(from exercises: [Exercise], cap: Int) -> [PlannedItem] {
-        exercises.prefix(cap).map { exercise in
+    private mutating func mobilityItems(matching patterns: Set<MovementPattern>, holdsFirst: Bool = false, cap: Int) -> [PlannedItem] {
+        let picked = orderedMobility(matching: patterns, holdsFirst: holdsFirst).prefix(cap)
+        let spent = picked.filter { !offered.contains($0.id) && !SessionAssembly.complements($0, anyOf: patterns) }.count
+        unmatchedStretchAllowance = max(0, unmatchedStretchAllowance - spent)
+        return picked.map { exercise in
             usedIds.insert(exercise.id)
             return .fixed(exercise, role: nil, value: SessionAssembly.bookendValue(for: exercise), sets: 1)
         }
@@ -1413,18 +1433,18 @@ private struct Builder {
 
     /// Eligible, not-yet-claimed mobility movements ordered for variety: never-worked and longest-ago
     /// first, movements used in the last few sessions pushed back, then shortest (finest timing
-    /// granularity) and id as deterministic tie-breaks. Ahead of all of that, a stretch a **Different
-    /// workout** press already showed (`offered`) goes behind every stretch that press has not.
+    /// granularity) and id as deterministic tie-breaks.
     ///
     /// `matching` makes the bookends day-matched (ADR-0018, replacing US-M02's prefer-then-fill lead):
-    /// given the day's patterns, every stretch whose `complements` names one of them comes first, in that
-    /// variety order, and the others follow only as the fallback for when the matches run out - so a
-    /// bookend is never starved, and never holds an unmatched stretch while a match is left. A Different
-    /// workout press counts the matches it already showed as used: it takes the fresh matches, then the
-    /// unmatched stretches it has not shown, and only then shows a match again, so a press can still bring
-    /// something new when every match is already in the session. `nil` (the Recovery flow) keeps the plain
-    /// variety order. `holdsFirst` (the cooldown) puts holds ahead of moving
-    /// stretches inside each of those two groups, never across them.
+    /// given the day's patterns, every stretch whose `complements` names one of them comes first - those a
+    /// **Different workout** press has not shown (`offered`) ahead of those it has, each in that variety
+    /// order - and the others follow only as the fallback for when the matches run out, so a bookend is
+    /// never starved, and never holds an unmatched stretch while a match is left. The one exception is
+    /// `unmatchedStretchAllowance`: when a press staying inside the matches would show nothing new,
+    /// `assemble` re-plans it with an allowance of one, which ranks the first unshown unmatched stretch
+    /// right after the unshown matches, so the press changes the fewest bookend stretches it can. `nil`
+    /// (the Recovery flow) keeps the plain variety order. `holdsFirst` (the cooldown) puts holds ahead of
+    /// moving stretches inside each of those groups, never across them.
     ///
     /// `sitsLong` layers the US-M03 posture/hip bias inside each group (`postureHipLean`): a desk worker's
     /// matching stretches lead with posture/hip openers, but the bias never brings an unmatched stretch
@@ -1438,12 +1458,6 @@ private struct Builder {
         let ordered = pool
             .filter { $0.pillar == .mobility && !usedIds.contains($0.id) }
             .sorted { lhs, rhs in
-                // A Different workout press: a stretch an earlier press already showed goes behind every
-                // other, ahead of the variety window, since the user has just asked for other moves.
-                let lhsOffered = offered.contains(lhs.id)
-                let rhsOffered = offered.contains(rhs.id)
-                if lhsOffered != rhsOffered { return !lhsOffered }
-
                 let lhsRecent = recent.contains(lhs.id)
                 let rhsRecent = recent.contains(rhs.id)
                 if lhsRecent != rhsRecent { return !lhsRecent }
@@ -1464,14 +1478,17 @@ private struct Builder {
             return leaned.filter(\.isHold) + leaned.filter { !$0.isHold }
         }
         guard let patterns else { return arranged(ordered) }
-        // A Different workout press counts the matches it already showed as used up, so once the fresh
-        // matches run out it reaches the unmatched stretches it has not shown before showing a match again.
         let fresh = ordered.filter { !offered.contains($0.id) }
         let shown = ordered.filter { offered.contains($0.id) }
-        return [fresh, shown].flatMap { group in
+        func matched(_ group: [Exercise]) -> [Exercise] {
             arranged(group.filter { SessionAssembly.complements($0, anyOf: patterns) })
-                + arranged(group.filter { !SessionAssembly.complements($0, anyOf: patterns) })
         }
+        func unmatched(_ group: [Exercise]) -> [Exercise] {
+            arranged(group.filter { !SessionAssembly.complements($0, anyOf: patterns) })
+        }
+        let freshUnmatched = unmatched(fresh)
+        let allowed = Array(freshUnmatched.prefix(unmatchedStretchAllowance))
+        return matched(fresh) + allowed + matched(shown) + Array(freshUnmatched.dropFirst(allowed.count)) + unmatched(shown)
     }
 
     /// The US-M03 desk-worker bias: when `apply` (the user's `sitsLong`), stable-partition `ordered` so

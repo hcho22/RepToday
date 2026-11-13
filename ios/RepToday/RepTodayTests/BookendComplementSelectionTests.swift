@@ -14,7 +14,8 @@ import XCTest
 ///       for, and an unmatched one only after every offered match is in the session - with the catalog's
 ///       one real shortfall pinned (a Discipline beginner or intermediate is offered three pull stretches);
 ///   (b) a pool with too few matches falls back without emptying or shortening a bookend;
-///   (c) the variety order and a Different workout press pick among the matches;
+///   (c) the variety order and a Different workout press pick among the matches, a press bringing in one
+///       unmatched stretch only when it would otherwise show nothing new;
 ///   (d) the coverage invariant and the mapping on all 26 mobility movements;
 ///   (e) determinism and `asOf`-purity.
 final class BookendComplementSelectionTests: XCTestCase {
@@ -170,8 +171,8 @@ final class BookendComplementSelectionTests: XCTestCase {
         XCTAssertTrue(Set(stretches.map(\.id)).isDisjoint(with: bookendStretches(first).map(\.id)), "\(stretches.map(\.id))")
     }
 
-    /// A Different workout press ranks the stretches it already showed behind the other matches, never
-    /// behind an unmatched stretch: a Legs Day's pressed bookends are new and still all match.
+    /// A Different workout press ranks every match it has not shown, then every match it has, ahead of any
+    /// unmatched stretch: a Legs Day, with ten matches, presses to bookends that are new and still all match.
     func testADifferentWorkoutPressPicksAmongTheMatches() async throws {
         let library = try await library()
         let shown = assemble(minutes: 30, day: .legs, library: library)
@@ -181,12 +182,55 @@ final class BookendComplementSelectionTests: XCTestCase {
         XCTAssertTrue(Set(stretches.map(\.id)).isDisjoint(with: bookendStretches(shown).map(\.id)), "\(stretches.map(\.id))")
     }
 
-    /// A press that has already shown every match counts them as used up (decision 7) and reaches the
-    /// unmatched stretches it has not shown, so it still brings something new: a Discipline beginner or
-    /// intermediate's 45 and 60 minute Push Day already holds all four push stretches they are offered,
-    /// both push ladders and both core ladders, and on main a press changed that session, so it still
-    /// does. The default session stays all matches.
-    func testAPressThatHasShownEveryMatchFallsToUnshownUnmatchedStretches() async throws {
+    /// A press whose session changes elsewhere shows a match again rather than reach for an unmatched
+    /// stretch: a Discipline beginner's 15 and 20 minute Pull Day already holds all three pull stretches
+    /// they are offered, and its press keeps them, changing through the Core Sprinkle instead.
+    func testAPressThatChangesElsewhereKeepsShownMatchesOverUnmatchedStretches() async throws {
+        let library = try await library()
+        let user = TrainingDayFixtures.user(level: .beginner)
+        for minutes in [15, 20] {
+            let label = "\(minutes) min"
+            let shown = assemble(minutes: minutes, day: .pull, library: library, user: user)
+            let shownStretches = bookendStretches(shown)
+            XCTAssertEqual(Set(shownStretches.map(\.id)), ["mobility_arm_circles", "mobility_childs_pose", "mobility_supine_twist"], label)
+
+            let pressed = assemble(
+                minutes: minutes, day: .pull, library: library, user: user,
+                variation: SessionVariation.none.advanced(past: shown)
+            )
+            XCTAssertNotEqual(SessionVariation.exerciseIds(in: pressed), SessionVariation.exerciseIds(in: shown), "\(label): the press changed nothing")
+            XCTAssertEqual(Set(bookendStretches(pressed).map(\.id)), Set(shownStretches.map(\.id)), label)
+        }
+    }
+
+    /// A press takes the matches it has not shown first and fills the rest from the matches it has, never
+    /// an unmatched stretch: a Discipline beginner's 20 minute Push Day shows three of the four push
+    /// stretches they are offered, and its press brings the fourth beside two of those.
+    func testAPressTakesTheUnshownMatchThenShownMatches() async throws {
+        let library = try await library()
+        let user = TrainingDayFixtures.user(level: .beginner)
+        let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: [])
+        let offered = Set(pool.filter { $0.pillar == .mobility && matches($0, .push) }.map(\.id))
+        let shown = assemble(minutes: 20, day: .push, library: library, user: user)
+        let shownIds = Set(bookendStretches(shown).map(\.id))
+        let unshown = offered.subtracting(shownIds)
+        XCTAssertEqual(offered.count, 4)
+        XCTAssertEqual(unshown.count, 1, "\(shownIds)")
+
+        let pressed = assemble(minutes: 20, day: .push, library: library, user: user, variation: SessionVariation.none.advanced(past: shown))
+        let pressedStretches = bookendStretches(pressed)
+        XCTAssertEqual(pressedStretches.count, shownIds.count)
+        XCTAssertTrue(pressedStretches.allSatisfy { matches($0, .push) }, "\(pressedStretches.map(\.id))")
+        XCTAssertTrue(unshown.isSubset(of: pressedStretches.map(\.id)), "\(pressedStretches.map(\.id))")
+    }
+
+    /// Only a press that staying inside the matches would leave showing nothing new brings in an unmatched
+    /// stretch, and then exactly one: a Discipline beginner or intermediate's 45 and 60 minute Push Day
+    /// already holds all four push stretches they are offered, both push ladders and both core ladders, and
+    /// on main a press changed that session, so it still does - by swapping one bookend stretch for an
+    /// unmatched one it has not shown and keeping the other three matches. The default session stays all
+    /// matches.
+    func testAPressThatWouldShowNothingNewSwapsInOneUnmatchedStretch() async throws {
         let library = try await library()
         for level in [FitnessLevel.beginner, .intermediate] {
             let user = TrainingDayFixtures.user(level: level)
@@ -206,8 +250,11 @@ final class BookendComplementSelectionTests: XCTestCase {
                 XCTAssertNotEqual(SessionVariation.exerciseIds(in: pressed), SessionVariation.exerciseIds(in: shown), "\(label): the press changed nothing")
                 let pressedStretches = bookendStretches(pressed)
                 XCTAssertEqual(pressedStretches.count, shownStretches.count, label)
+                let unmatched = pressedStretches.filter { !matches($0, .push) }
+                XCTAssertEqual(unmatched.count, 1, "\(label): \(pressedStretches.map(\.id))")
+                XCTAssertFalse(shownStretches.map(\.id).contains(unmatched.first?.id ?? ""), label)
                 XCTAssertTrue(
-                    pressedStretches.allSatisfy { !matches($0, .push) && !shownStretches.map(\.id).contains($0.id) },
+                    Set(pressedStretches.filter { matches($0, .push) }.map(\.id)).isSubset(of: shownStretches.map(\.id)),
                     "\(label): \(pressedStretches.map(\.id))"
                 )
             }
