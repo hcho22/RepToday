@@ -1319,12 +1319,13 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// The secondary row at an accessibility Dynamic Type size (US-O03).
     ///
-    /// A timed movement carries three columns - Swap, the manual completion, Skip - across a 393pt row,
-    /// and the manual one carries the longest title in it ("Finish exercise"), which is the part that
-    /// says what the tap actually does. At the largest type sizes that title needs more than one line,
-    /// so the control grows and takes the row with it rather than pinning itself to the 60pt touch
-    /// target and clipping the title away. Measured off the live accessibility tree at both sizes,
-    /// because a render alone cannot tell a grown row from a clipped one.
+    /// A timed movement carries several columns - Swap, the manual completion, Skip - across a 393pt
+    /// row, and the manual one carries the longest title in it ("Finish exercise"), which is the part
+    /// that says what the tap actually does. At the largest type sizes that title never clips: either
+    /// the control grows past the 60pt touch target to wrap it, or - once the columns cannot hold its
+    /// words - the controls stack full width and it fits on one line. Measured off the live
+    /// accessibility tree at both sizes, because a render alone cannot tell a grown row from a clipped
+    /// one.
     func testManualHoldCompletionGrowsRatherThanClippingAtAccessibilityType() throws {
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
@@ -1348,16 +1349,19 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let axHost = hosted(
             try playerView(state).environment(\.dynamicTypeSize, .accessibility3), size: playerSize
         )
-        let atAccessibilitySize = try XCTUnwrap(
+        let control = try XCTUnwrap(
             AccessibilityTree.element(labeled: title, in: axHost.view),
             "the control is gone at accessibility type; the player reads \(AccessibilityTree.labels(in: axHost.view))"
-        ).accessibilityFrame.height
+        ).accessibilityFrame
+        let atAccessibilitySize = control.height
+        let fitsOnOneLine = ActiveSessionView.textWidth(title, style: .body, size: .accessibility3, weight: nil) <= control.width
 
         print("=== Rep Today - \"\(title)\" is \(atDefault)pt tall at default type, "
               + "\(atAccessibilitySize)pt at accessibility3 ===")
-        XCTAssertGreaterThan(
-            atAccessibilitySize, atDefault,
-            "the row should grow to fit \"\(title)\" at accessibility type rather than hold 60pt and clip it"
+        XCTAssertTrue(
+            fitsOnOneLine || atAccessibilitySize > atDefault,
+            "\"\(title)\" must fit its \(control.width)pt control on one line or the control must grow to wrap it, "
+                + "never hold 60pt and clip it"
         )
         try render(
             try playerView(state).environment(\.dynamicTypeSize, .accessibility3),
