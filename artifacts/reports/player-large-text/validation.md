@@ -20,7 +20,7 @@ All in `Views/ActiveSession/ActiveSessionView.swift`, using the existing `Theme`
 - **Player secondary row.** Each control's column is now at least as wide as the longest word of its title, so a word is never broken.
   When the row cannot give every column that much (`stacksSecondaryActions`), the controls move into the scrolling column as full-width rows below the round tracker, and only the primary action (Done, Stop hold, Start hold) stays pinned.
   The choice is made from every slot the step can show, so + More time is counted whether or not the countdown runs right now and a swap in flight is counted (and its column sized) by its resting "Swap": starting or stopping a hold or a swap never moves the controls between the row and the column.
-  Both the choice and each column's minimum are measured with the Bold Text setting, which draws every title heavier.
+  Both the choice and each column's minimum, and the rest controls' choice below, are measured with the Bold Text setting, which draws body type at semibold and the semibold button type at heavy.
   The card still fits to the room around the exercise name, ring and round tracker, so those stay above the fold where they can, and the stacked controls are reached by scrolling.
 - **Rest overlay middle.** The heading, ring, next-up text and poses still shrink to fit as before.
   When even their smallest sizes do not fit, the middle scrolls between the pinned top bar and controls (`ViewThatFits`), with the ring kept at full size so its clock is not shrunk.
@@ -46,7 +46,7 @@ Simulator walk (the real app, onboarding with the stub sign-in, Today -> Start),
 After the fix at the largest size, from the walk's accessibility frames: the top bar sits at 28-88 pt, + 15s at 487-561 pt and Skip rest at 569-643 pt, all hittable; Done and Stop hold sit at 565-643 pt; the stacked secondary controls are reached by scrolling (`*-scrolled.png`).
 
 `PlayerLargeTextFitEvidenceTests` (unit bundle) hosts the production player on an emulated 375x667 SE at six text sizes, light and dark, and asserts that controls are on screen, apart and never break a word, and that Skip rest works when activated the way VoiceOver activates it.
-It also runs the running hold with Bold Text on, and asserts that stopping a running hold leaves the primary action where it was and every secondary control in the row or column it was in.
+It also runs the running hold and the rest overlay with Bold Text on, checks the measurement against the width SwiftUI draws, and asserts that stopping a running hold leaves the primary action where it was and every secondary control in the row or column it was in.
 `docs/test-coverage.md` has the full row.
 
 VoiceOver reaching Skip rest: Skip rest is pinned on screen at every size and is an accessibility element the suite activates through `accessibilityActivate()`, VoiceOver's double-tap path.

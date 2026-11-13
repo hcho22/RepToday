@@ -636,14 +636,19 @@ struct ActiveSessionView: View {
     /// The width `text` takes on one line in Theme's rounded type for `style` at `size`, drawn heavier
     /// when `weight` is Bold Text - the measurement behind the player's and the rest overlay's choice
     /// between side-by-side and stacked controls.
+    ///
+    /// Bold Text steps a style's weight the way the system draws it: a regular style (body) to
+    /// semibold, a semibold one (headline, Theme's button type) to heavy.
     static func textWidth(_ text: String, style: UIFont.TextStyle, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
         let base = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits)
-        var descriptor = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+        let styleTraits = base.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
+        var fontWeight = UIFont.Weight((styleTraits?[.weight] as? CGFloat) ?? 0)
         if weight == .bold {
-            descriptor = descriptor.withSymbolicTraits(descriptor.symbolicTraits.union(.traitBold)) ?? descriptor
+            fontWeight = fontWeight.rawValue < UIFont.Weight.semibold.rawValue ? .semibold : .heavy
         }
-        let font = UIFont(descriptor: descriptor, size: 0)
+        let system = UIFont.systemFont(ofSize: base.pointSize, weight: fontWeight)
+        let font = system.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: base.pointSize) } ?? system
         return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 

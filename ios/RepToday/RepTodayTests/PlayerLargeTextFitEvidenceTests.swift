@@ -91,14 +91,25 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         }
     }
 
-    /// Bold Text widens what the controls are measured at, the way it widens what they draw, so the
-    /// row-or-column choice and each column's minimum account for the heavier glyphs.
-    func testBoldTextMeasuresWider() {
+    /// The controls are measured at the width SwiftUI actually draws their titles - the player's body
+    /// type and the rest overlay's button type, with Bold Text off and on - so the row-or-column choice
+    /// and each column's minimum account for the heavier glyphs Bold Text draws.
+    func testMeasurementMatchesWhatSwiftUIDraws() {
+        let text = "Skip rest Complete"
         for size in sizes {
-            let regular = ActiveSessionView.longestWordWidth("Complete set", size: size, weight: .regular)
-            let bold = ActiveSessionView.longestWordWidth("Complete set", size: size, weight: .bold)
-            XCTAssertGreaterThan(bold, regular, "\(size): Bold Text measures no wider than regular")
-            XCTAssertEqual(ActiveSessionView.longestWordWidth("Complete set", size: size, weight: nil), regular, "\(size)")
+            for (font, style) in [(Theme.Typography.body, UIFont.TextStyle.body), (Theme.Typography.button, .headline)] {
+                for weight in [LegibilityWeight.regular, .bold] {
+                    let drawn = UIHostingController(rootView: Text(text).font(font).fixedSize()
+                        .environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight))
+                        .sizeThatFits(in: CGSize(width: 10_000, height: 10_000)).width
+                    let measured = ActiveSessionView.textWidth(text, style: style, size: size, weight: weight)
+                    XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style.rawValue) \(weight): measured narrower than drawn")
+                    XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style.rawValue) \(weight): measured wider than drawn")
+                }
+                XCTAssertGreaterThan(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
+                                     ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
+                                     "\(size) \(style.rawValue): Bold Text measures no wider than regular")
+            }
         }
     }
 
@@ -161,11 +172,22 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     /// The rest overlay keeps its top bar, + 15s and Skip rest on screen and apart at every size, with
     /// neither title cut, and Skip rest works the way VoiceOver activates it.
     func testRestControlsFitAtEveryTextSize() throws {
+        try assertRestFits()
+    }
+
+    /// The same with Bold Text on, which draws the rest titles a weight heavier: each button is still
+    /// at least as wide as its heavier one-line title, so the controls stack before a title would wrap.
+    func testRestControlsFitWithBoldText() throws {
+        try assertRestFits(sizes: [.xxxLarge, .accessibility1, .accessibility2, .accessibility3], styles: [.light], weight: .bold)
+    }
+
+    private func assertRestFits(sizes: [DynamicTypeSize]? = nil, styles: [UIUserInterfaceStyle]? = nil,
+                                weight: LegibilityWeight? = nil) throws {
         let session = workout([("Strength", .strength, [try prescription("push_wall", sets: 2), try prescription("squat_bodyweight", sets: 2)])])
-        for size in sizes {
-            for style in styles {
-                let look = "\(size)-\(style == .dark ? "dark" : "light")"
-                host(ActiveSessionView(workout: session, user: user()), style, size: size)
+        for size in sizes ?? self.sizes {
+            for style in styles ?? self.styles {
+                let look = "\(size)-\(style == .dark ? "dark" : "light")\(weight == .bold ? "-bold" : "")"
+                host(ActiveSessionView(workout: session, user: user()), style, size: size, weight: weight)
                 XCTAssertTrue(pump(until: { self.labels().contains("Done") }, timeout: 5), "\(look): \(labels())")
                 activate("Done")
                 XCTAssertTrue(pump(until: { self.labels().contains("Skip rest") }, timeout: 5), "\(look): no rest; \(labels())")
@@ -175,14 +197,14 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 assertOnScreenAndApart(["End session", "Pause session", extend, "Skip rest"], look)
                 if let skip = frame(of: "Skip rest"), let more = frame(of: extend) {
                     for (control, title) in [(skip, "Skip rest"), (more, "+\(ActiveSessionViewModel.restExtension)s")] {
-                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size, weight: nil)
+                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size, weight: weight)
                         XCTAssertGreaterThanOrEqual(control.width, needed, "\(look): \"\(title)\" is wider than its button", file: #filePath, line: #line)
                     }
-                    if size == .large {
+                    if size == .large, weight == nil {
                         XCTAssertEqual(skip.minY, more.minY, accuracy: 0.5, "\(look): the default size keeps the rest controls side by side")
                     }
                 }
-                if captured.contains(size) { try capture("rest-\(look)", style) }
+                if captured.contains(size), weight == nil { try capture("rest-\(look)", style) }
 
                 activate("Skip rest")
                 XCTAssertTrue(pump(until: { !self.labels().contains("Skip rest") }, timeout: 5),
