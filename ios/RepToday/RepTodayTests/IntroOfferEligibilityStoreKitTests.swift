@@ -6,6 +6,12 @@ import XCTest
 /// Regression for the paywall's trial line against a real StoreKit test session (the local
 /// `RepToday.storekit` configuration): a fresh Apple ID is shown the monthly free trial, and one that
 /// already used it is not. Runs through `LiveStoreKitFacade` and the service, the production path.
+///
+/// Both tests skip where the session never takes control of StoreKit: iOS 26.3+ simulators never receive
+/// the configuration under `xcodebuild test` (the session logs `SKInternalErrorDomain` code 3; Apple
+/// developer forums thread 826971), so StoreKit asks Apple's live Sandbox for the products over the
+/// network instead, and a slow or failed Sandbox answer reads as no products at all. The iOS 18 lane
+/// still runs them.
 @MainActor
 final class IntroOfferEligibilityStoreKitTests: XCTestCase {
     private var session: SKTestSession!
@@ -19,6 +25,26 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
         session.resetToDefaultState()
         session.disableDialogs = true
         session.clearTransactions()
+        try await skipUnlessTheSessionServesTheProducts()
+    }
+
+    /// Proves the products come from `RepToday.storekit` by simulating a failed product load: a session
+    /// in control fails the load with that exact error, while an ignored one lets it reach the network.
+    private func skipUnlessTheSessionServesTheProducts() async throws {
+        try await session.setSimulatedError(.generic(.notAvailableInStorefront), forAPI: .loadProducts)
+        let isInControl: Bool
+        do {
+            _ = try await Product.products(for: SubscriptionPlan.ProductID.all)
+            isInControl = false
+        } catch StoreKitError.notAvailableInStorefront {
+            isInControl = true
+        } catch {
+            isInControl = false
+        }
+        try await session.setSimulatedError(nil, forAPI: .loadProducts)
+        guard isInControl else {
+            throw XCTSkip("This simulator's StoreKit test session does not serve the local configuration")
+        }
     }
 
     override func tearDown() async throws {
@@ -57,13 +83,7 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
     }
 
     func testUserWhoAlreadyUsedTheTrialSeesNoTrialLine() async throws {
-        do {
-            try await session.buyProduct(identifier: SubscriptionPlan.ProductID.monthly)
-        } catch StoreKitError.notEntitled {
-            // iOS 26.3+ simulators never receive the configuration under `xcodebuild test`, so the session
-            // cannot record a purchase (Apple developer forums thread 826971). The iOS 18 lane still runs this.
-            throw XCTSkip("This simulator's StoreKit test session cannot record a purchase")
-        }
+        try await session.buyProduct(identifier: SubscriptionPlan.ProductID.monthly)
         try session.expireSubscription(productIdentifier: SubscriptionPlan.ProductID.monthly)
         let labels = try await paywallLabels(capturing: "trial-used-paywall.png")
         XCTAssertFalse(labels.contains { $0.contains("free trial") }, "\(labels)")

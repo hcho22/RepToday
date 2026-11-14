@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 import { EVENT_NAMES } from "./events";
@@ -222,6 +222,17 @@ describe("POST /webEvent: origins are configurable for a dev deployment", () => 
 });
 
 describe("POST /webEvent: rate limit", () => {
+  // The route stamps `Date.now()`, so a fetch-driven ceiling run on the real clock can straddle a
+  // window boundary and reset mid-loop. Freeze `Date` (only) halfway into one window.
+  beforeEach(() => {
+    const start = 1_800_000_000_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start - (start % RATE_LIMIT_WINDOW_MS) + RATE_LIMIT_WINDOW_MS / 2);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("its own scope: per source IP and for the whole route, never the app's install key", async () => {
     const t = setup();
     expect((await postWeb(t, event(), { headers: { "x-forwarded-for": "203.0.113.9" } })).status).toBe(204);
@@ -238,7 +249,7 @@ describe("POST /webEvent: rate limit", () => {
     expect(over.status).toBe(429);
     expect(await rows(t)).toHaveLength(MAX_WEB_EVENTS_PER_IP_PER_WINDOW);
     expect((await postWeb(t, event(), { headers: { "x-forwarded-for": "198.51.100.8" } })).status).toBe(204);
-  });
+  }, 30_000);
 
   test("the route-wide ceiling holds across many sources, and a rolled window starts fresh", async () => {
     const t = setup();
@@ -251,7 +262,7 @@ describe("POST /webEvent: rate limit", () => {
     expect(over).toEqual({ allowed: false, limitedBy: "web" });
     const next = await t.mutation(internal.rateLimit.checkAndBumpWeb, { sourceIp: "192.0.2.250", nowMs: start + RATE_LIMIT_WINDOW_MS + 1 });
     expect(next).toEqual({ allowed: true, limitedBy: null });
-  });
+  }, 60_000);
 
   test("a request over its source's ceiling does not count toward the route-wide budget", async () => {
     const t = setup();
@@ -264,7 +275,7 @@ describe("POST /webEvent: rate limit", () => {
     expect(other).toEqual({ allowed: true, limitedBy: null });
     const whole = (await buckets(t)).find((row) => row.bucketKey === `web:all:${start}`);
     expect(whole?.count).toBe(MAX_WEB_EVENTS_PER_IP_PER_WINDOW + 1);
-  });
+  }, 60_000);
 
   test("a request with no usable source IP is limited only by the route-wide key", async () => {
     const t = setup();

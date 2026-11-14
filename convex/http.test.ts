@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
@@ -87,6 +87,23 @@ afterAll(() => {
 });
 
 const setup = () => convexTest(schema, modules);
+
+/**
+ * Freeze server time halfway into one rate-limit window for the tests that read a ceiling through
+ * `fetch`. The action stamps `Date.now()`, so on the real clock a run that straddles a window boundary
+ * resets its counter mid-loop and the over-ceiling request lands. Only `Date` is faked, so timers and
+ * promises still run.
+ */
+const pinClockMidWindow = () => {
+  beforeEach(() => {
+    const start = 1_800_000_000_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start - (start % RATE_LIMIT_WINDOW_MS) + RATE_LIMIT_WINDOW_MS / 2);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+};
 
 /**
  * The same sink with `logEvent` swapped for one that fails the way a deployment, runtime, or
@@ -654,6 +671,8 @@ describe("POST /logEvent - the shared secret (US-T14)", () => {
 });
 
 describe("POST /logEvent - rate limiting, keyed on the install identifier (US-T14)", () => {
+  pinClockMidWindow();
+
   test(
     "exactly the per-install ceiling inserts; one more is a 429 with no further insert",
     async () => {
@@ -693,6 +712,8 @@ describe("POST /logEvent - rate limiting, keyed on the install identifier (US-T1
 });
 
 describe("POST /logEvent - rate limiting, the source-IP backstop (US-T14)", () => {
+  pinClockMidWindow();
+
   test(
     "many distinct installs from one source IP trip the IP ceiling and are rejected without inserting",
     async () => {
