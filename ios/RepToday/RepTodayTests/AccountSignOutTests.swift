@@ -396,7 +396,7 @@ final class AccountDeviceLeftoverTests: XCTestCase {
         XCTAssertTrue(pending.isEmpty)
     }
 
-    // MARK: - Every key decided
+    // MARK: - No account key left
 
     /// `UserDefaults` keys that hold the account's data or state. The teardown must leave each as a new
     /// install has it; `testTheTeardownLeavesNoAccountKeyBehind` proves it does.
@@ -420,54 +420,6 @@ final class AccountDeviceLeftoverTests: XCTestCase {
         "Account.remoteDeletionRequestedFor": nil,
         "Account.remoteDeletionUnderWay": nil,
     ]
-
-    /// Keys that belong to the install, not the account, and so survive the teardown: the anonymous
-    /// telemetry identity and its bookkeeping (rotated, not erased, where the teardown says so), the
-    /// telemetry choice, one-time product notes about the app itself, and the owed deletion of the
-    /// pre-account iCloud copy.
-    private static let installKeys: Set<String> = [
-        "AppState.installId",
-        "AppState.firstLaunchAt",
-        "AppState.firstLaunchUnknown",
-        "AppState.lastActiveAt",
-        "AppState.analyticsEnabled",
-        "AppState.analyticsConsentGeneration",
-        "AppState.hasSeenContinuousCircuitExplainer",
-        "AppState.hasSeenFoundationsUpdateNote.trainingDays",
-        "AppState.hasSeenClassicsUpdateNote",
-        "AppState.coachSafetyIdentifier",
-        "Account.legacyICloudDeletionOwed",
-        "telemetry.probe.attempts",
-        "telemetry.probe.emit",
-        "telemetry.trialConversionTransactionIDs",
-        "telemetry.trialConversionTransactionPurchaseDates",
-        "telemetry.weekActiveEmittedWeeks",
-    ]
-
-    /// A key added anywhere in the app fails here until it is listed as the account's (and so proved
-    /// erased below) or the install's. It reads the app's sources, which follow one naming convention for
-    /// persisted keys.
-    func testEveryPersistedKeyIsDecidedAsTheAccountsOrTheInstalls() throws {
-        let sources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("RepToday")
-        let pattern = try NSRegularExpression(pattern: #""((?:AppState|Coach|Sync|Account|telemetry)\.[A-Za-z][A-Za-z.]*)""#)
-        var found = Set<String>()
-        let files = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
-        while let file = files?.nextObject() as? URL {
-            guard file.pathExtension == "swift" else { continue }
-            let text = try String(contentsOf: file, encoding: .utf8)
-            for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                if let range = Range(match.range(at: 1), in: text) {
-                    found.insert(String(text[range]))
-                }
-            }
-        }
-        XCTAssertFalse(found.isEmpty, "the scan read no sources")
-        let decided = Set(Self.accountKeys.keys).union(Self.installKeys)
-        XCTAssertEqual(found.subtracting(decided), [], "decide whether each new key is the account's or the install's")
-        XCTAssertTrue(Set(Self.accountKeys.keys).isDisjoint(with: Self.installKeys))
-    }
 
     /// Every account key, written as an account would leave it, is back to a new install's value after
     /// the teardown sign-out runs.

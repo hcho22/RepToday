@@ -65,14 +65,7 @@ struct AccountSignOutService: AccountSignOutServiceProtocol {
 
     func signOut(appState: AppState) async throws {
         try await eraser.eraseThisDevice(appState: appState)
-        await Self.returnToSignIn(appState: appState)
     }
-
-    /// Where signing out lands - the one place to change it. The erase has already routed the app to
-    /// onboarding's start (`isOnboarded == false`), the same place Delete Account and the
-    /// different-account erase land.
-    @MainActor
-    static func returnToSignIn(appState: AppState) {}
 
     /// Runs `work` for at most `limit`, returning when it finishes or the time is up, whichever is
     /// first. `work` is not cancelled: `SyncEngine.sync()` ignores cancellation of its caller, and a
