@@ -43,8 +43,10 @@ extension XCTestCase {
     }
 
     /// Drags the screen upward until `element` exists and is reachable by a finger. Lazy lists keep
-    /// rows below the fold out of the tree entirely, so existence alone is not enough to wait on.
-    func scrollUntilHittable(_ element: XCUIElement, in app: TestApp, maxSwipes: Int = 10) {
+    /// rows below the fold out of the tree entirely, so existence alone is not enough to wait on. The
+    /// loop stops as soon as the element is reachable; the default allows for Settings at the largest
+    /// accessibility text size on an iPhone SE size screen, which runs well past ten swipes.
+    func scrollUntilHittable(_ element: XCUIElement, in app: TestApp, maxSwipes: Int = 40) {
         for _ in 0..<maxSwipes where !(element.exists && element.isHittable) {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
                 .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)))
@@ -128,6 +130,7 @@ extension XCTestCase {
         app.buttons["Settings"].tap()
         let delete = app.buttons["Delete Account"]
         scrollUntilHittable(delete, in: app)
+        XCTAssertTrue(delete.exists && delete.isHittable, "Settings never brought Delete Account into reach")
         delete.tap()
         let confirm = app.alerts.buttons["Delete Account"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no deletion confirmation")
