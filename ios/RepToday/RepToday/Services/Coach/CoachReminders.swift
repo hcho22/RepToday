@@ -110,6 +110,9 @@ protocol ReminderNotificationScheduling: Sendable {
     func requestPermission() async -> Bool
     func add(_ notifications: [ScheduledReminderNotification]) async throws
     func removePending(identifiers: [String]) async
+    /// Removes every notification Rep Today has pending or delivered, whichever reminder (if any) still
+    /// names it (the device teardown).
+    func removeAll() async
 }
 
 /// The live scheduler over `UNUserNotificationCenter`.
@@ -147,6 +150,11 @@ struct SystemReminderNotificationScheduler: ReminderNotificationScheduling {
     func removePending(identifiers: [String]) async {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
     }
+
+    func removeAll() async {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
 }
 
 /// A scheduler that records instead of posting, for tests and previews.
@@ -179,6 +187,10 @@ actor RecordingReminderNotificationScheduler: ReminderNotificationScheduling {
         for identifier in identifiers {
             pending[identifier] = nil
         }
+    }
+
+    func removeAll() async {
+        pending = [:]
     }
 }
 
@@ -226,10 +238,10 @@ actor CoachReminderService {
         write(reminders().filter { $0.id != id })
     }
 
-    /// Removes every reminder and its notifications (account deletion).
+    /// Removes every reminder and every notification Rep Today has pending or delivered (the device
+    /// teardown), including any a lost or corrupt reminder list no longer names.
     func removeAll() async {
-        let ids = reminders().flatMap { Self.identifiers(for: $0.id) }
-        await scheduler.removePending(identifiers: ids)
+        await scheduler.removeAll()
         defaults.removeObject(forKey: Self.key)
     }
 

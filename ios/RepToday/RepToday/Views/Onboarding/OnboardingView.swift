@@ -14,6 +14,8 @@ import SwiftUI
 struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
     @State private var signIn: AccountSignInViewModel
+    /// Hands the signed-in account to the router once there is a plan on the phone.
+    private let onComplete: (AccountIdentity) throws -> Void
 
     init(services: ServiceContainer, onComplete: @escaping (AccountIdentity) throws -> Void) {
         self.init(
@@ -37,8 +39,11 @@ struct OnboardingView: View {
         onComplete: @escaping (AccountIdentity) throws -> Void = { _ in }
     ) {
         _viewModel = State(initialValue: viewModel)
+        self.onComplete = onComplete
         _signIn = State(initialValue: AccountSignInViewModel(auth: accountAuth, context: .onboarding) { identity in
-            _ = try await viewModel.completeSignIn(as: identity)
+            // An account with no plan, signed in to from the Welcome step, answers the questions first
+            // and finishes from the last of them.
+            guard try await viewModel.completeSignIn(as: identity) != .needsAnswers else { return }
             try onComplete(identity)
         })
     }
@@ -85,7 +90,7 @@ struct OnboardingView: View {
 
     private var progressBar: some View {
         HStack(spacing: Theme.Spacing.xs) {
-            ForEach(OnboardingViewModel.Step.allCases) { step in
+            ForEach(viewModel.progressSteps) { step in
                 Capsule()
                     .fill(step.rawValue <= viewModel.step.rawValue
                           ? Theme.Colors.accent
@@ -95,7 +100,7 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .accessibilityElement()
-        .accessibilityLabel("Step \(viewModel.step.rawValue + 1) of \(OnboardingViewModel.Step.allCases.count)")
+        .accessibilityLabel("Step \(viewModel.step.rawValue + 1) of \(viewModel.progressSteps.count)")
     }
 
     // MARK: - Step content
@@ -172,13 +177,24 @@ struct OnboardingView: View {
         .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
 
-    private var primaryTitle: String { "Continue" }
+    private var primaryTitle: String { viewModel.finishesSignedIn ? "Finish" : "Continue" }
 
     /// Saving or signing in: the flow holds still until it ends.
     private var isBusy: Bool { viewModel.isFinishing || signIn.isWorking }
 
     private func primaryAction() {
-        viewModel.advance()
+        guard viewModel.finishesSignedIn, let identity = viewModel.signedInIdentity else {
+            viewModel.advance()
+            return
+        }
+        Task {
+            guard await viewModel.finish() else { return }
+            do {
+                try onComplete(identity)
+            } catch {
+                viewModel.reportFinishingFailed()
+            }
+        }
     }
 }
 
@@ -220,6 +236,10 @@ private struct WelcomeStep: View {
                 subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
             )
 
+            if viewModel.offersSignInFromWelcome {
+                signInLink
+            }
+
             // The anonymous-usage-data disclosure (US-T06). It sits on the *first* screen rather
             // than the last because the first event the app emits hangs off app entry (US-T07's
             // `app_install`), so a disclosure shown at the end of onboarding would come after the
@@ -228,6 +248,29 @@ private struct WelcomeStep: View {
             telemetryDisclosure
         }
     }
+
+    /// Someone who already has an account - back after signing out, or on a new phone - goes straight
+    /// to the sign-in instead of answering the questions again.
+    private var signInLink: some View {
+        Button(action: viewModel.goToSignIn) {
+            (Text("Already have an account? ")
+                .foregroundStyle(Theme.Colors.textSecondary)
+             + Text("Sign in")
+                .foregroundStyle(Theme.Colors.accent)
+                .fontWeight(.semibold))
+                .font(Theme.Typography.body)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Self.signInLinkLabel)
+        .accessibilityHint("Signs in to your account and brings your plan back")
+    }
+
+    /// The one label the Welcome step's sign-in link is known by, to VoiceOver and the XCUITests.
+    static let signInLinkLabel = "Already have an account? Sign in"
 
     private var telemetryDisclosure: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {

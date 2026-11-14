@@ -362,6 +362,109 @@ final class OnboardingViewModelTests: XCTestCase {
 
     private static let identity = AccountIdentity(userId: "user_123", email: "riley@example.com", method: .email)
 
+    // MARK: - Signing in from the Welcome step (US-SO02, decision 16)
+
+    /// Back after signing out, or on a new phone: "Already have an account? Sign in" goes straight to
+    /// the sign-in, and Back returns to Welcome rather than into the questions.
+    func testWelcomeSignInGoesStraightToSignInAndBackReturnsToWelcome() {
+        let vm = makeViewModel()
+        XCTAssertTrue(vm.offersSignInFromWelcome)
+
+        vm.goToSignIn()
+        XCTAssertEqual(vm.step, .saveYourPlan)
+        XCTAssertTrue(vm.isSigningInFromWelcome)
+
+        vm.goBack()
+        XCTAssertEqual(vm.step, .welcome)
+        XCTAssertFalse(vm.isSigningInFromWelcome)
+    }
+
+    /// The sign-in link is only on Welcome.
+    func testWelcomeSignInIsOfferedOnlyOnWelcome() {
+        let vm = makeViewModel()
+        vm.advance()
+        XCTAssertFalse(vm.offersSignInFromWelcome)
+        vm.goToSignIn()
+        XCTAssertEqual(vm.step, .basics, "the link does nothing away from Welcome")
+    }
+
+    /// An account with a saved plan comes back with no questions asked.
+    func testWelcomeSignInToAnAccountWithAPlanRestoresIt() async throws {
+        let users = MockUserService()
+        let policies = RecordingSessionPolicyService()
+        let restored = MockPersistence.sampleUser
+        let restorer = StubAccountRestorer(result: .success([.profile, .workoutLog])) {
+            try await users.save(restored)
+        }
+        let vm = OnboardingViewModel(userService: users, sessionPolicyService: policies, accountRestorer: restorer, now: { self.fixedDate })
+        vm.goToSignIn()
+
+        let completion = try await vm.completeSignIn(as: Self.identity)
+
+        XCTAssertEqual(completion, .restored)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved, restored)
+        XCTAssertTrue(policies.seededUserIds.isEmpty)
+        XCTAssertNil(vm.signedInIdentity)
+    }
+
+    /// A brand-new account still onboards: no plan is built from answers never given; the flow goes on
+    /// to the questions, signed in, and finishes from the last one without asking to sign in again.
+    func testWelcomeSignInToAnAccountWithNoPlanContinuesIntoTheQuestions() async throws {
+        let users = MockUserService()
+        let policies = RecordingSessionPolicyService()
+        let vm = OnboardingViewModel(
+            userService: users,
+            sessionPolicyService: policies,
+            accountRestorer: StubAccountRestorer(result: .success([])),
+            userIdentifier: { "new-user" },
+            now: { self.fixedDate }
+        )
+        vm.goToSignIn()
+
+        let completion = try await vm.completeSignIn(as: Self.identity)
+
+        XCTAssertEqual(completion, .needsAnswers)
+        XCTAssertEqual(vm.step, .basics, "the questions come next")
+        XCTAssertEqual(vm.signedInIdentity, Self.identity)
+        let nothingYet = try await users.currentUser()
+        XCTAssertNil(nothingYet, "nothing is saved before the questions are answered")
+        XCTAssertFalse(vm.offersSignInFromWelcome, "already signed in")
+
+        vm.displayName = "Riley"
+        while vm.step != .duration {
+            XCTAssertFalse(vm.finishesSignedIn)
+            vm.advance()
+        }
+        XCTAssertTrue(vm.finishesSignedIn, "the last question finishes, with no second sign-in")
+        XCTAssertEqual(vm.progressSteps.last, .duration, "the progress bar ends at the last question")
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.displayName, "Riley")
+        XCTAssertEqual(policies.seededUserIds, ["new-user"])
+    }
+
+    /// The same path with no account backend: no plan to restore, so the questions come next.
+    func testWelcomeSignInWithNoAccountBackendContinuesIntoTheQuestions() async throws {
+        let vm = makeViewModel()
+        vm.goToSignIn()
+        let completion = try await vm.completeSignIn(as: Self.identity)
+        XCTAssertEqual(completion, .needsAnswers)
+        XCTAssertEqual(vm.step, .basics)
+    }
+
+    /// The questions-first path is unchanged: signing in on "Save your plan" after answering still
+    /// creates the plan at once.
+    func testSignInAfterTheQuestionsStillCreatesThePlanAtOnce() async throws {
+        let vm = makeViewModel()
+        fillAnswers(vm)
+        while vm.step != .saveYourPlan { vm.advance() }
+        let completion = try await vm.completeSignIn(as: Self.identity)
+        XCTAssertEqual(completion, .created)
+        XCTAssertNil(vm.signedInIdentity)
+    }
+
     // MARK: - Navigation
 
     func testAdvanceAndGoBackWalkTheSteps() {
