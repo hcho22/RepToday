@@ -33,6 +33,11 @@ struct ServiceContainer {
     /// Settings "Delete Account" control. Composes the same user/log/policy/active-session/auth seams
     /// this container already wires, so a delete clears exactly what the rest of the app reads.
     let accountDeletionService: any AccountDeletionServiceProtocol
+    /// Signs the user out (US-SO01/US-SO02): uploads what is waiting, then erases the phone's copy of
+    /// the account through the same device teardown `accountDeletionService` runs.
+    var accountSignOutService: any AccountSignOutServiceProtocol {
+        AccountSignOutService(engine: syncEngine, syncStore: syncStore, eraser: accountDeletionService)
+    }
     /// The Coach agent on the account backend (M4, US-CA01, ADR-0017), `nil` when this build has no
     /// account backend: the Coach tab then says the Coach is not available, and nothing else is
     /// affected. Shares the account's Convex client with sync.

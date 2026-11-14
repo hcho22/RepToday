@@ -18,6 +18,7 @@ A Coach agent that remembers users and reads their workout and injury history, c
 **Sign-in is required through Clerk (Apple, Google, email) at the end of onboarding, and Convex becomes the server source of truth, with the phone local-first.**
 
 - New users sign in at "Save your plan" after answering onboarding; existing users sign in once on their next launch and their on-device and iCloud history uploads automatically, idempotently and resumably.
+  (Since Sign Out, US-SO02: someone who already has an account can sign in from onboarding's Welcome step instead; an account with no plan then answers the questions after signing in. `CONTEXT.md`, "Account".)
 - Core Data stays the on-device store; sessions generate, play and log offline, and changes sync to Convex when online. CloudKit is removed.
 - Every Convex function checks that the caller owns the data. Account deletion removes Convex data, the Clerk user and local data.
 

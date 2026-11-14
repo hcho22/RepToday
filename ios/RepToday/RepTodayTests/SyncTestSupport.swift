@@ -32,6 +32,8 @@ actor FakeAccountServer: SyncRemote {
     private var losesDeletionResponse = false
     /// When set, every call fails with this, as if the device were offline.
     private var offlineError: SyncRemoteError?
+    /// How long each push waits before answering, as on a slow connection.
+    private var pushDelay: Duration?
 
     /// Makes push number `call` (1-based) fail with `error` before anything is stored.
     func failPush(call: Int, with error: SyncRemoteError) {
@@ -61,6 +63,11 @@ actor FakeAccountServer: SyncRemote {
         offlineError = offline ? .unreachable : nil
     }
 
+    /// Makes every push wait `delay` before answering.
+    func delayPushes(by delay: Duration?) {
+        pushDelay = delay
+    }
+
     /// Seeds a row as another device would have written it.
     func seed(_ type: SyncRecordType, recordId: String, clientUpdatedAt: Date, content: SyncRecordContent) {
         seq += 1
@@ -79,6 +86,7 @@ actor FakeAccountServer: SyncRemote {
 
     func push(_ changes: [PendingSyncChange]) async throws {
         pushCalls += 1
+        if let pushDelay { try await Task.sleep(for: pushDelay) }
         if let offlineError { throw offlineError }
         if let error = failPushes[pushCalls] { throw error }
         for change in changes {

@@ -166,7 +166,8 @@ struct CustomWorkoutCompletionRecorder: SessionCompletionServiceProtocol {
 }
 
 /// The Coach's on-device state, torn down with the account (US-AU05): accepted Custom Workouts, the
-/// reminders the Coach or Settings scheduled (and their pending notifications), and today's choices.
+/// reminders the Coach or Settings scheduled (and every notification Rep Today has pending or
+/// delivered), and today's choices.
 /// The conversation itself lives with the account and goes with the server step.
 struct CoachDeviceTeardown: Sendable {
     let customWorkouts: any CustomWorkoutServiceProtocol

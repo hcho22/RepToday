@@ -235,11 +235,14 @@ The owning code is `Views/Welcome/WelcomePageView.swift` and `AppState.isWelcome
 ## Account
 
 The user's required sign-in identity: a Clerk user, signed in with Apple, Google or an email code at "Save your plan", the last onboarding step ([ADR-0016](docs/adr/0016-clerk-accounts-convex-local-first.md)).
+Someone who already has an account can go there straight from the Welcome step ("Already have an account? Sign in"): an account with a saved plan brings it back and opens on Today, and one without goes on to the onboarding questions.
 Data lives on the device first: Core Data stays the store the app runs on, every change also lands in the sync **outbox** (`CDSyncChange`) in the same save, and the outbox uploads to the account on Rep Today's Convex backend whenever the phone is online, idempotent by record id, with the newer change winning; other devices pull what changed.
 Sessions generate, play and log with no connection; only signing in, account deletion and the Coach need one.
 Every account function checks that the caller owns the data (`convex/ownership.ts`).
 A user who onboarded before accounts signs in once on their next launch, and their on-device and iCloud history moves to the account (`LegacyAccountMigrationStage`); iCloud sync ends there; the move never deletes the iCloud copy, and account deletion does.
 Deleting the account deletes its server data and the Clerk user first, then everything on the device.
+A user can sign out; signing out erases the phone's copy and keeps the server's.
+It first tries to upload what is waiting and warns before losing anything it could not (`AccountSignOutService`), and it erases through the same device teardown as account deletion.
 The owning code is `Services/Account/`, `Services/Sync/`, `Persistence/CoreDataSyncStore.swift`, `convex/sync.ts` and `convex/accounts.ts`.
 
 ## Coach

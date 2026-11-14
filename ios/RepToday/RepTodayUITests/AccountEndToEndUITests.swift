@@ -155,6 +155,212 @@ final class AccountEndToEndUITests: XCTestCase {
         snapshot("c3-account-history-moved")
     }
 
+    // MARK: - D: sign out and back in (US-SO01/US-SO02)
+
+    // Run in order on one freshly erased Simulator with `REPTODAY_EVIDENCE_DIR` set, which carries the
+    // walk account from D1 to the rest. Between D1 and D2, grant that account Premium on the development
+    // backend (the US-SO row of `docs/test-coverage.md` says how), so D2 can show Premium surviving.
+
+    /// A new account with one session saved to it: Today moves on from Push Day.
+    func testD1_AnAccountWithASavedSession() throws {
+        app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
+        XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 20), "a fresh install opens on onboarding")
+        app.buttons["Continue"].tap()
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Riley\n")
+        let email = Self.testEmail("signout")
+        try saveWalkEmail(email)
+        finishOnboardingThroughSaveYourPlan(in: app, email: email)
+        app.answerHealthPromptIfPresented()
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 30))
+        XCTAssertEqual(trainingDay(), "Push Day")
+        playFiveMinuteSession()
+        XCTAssertEqual(trainingDay(), "Pull Day", "the session moved the Rotation")
+        assertAccountScreen(says: "Everything is saved to your account.")
+        snapshot("d1-account-saved")
+    }
+
+    /// Online: nothing is waiting, so signing out asks once and lands on Welcome; signing back in from
+    /// Welcome brings the history and Premium back with no questions and no Restore Purchases.
+    func testD2_SignOutOnlineAndSignBackIn() throws {
+        let email = try walkEmail()
+        app.launch(.optedOutWithNoProbe, liveAccount: true)
+        assertPremiumCoach()
+        snapshot("d2-premium-before-sign-out")
+        assertAccountScreen(says: "Everything is saved to your account.")
+        let savedDay = trainingDay()
+        signOut(expectingWarning: false)
+        snapshot("d2-welcome-after-sign-out")
+
+        signInFromWelcome(email: email)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 45), "the saved plan restores straight to Today, no questions")
+        XCTAssertEqual(trainingDay(), savedDay, "the history came back")
+        snapshot("d2-today-after-sign-in")
+        assertPremiumCoach()
+        snapshot("d2-premium-after-sign-in")
+    }
+
+    /// Offline with a workout waiting: the warning says so, Cancel keeps everything, and Sign Out Anyway
+    /// loses only that workout - signing back in finds the account as it was before it.
+    func testD3_SignOutOfflineWithAWorkoutWaiting() throws {
+        let email = try walkEmail()
+        // Signed in to the walk account, whichever account the phone was left on.
+        app.launch(.optedOutWithNoProbe, liveAccount: true)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 30))
+        signOut(expectingWarning: false)
+        signInFromWelcome(email: email)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 45))
+        app.terminate()
+
+        app.launch(.optedOutWithNoProbe, liveAccount: true, syncOffline: true)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 30))
+        let savedDay = trainingDay()
+        playFiveMinuteSession()
+        let waitingDay = trainingDay()
+        XCTAssertNotEqual(waitingDay, savedDay, "the offline session moved the Rotation on the phone")
+        assertAccountScreen(says: "will save when you're online")
+
+        openSettingsSignOut()
+        app.alerts["Sign out of Rep Today?"].buttons["Sign Out"].tap()
+        let warning = app.alerts["Recent workouts aren't saved"]
+        XCTAssertTrue(warning.waitForExistence(timeout: 30), "a waiting workout is never lost silently")
+        snapshot("d3-unsaved-warning")
+        warning.buttons["Cancel"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Profile"].waitForExistence(timeout: 5), "Cancel keeps the user signed in")
+        XCTAssertEqual(trainingDay(), waitingDay, "Cancel changed nothing")
+
+        openSettingsSignOut()
+        app.alerts["Sign out of Rep Today?"].buttons["Sign Out"].tap()
+        XCTAssertTrue(warning.waitForExistence(timeout: 30))
+        warning.buttons["Sign Out Anyway"].tap()
+        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30))
+        app.terminate()
+
+        app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
+        signInFromWelcome(email: email)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 45))
+        XCTAssertEqual(trainingDay(), savedDay, "the workout signed out with was lost, as the warning said")
+        snapshot("d3-today-after-signing-back-in")
+    }
+
+    /// Another account on the same phone finds none of the first account's data: it onboards, opens on
+    /// Push Day and sees the free Coach.
+    func testD4_AnotherAccountFindsACleanPhone() throws {
+        app.launch(.optedOutWithNoProbe, liveAccount: true)
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 30))
+        signOut(expectingWarning: false)
+
+        signInFromWelcome(email: Self.testEmail("second"))
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 30), "a new account answers the questions")
+        snapshot("d4-new-account-questions")
+        name.tap()
+        name.typeText("Sam\n")
+        let finish = app.buttons["Finish"]
+        for _ in 0..<8 where !finish.exists {
+            app.buttons["Continue"].tap()
+        }
+        finish.tap()
+        app.answerHealthPromptIfPresented()
+        XCTAssertTrue(app.tabBars.buttons["Today"].waitForExistence(timeout: 30))
+        XCTAssertEqual(trainingDay(), "Push Day", "none of the first account's history")
+        snapshot("d4-second-account-today")
+        let coach = app.tabBars.buttons["Coach"]
+        coach.tap()
+        XCTAssertTrue(app.staticTexts["A coach that knows your training"].waitForExistence(timeout: 30),
+                      "the second account is not Premium")
+        snapshot("d4-second-account-free-coach")
+    }
+
+    private func signOut(expectingWarning: Bool) {
+        openSettingsSignOut()
+        snapshot("sign-out-confirmation")
+        app.alerts["Sign out of Rep Today?"].buttons["Sign Out"].tap()
+        if expectingWarning {
+            app.alerts["Recent workouts aren't saved"].buttons["Sign Out Anyway"].tap()
+        }
+        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30), "signing out returns to Welcome")
+        XCTAssertFalse(app.alerts["Recent workouts aren't saved"].exists, "nothing was waiting, so no warning")
+    }
+
+    private func openSettingsSignOut() {
+        let profile = app.tabBars.buttons["Profile"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 20))
+        profile.tap()
+        // The Profile tab keeps whichever screen it was left on.
+        if app.navigationBars["Account"].waitForExistence(timeout: 2) {
+            app.navigationBars["Account"].buttons["BackButton"].tap()
+        }
+        if !app.navigationBars["Settings"].exists {
+            let settings = app.buttons["Settings"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 10), "Profile has no Settings row")
+            settings.tap()
+        }
+        let row = app.buttons["Sign Out"]
+        scrollUntilHittable(row, in: app)
+        row.tap()
+        XCTAssertTrue(app.alerts["Sign out of Rep Today?"].waitForExistence(timeout: 10))
+    }
+
+    private func signInFromWelcome(email: String) {
+        let link = app.buttons["Already have an account? Sign in"]
+        XCTAssertTrue(link.waitForExistence(timeout: 20), "Welcome offers signing in")
+        link.tap()
+        finishOnboardingThroughSaveYourPlan(in: app, email: email)
+        app.answerHealthPromptIfPresented()
+    }
+
+    private func openToday() {
+        app.tabBars.buttons["Today"].tap()
+    }
+
+    private func playFiveMinuteSession() {
+        openToday()
+        XCTAssertTrue(app.buttons["5 minute session"].waitForExistence(timeout: 20) || app.buttons["Train anyway"].exists)
+        if app.buttons["Train anyway"].exists { app.buttons["Train anyway"].tap() }
+        app.buttons["5 minute session"].tap()
+        app.buttons["Start"].tap()
+        playSessionToCompletion(in: app)
+    }
+
+    /// "Push Day", "Pull Day", "Legs Day" or "Rest Day", read off Today's title.
+    private func trainingDay() -> String? {
+        openToday()
+        let title = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label == %@", " Day: ", "Rest Day")).firstMatch
+        guard title.waitForExistence(timeout: 30) else { return nil }
+        return title.label.components(separatedBy: ":").first
+    }
+
+    private func assertPremiumCoach() {
+        app.tabBars.buttons["Coach"].tap()
+        let understand = app.buttons["I understand"]
+        if understand.waitForExistence(timeout: 15) {
+            understand.tap()
+        }
+        XCTAssertTrue(app.textFields["Message to the coach"].waitForExistence(timeout: 30),
+                      "the walk account has Premium (grant it between D1 and D2)")
+        XCTAssertFalse(app.staticTexts["A coach that knows your training"].exists)
+    }
+
+    private var walkEmailFile: URL? {
+        guard let root = ProcessInfo.processInfo.environment["REPTODAY_EVIDENCE_DIR"], !root.isEmpty else { return nil }
+        return URL(fileURLWithPath: root).appendingPathComponent("m3-e2e").appendingPathComponent("d-email.txt")
+    }
+
+    private func saveWalkEmail(_ email: String) throws {
+        let file = try XCTUnwrap(walkEmailFile, "set REPTODAY_EVIDENCE_DIR so D1 can hand its account to D2-D4")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try email.write(to: file, atomically: true, encoding: .utf8)
+    }
+
+    private func walkEmail() throws -> String {
+        let file = try XCTUnwrap(walkEmailFile, "set REPTODAY_EVIDENCE_DIR and run D1 first")
+        return try String(contentsOf: file, encoding: .utf8)
+    }
+
     // MARK: - Helpers
 
     private func assertAccountScreen(says headline: String, timeout: TimeInterval = 45, file: StaticString = #filePath, line: UInt = #line) {

@@ -269,6 +269,13 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
+    /// Forgets that this phone celebrated a Strength Phase. The celebration belongs to the account that
+    /// earned it, so the device teardown calls this: a different account signed in afterwards still
+    /// gets its own graduation moment. The same account signing back in sees it once more.
+    func resetStrengthGraduationCelebration() {
+        lastCelebratedPhase = .discipline
+    }
+
     /// The Coach data-disclosure contract in force. Version 4 (M4, US-CA07) covers the Coach agent on
     /// Rep Today's servers: workout and injury history reaching the model provider, and the conversation
     /// kept with the account. An acknowledgement of an earlier version does not cover it.
@@ -382,10 +389,12 @@ final class AppState {
         legacyMigrationStage = stage
     }
 
-    /// Forgets the account on this device, at the end of account deletion.
+    /// Forgets the account on this device, at the end of the device teardown (account deletion, the
+    /// different-account erase and sign-out), with its one-time move's progress.
     func unlinkAccount() {
         account = nil
         legacyMigrationStage = nil
+        userDefaults.removeObject(forKey: LegacyAccountMigrator.importAttemptsKey)
         userDefaults.removeObject(forKey: Keys.linkedAccountBeingDeleted)
     }
 

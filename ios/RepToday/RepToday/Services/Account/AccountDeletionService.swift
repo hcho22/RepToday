@@ -32,11 +32,13 @@ protocol AccountDeletionServiceProtocol {
     ///    (`AuthServiceProtocol.signOut()`) - non-optional, since the Keychain item survives a
     ///    reinstall - and end the account's session on this device.
     /// 3. On the first successful onboarded teardown, rotate `AppState`'s anonymous analytics
-    ///    install identifier, reset account-scoped Coach state, forget the account, then reset routing
+    ///    install identifier and reset account-scoped Coach state; then reset the Apple Health
+    ///    suggestion choice and the Strength-Phase celebration, forget the account, and reset routing
     ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running telemetry client reads
     ///    the identifier per request, so a later account inherits neither its linkage nor the Coach
     ///    data-sharing acknowledgement. (The Coach's conversation and Custom Workouts live with the
-    ///    account, so the server step removes them; Coach reminders are cleared on the device.)
+    ///    account, so the server step removes them; Coach reminders and every notification Rep Today
+    ///    has pending or delivered are cleared on the device.)
     ///
     /// Idempotent: a second call skips the finished server step, finds nothing to delete, the Keychain
     /// clear is a no-op, and the already-rotated identifier stays stable because routing marked the
@@ -54,7 +56,8 @@ protocol AccountDeletionServiceProtocol {
     /// Erases this phone's Rep Today data and routes back to onboarding - steps 1 to 3 above, with no
     /// server step and no iCloud deletion - so the phone can be set up with another account. The
     /// account itself is not deleted. Offered when the phone's data belongs to a different account
-    /// than the one just signed in to (`AccountLinkError`).
+    /// than the one just signed in to (`AccountLinkError`), and run by signing out
+    /// (`AccountSignOutServiceProtocol`).
     func eraseThisDevice(appState: AppState) async throws
 }
 
@@ -253,6 +256,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
                 appState.resetCoachAccountState()
             }
             appState.resetHealthSuggestionState()
+            appState.resetStrengthGraduationCelebration()
             appState.unlinkAccount()
             appState.selectedTab = .home
             appState.isOnboarded = false
