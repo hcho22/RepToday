@@ -12,6 +12,7 @@
 		020372D440DD73847A4395CA /* ConsistencyScoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C342BE08A5755BD21B034C7D /* ConsistencyScoreTests.swift */; };
 		044C265E5CD909CBB8081FD2 /* ReturnOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFE83ACCA1B4E495B37E86D /* ReturnOverride.swift */; };
 		05456FB2827005A7065874F0 /* RestDayEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEEDB1AF6591BAFCD10EEFC /* RestDayEvidenceTests.swift */; };
+		05876171B82B45C597EDAA0E /* AccountSignOutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 059D1FF24B3F2007FA532846 /* AccountSignOutTests.swift */; };
 		05E3AA230EC7B974E7A8ADB9 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBD4AACA7A21B0FC479E986 /* AppStateTests.swift */; };
 		05E44C3CF9831758C0D3E486 /* AppleAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A475E54BF81899FCA16BF7 /* AppleAuthService.swift */; };
 		05F412999C262BD629A2C8E6 /* StrengthFoundation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 169013B2114AC6549907CB20 /* StrengthFoundation.swift */; };
@@ -74,8 +75,10 @@
 		35CE687D2791897F1FF91B0A /* CustomWorkoutEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1392C8F0E73D5DCE2E1628E3 /* CustomWorkoutEditorView.swift */; };
 		36440595B4EDD87B81F821C7 /* ReprogramTriggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C967382395B520C6462AB386 /* ReprogramTriggerTests.swift */; };
 		36A49689F88E5CE0C35CCB90 /* CDUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93132F4DEAFDC919F194280 /* CDUser.swift */; };
+		37F75DA5F7A8BE75536D61E2 /* SignOutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECEE870A14D7958B45D4936 /* SignOutUITests.swift */; };
 		3A19ED5E096D222B693532C3 /* ServiceProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEABEFB888510E90E67A2956 /* ServiceProtocols.swift */; };
 		3A1D0A117E5AEBEC15D8A773 /* VarietyLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2D7311A5F99FF4FA204B9A /* VarietyLanguage.swift */; };
+		3AEB66870FA9989599E9BFC1 /* AccountSignOutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FC1D1486554EE385757C3E /* AccountSignOutViewModel.swift */; };
 		3B46EB24F030E764EF3730AB /* SessionCompletionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE1A7921225B281ABAB1669 /* SessionCompletionServiceTests.swift */; };
 		3B68CB7502A243BEFCE55869 /* SessionCuePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0A6749326F6D63A8AF6AE3 /* SessionCuePlayer.swift */; };
 		3C2C17482AF00FD9009E5162 /* HealthKitWorkoutSampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC8E70A83D9356FBF1653BD /* HealthKitWorkoutSampleTests.swift */; };
@@ -136,6 +139,7 @@
 		65D0C3C030F9950B7C9A3DF6 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */; };
 		66569E8868D31030A221516D /* OutsideActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806FAF70D4438A6C5CF6DA87 /* OutsideActivity.swift */; };
 		67A3FFCDE88B7B3D795C265F /* LegacyAccountMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C403A8035530AA3D999427 /* LegacyAccountMigrationTests.swift */; };
+		67BC22E480614DE393E59AD9 /* AccountSignOutService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB1212613500239E058AE70 /* AccountSignOutService.swift */; };
 		67C050174791A9E7B0DF5173 /* PlayerLargeTextFitEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC72093351A1B83B606AFCB7 /* PlayerLargeTextFitEvidenceTests.swift */; };
 		67DEE05811A92B233EE7A27E /* StrengthGraduationRevealView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD905A380DBF49C5A0E797F /* StrengthGraduationRevealView.swift */; };
 		684FC62609D0DA87760F3457 /* ActiveSessionTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9461E630105BB3F65E879C62 /* ActiveSessionTelemetryTests.swift */; };
@@ -350,10 +354,12 @@
 		0297CA46CCCC98D71C7E0B79 /* PolicyNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyNote.swift; sourceTree = "<group>"; };
 		02B3C9A78E2220F8E2FE516D /* CoachRequestVocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachRequestVocabularyTests.swift; sourceTree = "<group>"; };
 		02FE4F6C1D586021CAC6F67A /* AccountBackendConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountBackendConfiguration.swift; sourceTree = "<group>"; };
+		03FC1D1486554EE385757C3E /* AccountSignOutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSignOutViewModel.swift; sourceTree = "<group>"; };
 		04DE6E71C67E75B6DC72EBA2 /* UITestFlows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFlows.swift; sourceTree = "<group>"; };
 		0535D9A19CD2F1050908D03D /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		0578D844799A0DC399CE7D2D /* StrengthJourneyEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthJourneyEvidenceTests.swift; sourceTree = "<group>"; };
 		058333C64A15F0096A9CA3A5 /* CoachInjuryOfferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachInjuryOfferView.swift; sourceTree = "<group>"; };
+		059D1FF24B3F2007FA532846 /* AccountSignOutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSignOutTests.swift; sourceTree = "<group>"; };
 		05A59FC880465B5C874C0072 /* SessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyServiceTests.swift; sourceTree = "<group>"; };
 		06D30DA3DD69EB58EE599F08 /* USCC08PaceEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USCC08PaceEvidenceTests.swift; sourceTree = "<group>"; };
 		0767A8A8C1333F09AA68E161 /* OnDeviceWorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceWorkoutEngine.swift; sourceTree = "<group>"; };
@@ -409,6 +415,7 @@
 		2D4FF883C98D5A4A4C27A4FC /* HostedSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedSurface.swift; sourceTree = "<group>"; };
 		2D5AEBF7D527F78CE07720EB /* TrainerSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerSettingsViewModel.swift; sourceTree = "<group>"; };
 		2E2FD96C653798B7A7D21701 /* ConsistencyScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyScore.swift; sourceTree = "<group>"; };
+		2EB1212613500239E058AE70 /* AccountSignOutService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSignOutService.swift; sourceTree = "<group>"; };
 		2F0157353A0933EF369A9D75 /* LegacyAccountMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyAccountMigrator.swift; sourceTree = "<group>"; };
 		304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionViewModel.swift; sourceTree = "<group>"; };
 		3152E3EB5E4DB4E44CDBA130 /* LiveAnalyticsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAnalyticsServiceTests.swift; sourceTree = "<group>"; };
@@ -427,6 +434,7 @@
 		3CC18961307A2FA2BBBBE79B /* HandsFreeBookendEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandsFreeBookendEvidenceTests.swift; sourceTree = "<group>"; };
 		3E05B92F85695632197BC57D /* AdaptiveOverloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveOverloadTests.swift; sourceTree = "<group>"; };
 		3E5A534AA361B55692C6C190 /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
+		3ECEE870A14D7958B45D4936 /* SignOutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignOutUITests.swift; sourceTree = "<group>"; };
 		3F502BAE6818F9DC57610C30 /* InjuryFlagsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InjuryFlagsViewModel.swift; sourceTree = "<group>"; };
 		3F85C64165B442A49C91C183 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		406DE1A1467EFCF0938D1246 /* ColdStartSeedingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartSeedingTests.swift; sourceTree = "<group>"; };
@@ -983,6 +991,7 @@
 				FE226088DAF92AB2D882233C /* AccountDeletionViewModelTests.swift */,
 				DA61997B6191326F91C14ECE /* AccountScreensEvidenceTests.swift */,
 				27BDFA902CC75635BDE2FF5B /* AccountSignInTests.swift */,
+				059D1FF24B3F2007FA532846 /* AccountSignOutTests.swift */,
 				9461E630105BB3F65E879C62 /* ActiveSessionTelemetryTests.swift */,
 				73A699A6213DBE560CCE43AC /* ActiveSessionViewModelTests.swift */,
 				3E05B92F85695632197BC57D /* AdaptiveOverloadTests.swift */,
@@ -1185,6 +1194,7 @@
 				7B3DEE57FA09AF896E3DFD34 /* .gitkeep */,
 				D3239EEBB385ECA90DF8DBEB /* AccountDeletionViewModel.swift */,
 				BD6054C5733A97BF7B053357 /* AccountSignInViewModel.swift */,
+				03FC1D1486554EE385757C3E /* AccountSignOutViewModel.swift */,
 				A95731E20763BF468463752E /* AccountStatusPresentation.swift */,
 				304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */,
 				F098FEBCC9519FB73D1995A6 /* CoachViewModel.swift */,
@@ -1207,6 +1217,7 @@
 			children = (
 				8312D70C3BCCF853ABD3B370 /* AccountAuthService.swift */,
 				967ADBB93402792267D353F2 /* AccountDeletionService.swift */,
+				2EB1212613500239E058AE70 /* AccountSignOutService.swift */,
 				C4EFB796F158A992AF17A70F /* ClerkAccountAuthService.swift */,
 				F2F84B7E76E3B289A39321FA /* LegacyICloudErasure.swift */,
 				3352EB768CD34640CFF88E15 /* StubAccountAuthService.swift */,
@@ -1256,6 +1267,7 @@
 				C3ED5CBC6B6FCC45A3C35542 /* HealthAccessPrompt.swift */,
 				09FEBF8DFD3C9744E2FEE8ED /* HomeFocusOutsideUITests.swift */,
 				CC0A92D81915B58859FBF120 /* OnboardingImperialUITests.swift */,
+				3ECEE870A14D7958B45D4936 /* SignOutUITests.swift */,
 				7B19F6F27B06C04571967CD1 /* TelemetryOptOutUITests.swift */,
 				2552CC1C5C16F23A57BCDA4C /* TestApp.swift */,
 				15CC785D2C7234D08F052A17 /* TrainingDayUITests.swift */,
@@ -1498,6 +1510,7 @@
 				3359745952E0731B381D26F6 /* AccountDeletionViewModelTests.swift in Sources */,
 				94A7F21145D4C58003CD29A8 /* AccountScreensEvidenceTests.swift in Sources */,
 				07B56D25BAE9A47A6B6A0C2F /* AccountSignInTests.swift in Sources */,
+				05876171B82B45C597EDAA0E /* AccountSignOutTests.swift in Sources */,
 				684FC62609D0DA87760F3457 /* ActiveSessionTelemetryTests.swift in Sources */,
 				5D03F69A61F2F39635C9D69E /* ActiveSessionViewModelTests.swift in Sources */,
 				D89BA5E63C55DF0FEDCC0F37 /* AdaptiveOverloadTests.swift in Sources */,
@@ -1648,6 +1661,7 @@
 				C130C08495D12FC5F98C5B7D /* HealthAccessPrompt.swift in Sources */,
 				57BF12A8324F63E21D4BF8D6 /* HomeFocusOutsideUITests.swift in Sources */,
 				879D1B25FCE5C79D1D6B9478 /* OnboardingImperialUITests.swift in Sources */,
+				37F75DA5F7A8BE75536D61E2 /* SignOutUITests.swift in Sources */,
 				44A9A14B805C39F93463E5D7 /* TelemetryOptOutUITests.swift in Sources */,
 				4165FA39BF82F9D5F2788CC5 /* TestApp.swift in Sources */,
 				1BC33390ED8048C18D76FE2C /* TrainingDayUITests.swift in Sources */,
@@ -1668,6 +1682,8 @@
 				F05ADA5808CBE149E1401F73 /* AccountRequiredView.swift in Sources */,
 				8934654703B46D3653F1E2C8 /* AccountSignInPanel.swift in Sources */,
 				51A0EF4FD3921237D92EDB5D /* AccountSignInViewModel.swift in Sources */,
+				67BC22E480614DE393E59AD9 /* AccountSignOutService.swift in Sources */,
+				3AEB66870FA9989599E9BFC1 /* AccountSignOutViewModel.swift in Sources */,
 				090140FA802E7B82FB537668 /* AccountStatusPresentation.swift in Sources */,
 				16A10F19E958E9808B4D09BA /* AccountSyncCoordinator.swift in Sources */,
 				5A449E966CA3184ECEADBA46 /* AccountView.swift in Sources */,

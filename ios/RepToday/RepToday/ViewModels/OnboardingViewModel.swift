@@ -12,6 +12,11 @@ import Observation
 /// `completeSignIn(as:)` either brings back the plan the account already holds - someone signing in on
 /// a new phone - or creates the new user through `finish()`.
 ///
+/// Someone who already has an account can go straight there from the Welcome step
+/// (`goToSignIn()`) - after signing out, or on a new phone or a reinstall. An account with a saved plan
+/// brings it back with no questions; one without continues into the questions and finishes from the
+/// last of them (`finishesSignedIn`), so a brand-new account still onboards.
+///
 /// On `finish()` the view model:
 /// 1. builds the `User` aggregate from the collected answers - seeding `duration` from the one
 ///    duration question (`defaultMinutes == onboardingSeedMinutes`) and starting `coldStart`
@@ -50,6 +55,9 @@ final class OnboardingViewModel {
         case created
         /// The account already held a plan, and it was brought back to this phone.
         case restored
+        /// The account holds no plan and the questions have not been answered yet: the flow continues
+        /// into them, signed in, and finishes from the last one.
+        case needsAnswers
     }
 
     /// Why onboarding could not finish after signing in. Nothing was saved; the user can try again.
@@ -71,6 +79,15 @@ final class OnboardingViewModel {
 
     /// A user-facing message set only when the final save/seed fails; `nil` in the happy path.
     private(set) var errorMessage: String?
+
+    /// Whether "Save your plan" was reached from the Welcome step's sign-in link rather than through
+    /// the questions, so its Back returns to Welcome and an account with no plan goes on to the
+    /// questions rather than being created from unanswered defaults.
+    private(set) var isSigningInFromWelcome = false
+
+    /// The account signed in to from the Welcome step that holds no plan yet. Set while the user answers
+    /// the questions; the flow then finishes from the last of them instead of asking to sign in again.
+    private(set) var signedInIdentity: AccountIdentity?
 
     // MARK: - Collected answers
 
@@ -193,6 +210,18 @@ final class OnboardingViewModel {
     var isFirstStep: Bool { step == Step.allCases.first }
     var isLastStep: Bool { step == Step.allCases.last }
 
+    /// Whether the step on screen finishes onboarding for an account already signed in: the last
+    /// question, once the Welcome step's sign-in found no plan.
+    var finishesSignedIn: Bool { signedInIdentity != nil && step == .duration }
+
+    /// The steps this flow walks, for the progress bar: without "Save your plan" once already signed in.
+    var progressSteps: [Step] {
+        signedInIdentity == nil ? Step.allCases : Step.allCases.filter { $0 != .saveYourPlan }
+    }
+
+    /// Whether the Welcome step offers signing in to an existing account. Not once signed in.
+    var offersSignInFromWelcome: Bool { step == .welcome && signedInIdentity == nil }
+
     /// Whether the current step's required inputs are satisfied. The duration step is always ready
     /// (a value is preselected), so the flow is never gated behind an unanswered picker - the Ready
     /// Screen the flow ends on must not open onto a blocked Start (US-J01). "Save your plan" advances
@@ -214,8 +243,21 @@ final class OnboardingViewModel {
     }
 
     func goBack() {
+        if step == .saveYourPlan && isSigningInFromWelcome {
+            isSigningInFromWelcome = false
+            step = .welcome
+            return
+        }
         guard let previous = Step(rawValue: step.rawValue - 1) else { return }
         step = previous
+    }
+
+    /// "Already have an account? Sign in" on the Welcome step: straight to the sign-in on "Save your
+    /// plan", skipping the questions.
+    func goToSignIn() {
+        guard offersSignInFromWelcome else { return }
+        isSigningInFromWelcome = true
+        step = .saveYourPlan
     }
 
     // MARK: - Finish
@@ -227,7 +269,9 @@ final class OnboardingViewModel {
     /// The account is checked before anything is written, so a returning user's plan can never be
     /// overwritten by a fresh one. If the account cannot be reached, nothing is saved and the user can
     /// try again. An account that is still being deleted is refused as such
-    /// (`SyncRemoteError.accountDeleting`), so the user can wait or use a different sign-in.
+    /// (`SyncRemoteError.accountDeleting`), so the user can wait or use a different sign-in. Signed in
+    /// from the Welcome step, an account with no plan continues into the questions (`.needsAnswers`)
+    /// rather than getting a plan built from answers never given.
     func completeSignIn(as identity: AccountIdentity) async throws -> Completion {
         if let accountRestorer {
             let restoredTypes: Set<SyncRecordType>
@@ -242,6 +286,12 @@ final class OnboardingViewModel {
                 recordOnboardingCompleted()
                 return .restored
             }
+        }
+        if isSigningInFromWelcome {
+            isSigningInFromWelcome = false
+            signedInIdentity = identity
+            step = .basics
+            return .needsAnswers
         }
         guard await finish() else { throw CompletionError.saveFailed }
         return .created
@@ -270,6 +320,11 @@ final class OnboardingViewModel {
             errorMessage = "We couldn't finish setting up. Please try again."
             return false
         }
+    }
+
+    /// The plan was saved but the signed-in account could not be linked to it, so the flow stays put.
+    func reportFinishingFailed() {
+        errorMessage = "We couldn't finish setting up. Please try again."
     }
 
     /// `onboarding_completed` (US-T08), for a created or a restored plan. `elapsed_seconds` is whole
