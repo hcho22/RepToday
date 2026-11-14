@@ -13,7 +13,7 @@ final class ScaffoldTests: XCTestCase {
     }
 
     func testCardCornerRadiusMatchesDesignSystem() {
-        XCTAssertEqual(Theme.Spacing.cardCornerRadius, 16)
+        XCTAssertEqual(Theme.Spacing.cardCornerRadius, 24)
     }
 
     func testMinimumTouchTargetMatchesDesignSystem() {

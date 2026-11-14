@@ -91,24 +91,25 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         }
     }
 
-    /// The controls are measured at the width SwiftUI actually draws their titles - the player's body
-    /// type and the rest overlay's button type, with Bold Text off and on - so the row-or-column choice
-    /// and each column's minimum account for the heavier glyphs Bold Text draws.
+    /// The controls are measured at the width SwiftUI actually draws their titles - the quiet actions'
+    /// type and the rest screen's button type, with Bold Text off and on - so the row-or-column choice
+    /// and each column's minimum match what is on screen. Bold Text leaves the bundled cuts unchanged, so
+    /// both weights draw, and measure, the same.
     func testMeasurementMatchesWhatSwiftUIDraws() {
         let text = "Skip rest Complete"
         for size in sizes {
-            for (font, style) in [(Theme.Typography.body, UIFont.TextStyle.body), (Theme.Typography.button, .headline)] {
+            for (font, style) in [(Theme.Typography.quietAction, ActiveSessionView.MeasuredStyle.quietAction), (Theme.Typography.sessionSecondaryButton, .sessionSecondaryButton)] {
                 for weight in [LegibilityWeight.regular, .bold] {
                     let drawn = UIHostingController(rootView: Text(text).font(font).fixedSize()
                         .environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight))
                         .sizeThatFits(in: CGSize(width: 10_000, height: 10_000)).width
                     let measured = ActiveSessionView.textWidth(text, style: style, size: size, weight: weight)
-                    XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style.rawValue) \(weight): measured narrower than drawn")
-                    XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style.rawValue) \(weight): measured wider than drawn")
+                    XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style) \(weight): measured narrower than drawn")
+                    XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style) \(weight): measured wider than drawn")
                 }
-                XCTAssertGreaterThan(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
-                                     ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
-                                     "\(size) \(style.rawValue): Bold Text measures no wider than regular")
+                XCTAssertEqual(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
+                               ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
+                               "\(size) \(style): Bold Text leaves the bundled cut's width unchanged")
             }
         }
     }
@@ -197,7 +198,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 assertOnScreenAndApart(["End session", "Pause session", extend, "Skip rest"], look)
                 if let skip = frame(of: "Skip rest"), let more = frame(of: extend) {
                     for (control, title) in [(skip, "Skip rest"), (more, "+\(ActiveSessionViewModel.restExtension)s")] {
-                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size, weight: weight)
+                        let needed = ActiveSessionView.textWidth(title, style: .sessionSecondaryButton, size: size, weight: weight)
                         XCTAssertGreaterThanOrEqual(control.width, needed, "\(look): \"\(title)\" is wider than its button", file: #filePath, line: #line)
                     }
                     if size == .large, weight == nil {
@@ -237,7 +238,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     private func assertNoWordBreak(_ label: String, _ look: String, file: StaticString, line: UInt) {
         guard let control = frame(of: label), let title = secondaryTitles[label] else { return }
         let longest = ActiveSessionView.longestWordWidth(title, size: hostedSize, weight: hostedWeight)
-        XCTAssertGreaterThanOrEqual(control.width, longest, "\(look): \"\(title)\" breaks a word in its \(control.width) pt control", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(control.width, longest - 0.01, "\(look): \"\(title)\" breaks a word in its \(control.width) pt control", file: file, line: line)
     }
 
     // MARK: - Fixtures

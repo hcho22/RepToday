@@ -55,22 +55,24 @@ enum CoachProposalCopy {
         }
     }
 
-    static func systemImage(_ action: CoachProposal.Action) -> String {
+    /// The custom icon a proposal card leads with.
+    static func icon(_ action: CoachProposal.Action) -> AppIcon {
         switch action {
-        case let .outsideActivity(type, _, _, _): return type.systemImage
-        case .restChoice(.restToday): return "bed.double"
-        case .restChoice(.trainAnyway): return "figure.strengthtraining.traditional"
-        case .todayLength: return "timer"
-        case .swapMovement: return "arrow.triangle.2.circlepath"
-        case .focusAreas: return "scope"
-        case .reminder: return "bell"
-        case .customWorkout: return "list.bullet.rectangle"
+        case let .outsideActivity(type, _, _, _): return type.icon
+        case .restChoice(.restToday): return .calendar
+        case .restChoice(.trainAnyway): return .spark
+        case .todayLength: return .clock
+        case .swapMovement: return .swap
+        case .focusAreas: return .focus
+        case .reminder: return .bell
+        case .customWorkout: return .chart
         }
     }
 }
 
 /// One action the Coach proposed (US-CA03): what it does, and the user's choice. Nothing changes until
-/// **Confirm**; afterwards the card says it is done and offers **Undo**.
+/// **Confirm**; afterwards the card says it is done and offers **Undo**. Drawn as DESIGN's proposal
+/// card: `surface1`, radius 24, a 1 pt `line` outline, a `sun` icon, the title and one line of detail.
 struct CoachProposalCard: View {
     let proposal: CoachProposal
     let isBusy: Bool
@@ -83,18 +85,16 @@ struct CoachProposalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                Image(systemName: CoachProposalCopy.systemImage(proposal.action))
-                    .font(Theme.Typography.headline)
+                ScaledIcon(icon: CoachProposalCopy.icon(proposal.action), size: 22, relativeTo: .headline)
                     .foregroundStyle(Theme.Colors.accent)
                     .frame(minWidth: 28)
-                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(CoachProposalCopy.title(proposal.action))
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(CoachProposalCopy.detail(proposal.action))
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -120,11 +120,7 @@ struct CoachProposalCard: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                .stroke(Theme.Colors.accent.opacity(proposal.status == .proposed ? 0.5 : 0), lineWidth: 1)
-        )
+        .cardSurface(outlined: true)
         .accessibilityElement(children: .contain)
     }
 }
@@ -158,48 +154,64 @@ private struct ProposalControls: View {
                     }
                     .font(Theme.Typography.button)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .frame(minHeight: 48)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .disabled(isBusy)
                 .accessibilityLabel(confirmTitle)
 
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textPrimary)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 48)
                 }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .secondaryButtonStyle()
                 .disabled(isBusy)
             }
         case .applied:
             HStack(spacing: Theme.Spacing.sm) {
-                Label(CoachProposalCopy.applied, systemImage: "checkmark.circle.fill")
-                    .font(Theme.Typography.body.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                HStack(spacing: Theme.Spacing.sm) {
+                    ScaledIcon(icon: .check, size: 20)
+                        .foregroundStyle(Theme.Colors.legs)
+                    Text(CoachProposalCopy.applied)
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.Colors.legs)
+                }
+                .accessibilityElement(children: .combine)
                 Spacer(minLength: Theme.Spacing.sm)
                 if canUndo {
-                    Button(CoachProposalCopy.undo, action: onUndo)
-                        .font(Theme.Typography.body.weight(.semibold))
-                        .foregroundStyle(Theme.Colors.accent)
+                    Button(action: onUndo) {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            ScaledIcon(icon: .undo, size: 18)
+                            Text(CoachProposalCopy.undo)
+                                .font(Theme.Typography.headline)
+                        }
                         .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
-                        .disabled(isBusy)
-                        .accessibilityHint("Puts it back the way it was")
+                    }
+                    .outlineButtonStyle()
+                    .disabled(isBusy)
+                    .accessibilityLabel(CoachProposalCopy.undo)
+                    .accessibilityHint("Puts it back the way it was")
                 }
             }
         case .undone:
-            Label(CoachProposalCopy.undone, systemImage: "arrow.uturn.backward")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+            outcome(CoachProposalCopy.undone, icon: .undo)
         case .declined:
-            Label(CoachProposalCopy.declined, systemImage: "xmark")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+            outcome(CoachProposalCopy.declined, icon: .close)
         }
+    }
+
+    /// An outcome line: one quiet `text2` line with its icon.
+    private func outcome(_ text: String, icon: AppIcon) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            ScaledIcon(icon: icon, size: 16, relativeTo: .callout)
+            Text(text)
+                .font(Theme.Typography.calloutSemiBold)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.Colors.textSecondary)
+        .accessibilityElement(children: .combine)
     }
 }
 

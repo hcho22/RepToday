@@ -73,7 +73,7 @@ final class CountWordingTests: XCTestCase {
         )
         await viewModel.load()
         let (_, hostedWindow) = HostedSurface.host(ProgressTabView(viewModel: viewModel),
-                                                   size: CGSize(width: 393, height: 3400))
+                                                   size: CGSize(width: 393, height: 4600))
         window = hostedWindow
         let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
         return AccessibilityTree.labels(in: root)
@@ -104,19 +104,24 @@ final class CountWordingTests: XCTestCase {
         assertContains(labels, "12 reps, best set")
     }
 
-    // MARK: - Countdown ring
+    // MARK: - Workout timer
 
     /// Every countdown the player shows speaks its last second in the singular, and any other count in
-    /// the plural - read off the real ring's accessibility element, the value VoiceOver reads on demand.
-    func testCountdownRingSpeaksOneSecondInTheSingular() throws {
+    /// the plural - read off the real timer's accessibility element, the value VoiceOver reads on demand.
+    func testWorkoutTimerSpeaksOneSecondInTheSingular() throws {
         let names = ["Hold", "Work window", "Rest", "Switch sides"]
+        func timer(_ name: String, remaining: Int) -> some View {
+            WorkoutTimerView(kind: .work, remaining: remaining, total: 20, label: name, spokenName: name, tone: Theme.Colors.push)
+                .scaleEffect(0.3)
+                .frame(height: 60)
+        }
         let (_, hostedWindow) = HostedSurface.host(
             VStack(spacing: Theme.Spacing.sm) {
                 ForEach(names, id: \.self) { name in
-                    CountdownRing(remaining: 1, fraction: 0.05, name: name, diameter: CountdownRing.compactDiameter)
+                    timer(name, remaining: 1)
                 }
-                CountdownRing(remaining: 2, fraction: 0.1, name: "Rest", diameter: CountdownRing.compactDiameter)
-                CountdownRing(remaining: 0, fraction: 0, name: "Hold", diameter: CountdownRing.compactDiameter)
+                timer("Rest", remaining: 2)
+                timer("Hold", remaining: 0)
             },
             size: CGSize(width: 393, height: 852)
         )
@@ -124,7 +129,7 @@ final class CountWordingTests: XCTestCase {
         let labels = AccessibilityTree.labels(in: try XCTUnwrap(hostedWindow.rootViewController?.view))
 
         for name in names {
-            XCTAssertTrue(labels.contains("\(name), 1 second remaining"), "the \(name) ring should read one second; tree reads \(labels)")
+            XCTAssertTrue(labels.contains("\(name), 1 second remaining"), "the \(name) timer should read one second; tree reads \(labels)")
         }
         XCTAssertTrue(labels.contains("Rest, 2 seconds remaining"), "tree reads \(labels)")
         XCTAssertTrue(labels.contains("Hold, 0 seconds remaining"), "tree reads \(labels)")

@@ -35,14 +35,9 @@ struct TrainerChoiceView: View {
     let onChoose: (Trainer) -> Void
 
     var body: some View {
-        ZStack {
-            // Inert, VoiceOver-hidden scrim: choosing a Trainer is the one way out.
-            Theme.Colors.textPrimary.opacity(0.35)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
+        // The overlay card over an inert, VoiceOver-hidden scrim: choosing a Trainer is the one way out.
+        OverlayCard {
             card
-                .padding(Theme.Spacing.lg)
         }
     }
 
@@ -53,17 +48,13 @@ struct TrainerChoiceView: View {
             content
             ScrollView { content }
         }
-        .background(Theme.Colors.background)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .frame(maxWidth: 520)
-        .accessibilityAddTraits(.isModal)
     }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(TrainerChoiceCopy.title)
-                    .font(Theme.Typography.largeTitle)
+                    .cappedDisplayFont(size: 40)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(TrainerChoiceCopy.message)
@@ -81,7 +72,8 @@ struct TrainerChoiceView: View {
                 }
             }
         }
-        .padding(Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -90,27 +82,51 @@ struct TrainerChoiceView: View {
         return Button {
             onChoose(trainer)
         } label: {
+            // Each option is a small Trainer stage: the pose shown whole and square on the lit
+            // gradient, its floor glow in `sun`, with the warm-white outline that keeps the ink line off
+            // the black, and the Trainer's name below.
             VStack(spacing: Theme.Spacing.sm) {
                 if let preview {
-                    Image(preview)
-                        .resizable()
-                        .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityHidden(true)
+                    ZStack {
+                        Ellipse()
+                            .fill(EllipticalGradient(
+                                colors: [Theme.Colors.sun.opacity(0.7), Theme.Colors.sun.opacity(0)],
+                                center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
+                            ))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 16)
+                            .padding(.horizontal, Theme.Spacing.xs)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                            .padding(.bottom, Theme.Spacing.xs)
+                        Image(preview)
+                            .resizable()
+                            .aspectRatio(1, contentMode: .fit)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
                 }
                 Text(trainer.displayName)
-                    .font(Theme.Typography.button)
+                    .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(Theme.Spacing.sm)
+            .padding(Theme.Spacing.smd)
             .frame(maxWidth: .infinity, minHeight: Theme.Spacing.workoutTouchTarget)
             .background(
-                Theme.Colors.secondaryBackground,
-                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                ExerciseDemoView.stageBackground(.sun),
+                in: RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius)
             )
-            .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius)
+                    .strokeBorder(Theme.Colors.line, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(trainer.displayName)

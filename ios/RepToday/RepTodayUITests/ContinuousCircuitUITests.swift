@@ -47,6 +47,7 @@ final class ContinuousCircuitUITests: XCTestCase {
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
         start.tap()
+        dismissExplainerIfPresented()
 
         // Walk forward to the first rep-based strength set. Its auto-advancing work window announces
         // itself with a "Work window, N seconds remaining" ring; everything before it (warm-up holds)
@@ -95,6 +96,7 @@ final class ContinuousCircuitUITests: XCTestCase {
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
         start.tap()
+        dismissExplainerIfPresented()
 
         // Reach the first rep-based strength work window, skipping past the warm-up holds and any rests.
         let workWindow = app
@@ -154,6 +156,7 @@ final class ContinuousCircuitUITests: XCTestCase {
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
         start.tap()
+        dismissExplainerIfPresented()
 
         // Reach the first rep-based strength work window (the head of the circuit), skipping past the
         // warm-up holds and any rests.
@@ -232,6 +235,7 @@ final class ContinuousCircuitUITests: XCTestCase {
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
         start.tap()
+        dismissExplainerIfPresented()
 
         // Reach the first rep-based strength work window, skipping past the warm-up holds and any rests.
         let workWindow = app
@@ -249,7 +253,6 @@ final class ContinuousCircuitUITests: XCTestCase {
         // Read the frozen countdown: pause, wait real wall-clock time, and the "N seconds remaining" the
         // ring announces must not have drawn down (the app is foregrounded the whole time - never
         // backgrounded). The label is the accessible remaining seconds on the work-window ring.
-        let beforeLabel = workWindow.label
         pause.tap()
         attachScreenshot(named: "03-paused-work-window")
 
@@ -258,6 +261,10 @@ final class ContinuousCircuitUITests: XCTestCase {
         let resume = app.buttons["Resume session"]
         XCTAssertTrue(resume.waitForExistence(timeout: 3), "Pause did not flip to a Resume control")
         XCTAssertTrue(workWindow.exists, "the work window countdown left the screen - Pause must not navigate away")
+        // Read the countdown once the pause has landed: a label read before the tap can be a second
+        // older than the moment the countdown froze.
+        sleep(1)
+        let beforeLabel = workWindow.label
 
         // Give it a few seconds of real time; a frozen countdown holds its remaining seconds.
         sleep(3)
@@ -295,6 +302,7 @@ final class ContinuousCircuitUITests: XCTestCase {
         let start = app.buttons["Start"]
         XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
         start.tap()
+        dismissExplainerIfPresented()
 
         let holdCountdown = app
             .descendants(matching: .any)
@@ -370,6 +378,13 @@ final class ContinuousCircuitUITests: XCTestCase {
     /// which the linear warm-up never shows, is what marks the training block. Each iteration first
     /// gives the freshly-rendered step a beat to reveal its window, so a strength set is never itself
     /// skipped in the race after the prior tap.
+    /// The first session on a fresh install opens behind the one-time explainer, whose button starts
+    /// the session (ADR-0010); a later session opens straight onto the player.
+    private func dismissExplainerIfPresented() {
+        let gotIt = app.buttons["Got it"]
+        if gotIt.waitForExistence(timeout: 3) { gotIt.tap() }
+    }
+
     private func reachTrainingWorkWindow(_ workWindow: XCUIElement) -> Bool {
         let roundLabel = app
             .descendants(matching: .any)

@@ -45,6 +45,21 @@
 	<string>$(REPTODAY_CONVEX_URL)</string>
 	<key>RepTodayBuildConfiguration</key>
 	<string>$(CONFIGURATION)</string>
+	<!-- The bundled typefaces (Bricolage Grotesque and Inter, both SIL Open Font License 1.1), each
+	     license beside its files in Resources/Fonts. Read through Theme.Typography; tools/fonts/README.md
+	     says how the static cuts are made. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>BricolageGrotesque-96ptExtraBold.ttf</string>
+		<string>BricolageGrotesque-48ptExtraBold.ttf</string>
+		<string>BricolageGrotesque-24ptExtraBold.ttf</string>
+		<string>BricolageGrotesque-24ptBold.ttf</string>
+		<string>Inter-Regular.ttf</string>
+		<string>Inter-Medium.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Bold.ttf</string>
+		<string>Inter-ExtraBold.ttf</string>
+	</array>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today saves your completed sessions as workouts in Health so your movement counts where you already track it.</string>
 	<key>NSHealthShareUsageDescription</key>

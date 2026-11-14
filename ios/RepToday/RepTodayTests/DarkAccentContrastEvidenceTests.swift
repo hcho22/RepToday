@@ -3,9 +3,9 @@ import SwiftUI
 import UIKit
 @testable import RepToday
 
-/// Reviewer-visible evidence for the dark-appearance accent contrast fix: white labels on filled
-/// accent controls now sit on `Theme.Colors.accentFill` (#637988 in dark, 4.54:1) instead of the
-/// text-weight accent (#788F9E, 3.38:1), and the three spots that already fell short reach 4.5:1.
+/// Reviewer-visible evidence for the filled controls' contrast on black: every filled control draws a
+/// vivid fill (`sun` outside a session, `rest` between sets) carrying a black label at 4.5:1 or better,
+/// and accent links draw `sun` on their rows.
 ///
 /// Each test hosts a production surface in dark appearance and captures it under
 /// `artifacts/reports/dark-accent-contrast/`. The filled controls are also read back off the rendered
@@ -18,8 +18,12 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
     private let story = "dark-accent-contrast"
     private let size = CGSize(width: 393, height: 852)
 
-    /// `AccentFill` in dark appearance, as 8-bit sRGB.
-    private let darkFill = (red: 0x63, green: 0x79, blue: 0x88)
+    /// `sun`, the fill of every filled control outside a session, as 8-bit sRGB.
+    private let sunFill = (red: 0xFF, green: 0xD2, blue: 0x3F)
+    /// `surface1`, the injury screen's rows.
+    private let surface1 = (red: 0x13, green: 0x13, blue: 0x16)
+    /// `rest`, the fill of Skip rest.
+    private let restFill = (red: 0xC9, green: 0xA7, blue: 0xFF)
 
     override func tearDown() {
         window = nil
@@ -120,13 +124,13 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         return lightest
     }
 
-    private func contrastWithWhite(_ color: (red: Int, green: Int, blue: Int)) -> Double {
+    private func contrastWithBlack(_ color: (red: Int, green: Int, blue: Int)) -> Double {
         func linear(_ channel: Int) -> Double {
             let value = Double(channel) / 255
             return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
         }
         let luminance = 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
-        return 1.05 / (luminance + 0.05)
+        return (luminance + 0.05) / 0.05
     }
 
     private func assertClose(
@@ -139,15 +143,17 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
     }
 
     /// Reads the fill a filled control drew just inside its leading edge, clear of its centered label,
-    /// and asserts it is the dark `AccentFill` with a white label at 4.5:1 or better.
+    /// and asserts it is `expected` (`sun` unless said otherwise) with a black label at 4.5:1 or better.
     private func assertAccentFill(
-        of label: String, in image: UIImage, file: StaticString = #filePath, line: UInt = #line
+        of label: String, in image: UIImage, expected: (red: Int, green: Int, blue: Int)? = nil,
+        file: StaticString = #filePath, line: UInt = #line
     ) throws {
         let control = try XCTUnwrap(frame { $0 == label }, "no \"\(label)\"; tree reads \(labels())", file: file, line: line)
-        let fill = try pixel(at: CGPoint(x: control.minX + 8, y: control.midY), in: image)
-        assertClose(fill, darkFill, "\"\(label)\"'s fill", file: file, line: line)
+        // Inside the capsule's straight run, clear of its rounded end.
+        let fill = try pixel(at: CGPoint(x: control.minX + control.height / 2 + 2, y: control.midY), in: image)
+        assertClose(fill, expected ?? sunFill, "\"\(label)\"'s fill", file: file, line: line)
         XCTAssertGreaterThanOrEqual(
-            contrastWithWhite(fill), 4.5, "white on \"\(label)\"'s drawn fill must reach 4.5:1", file: file, line: line
+            contrastWithBlack(fill), 4.5, "black on \"\(label)\"'s drawn fill must reach 4.5:1", file: file, line: line
         )
     }
 
@@ -212,7 +218,7 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         activate("Done")
         XCTAssertTrue(pump(until: { self.labels().contains("Skip rest") }), "\(labels())")
         let rest = try capture("04-rest-overlay")
-        try assertAccentFill(of: "Skip rest", in: rest)
+        try assertAccentFill(of: "Skip rest", in: rest, expected: restFill)
     }
 
     /// The paywall, rendered as the sheet it is presented as: the plan cards (white name, and the
@@ -228,7 +234,7 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         let image = try capture("05-paywall-sheet", size: tall)
         let plan = try XCTUnwrap(frame { $0.localizedCaseInsensitiveContains("year") }, "\(labels())")
         let fill = try pixel(at: CGPoint(x: plan.minX + 6, y: plan.midY), in: image)
-        assertClose(fill, darkFill, "the plan card's fill")
+        assertClose(fill, sunFill, "the plan card's fill")
     }
 
     /// The coach: the user's bubble on the fill, and the failure banner's accent "Try again".
@@ -296,8 +302,7 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         assertClose(try lightestPixel(in: retry, of: image), expectedText, "Retry's label", file: file, line: line)
     }
 
-    /// The injury screen as the coach's sheet, after a failed read: Retry on the raised #2C2C2E row,
-    /// in the lighter `AccentOnElevatedSurface` shade.
+    /// The injury screen as the coach's sheet, after a failed read: Retry in `sun` on its `surface1` row.
     func testInjuryRetryOnTheSheetsRaisedRow() async throws {
         let viewModel = InjuryFlagsViewModel(userService: MockUserService(user: nil))
         await viewModel.load()
@@ -308,11 +313,11 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         )
         XCTAssertTrue(pump(until: { self.labels().contains(InjuryFlagsCopy.retry) }), "\(labels())")
         let image = try capture("09-injury-retry-sheet", size: CGSize(width: 393, height: 1000))
-        try assertRetry(in: image, row: (0x2C, 0x2C, 0x2E), text: (0x7E, 0x96, 0xA5))
+        try assertRetry(in: image, row: surface1, text: sunFill)
     }
 
-    /// The same screen pushed from Settings at the base level: Retry keeps the dark text accent on its
-    /// #1C1C1E row, like every other accent link there.
+    /// The same screen pushed from Settings at the base level: Retry in `sun` on its `surface1` row, like
+    /// every other accent link there.
     func testInjuryRetryPushedFromSettingsKeepsTheTextAccent() async throws {
         let viewModel = InjuryFlagsViewModel(userService: MockUserService(user: nil))
         await viewModel.load()
@@ -320,6 +325,6 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         host(NavigationStack { InjuryFlagsView(viewModel: viewModel) }, size: CGSize(width: 393, height: 1000))
         XCTAssertTrue(pump(until: { self.labels().contains(InjuryFlagsCopy.retry) }), "\(labels())")
         let image = try capture("10-injury-retry-pushed", size: CGSize(width: 393, height: 1000))
-        try assertRetry(in: image, row: (0x1C, 0x1C, 0x1E), text: (0x78, 0x8F, 0x9E))
+        try assertRetry(in: image, row: surface1, text: sunFill)
     }
 }

@@ -40,7 +40,9 @@ final class AccountScreensEvidenceTests: XCTestCase {
             let frame = element.accessibilityFrame
             XCTAssertGreaterThanOrEqual(frame.minX, window.frame.minX - 0.5, "\(label) runs off the leading edge", file: file, line: line)
             XCTAssertLessThanOrEqual(frame.maxX, window.frame.maxX + 0.5, "\(label) runs off the trailing edge", file: file, line: line)
-            XCTAssertGreaterThanOrEqual(frame.height, Theme.Spacing.minTouchTarget, "\(label) keeps its touch target", file: file, line: line)
+            // Within a hair: a frame converted to screen coordinates at a fractional offset can read
+            // 43.99999999999997 for a 44 pt control.
+            XCTAssertGreaterThanOrEqual(frame.height, Theme.Spacing.minTouchTarget - 0.01, "\(label) keeps its touch target", file: file, line: line)
         }
     }
 

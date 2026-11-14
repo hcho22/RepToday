@@ -23,78 +23,80 @@ struct ContinuousCircuitExplainerView: View {
     /// The four points, each a distinct state change the hands-free flow makes on its own.
     private struct Point: Identifiable {
         let id = UUID()
-        let symbol: String
+        let icon: AppIcon
         let title: String
         let detail: String
     }
 
     private let points: [Point] = [
         Point(
-            symbol: "figure.run",
+            icon: .play,
             title: "It moves with you",
             detail: "Each set counts down and flows into the next on its own - no tapping between sets. Just follow along."
         ),
         Point(
-            symbol: "plus.circle",
+            icon: .moretime,
             title: "More time whenever you want it",
             detail: "Need a beat longer? **+ More time** is always there and never rushes you - it only ever gives you room."
         ),
         Point(
-            symbol: "forward.end",
+            icon: .skip,
             title: "Rest is built into each set",
             detail: "Finish the reps, then recover until the clock ends. Ready sooner? Tap **Done** to move on early."
         ),
         Point(
-            symbol: "speaker.wave.2",
+            icon: .sound,
             title: "Tones mark the moment",
             detail: "A quiet cue marks each change - start, halfway, rest - so you can look up from the screen and keep going by ear."
         )
     ]
 
     var body: some View {
-        ZStack {
-            // The scrim behind the card. Hidden from VoiceOver so focus lives inside the modal; a tap
-            // here is deliberately inert, keeping "Got it" the one, unmistakable way out.
-            Theme.Colors.textPrimary.opacity(0.35)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
+        // The overlay card over the scrim (`OverlayCard`). The scrim is hidden from VoiceOver so focus
+        // lives inside the modal, and a tap on it is deliberately inert, keeping "Got it" the one,
+        // unmistakable way out.
+        OverlayCard {
             card
-                .padding(Theme.Spacing.lg)
         }
     }
 
     private var card: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    header
-
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        ForEach(points) { point in
-                            pointRow(point)
-                        }
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Sized to its content when it fits, scrolling only when large Dynamic Type makes it taller
+            // than the screen; "Got it" stays pinned below either way.
+            ViewThatFits(in: .vertical) {
+                pointList
+                ScrollView { pointList }
             }
 
             dismissButton
-                .padding(Theme.Spacing.lg)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.lg)
         }
-        .background(Theme.Colors.background)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .frame(maxWidth: 520)
-        // Trap VoiceOver inside the explainer so the player underneath is not reachable until it is
-        // dismissed - the modal semantics a system sheet would give for free.
-        .accessibilityAddTraits(.isModal)
+        // `OverlayCard` traps VoiceOver inside the explainer, so the player underneath is not reachable
+        // until it is dismissed - the modal semantics a system sheet would give for free.
+    }
+
+    private var pointList: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            header
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                ForEach(points) { point in
+                    pointRow(point)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.xl)
+        .padding(.bottom, Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("Your session drives itself")
-                .font(Theme.Typography.largeTitle)
+                .cappedDisplayFont(size: 40)
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Press play with your body, not your thumbs. Here's how it carries you.")
@@ -109,11 +111,9 @@ struct ContinuousCircuitExplainerView: View {
 
     private func pointRow(_ point: Point) -> some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            Image(systemName: point.symbol)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
+            IconView(icon: point.icon, size: 26)
+                .foregroundStyle(Theme.Colors.sun)
                 .frame(width: 32)
-                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(point.title)
@@ -121,7 +121,7 @@ struct ContinuousCircuitExplainerView: View {
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(.init(point.detail))
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -135,12 +135,14 @@ struct ContinuousCircuitExplainerView: View {
     private var dismissButton: some View {
         Button(action: onDismiss) {
             Text("Got it")
-                .font(Theme.Typography.button)
+                .font(Theme.Typography.sessionSecondaryButton)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.workoutTouchTarget)
+                .padding(.vertical, Theme.Spacing.sm)
+                .frame(minHeight: Theme.Spacing.doneButtonHeight)
         }
         .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityLabel("Got it")
         .accessibilityHint("Dismisses this introduction and starts your session")
     }

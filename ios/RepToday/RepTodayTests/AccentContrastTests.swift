@@ -3,16 +3,15 @@ import SwiftUI
 import UIKit
 @testable import RepToday
 
-/// Pins the accent palette's WCAG contrast so a shade change cannot silently regress it.
+/// Pins the palette's WCAG contrast so a shade change cannot silently regress it.
 ///
-/// Dark appearance needs two accents: one dark enough that white labels on it reach 4.5:1
-/// (`AccentFill`), and one light enough to read as text on dark surfaces (`AccentColor`). Contrast is a
-/// function of luminance alone, and those two needs ask for disjoint luminances, so no single shade can
-/// do both - see `artifacts/reports/dark-accent-contrast/validation.md`.
+/// The visual direction is dark only and black first: every text and meaning color must read at 4.5:1
+/// on black and on the surfaces it sits on, and every vivid fill carries black content at 4.5:1. The
+/// palette is pinned to the design tokens, and the asset catalog's accent colors (what system controls
+/// tint with) must mirror `sun`.
 ///
-/// Every color is resolved from the shipped asset catalog and every surface from the system's own
-/// dynamic colors, under the trait collection the screen actually renders with, so these ratios are
-/// the ones the app draws rather than a hand-copied table.
+/// Colors are resolved from `Theme` and the shipped asset catalog under the dark trait collection the
+/// app renders with, so these ratios are the ones the app draws rather than a hand-copied table.
 final class AccentContrastTests: XCTestCase {
 
     /// WCAG 2.x AA for body text (Theme.Typography.button, 17pt semibold, is not large text).
@@ -29,9 +28,6 @@ final class AccentContrastTests: XCTestCase {
 
     private var light: UITraitCollection { traits(.light) }
     private var dark: UITraitCollection { traits(.dark) }
-    /// A presented sheet in dark appearance, where the system lifts its surfaces.
-    private var darkElevated: UITraitCollection { traits(.dark, elevated: true) }
-    private var lightElevated: UITraitCollection { traits(.light, elevated: true) }
 
     // MARK: - Color math
 
@@ -53,16 +49,10 @@ final class AccentContrastTests: XCTestCase {
         return RGBA(red: red, green: green, blue: blue, alpha: alpha)
     }
 
-    private func system(_ color: UIColor, _ traits: UITraitCollection) -> RGBA {
-        components(color, traits)
-    }
-
     /// A `Theme` token as the screen resolves it under `traits`.
     private func token(_ color: Color, _ traits: UITraitCollection) -> RGBA {
         components(UIColor(color), traits)
     }
-
-    private let white = RGBA(red: 1, green: 1, blue: 1, alpha: 1)
 
     /// `foreground` drawn over an opaque `background` (source-over).
     private func composite(_ foreground: RGBA, over background: RGBA) -> RGBA {
@@ -99,106 +89,96 @@ final class AccentContrastTests: XCTestCase {
         XCTAssertEqual(actual.alpha, expected.alpha, accuracy: accuracy, message, file: file, line: line)
     }
 
-    // MARK: - White on the accent fill
+    private let black = RGBA(red: 0, green: 0, blue: 0, alpha: 1)
 
-    /// Every filled accent surface carries white content: prominent buttons, selected chips, the coach's
-    /// user bubble, the paywall plan card. That label must reach 4.5:1 in both appearances.
-    func testWhiteLabelsOnTheAccentFillReachTextContrast() throws {
-        for (name, traits) in [("light", light), ("dark", dark), ("dark sheet", darkElevated)] {
-            let fill = try asset("AccentFill", traits)
-            XCTAssertGreaterThanOrEqual(
-                contrast(white, on: fill), textContrast,
-                "white on AccentFill (\(name)) must reach 4.5:1"
-            )
-            XCTAssertGreaterThanOrEqual(
-                contrast(try asset("OnAccentSecondary", traits), on: fill), textContrast,
-                "OnAccentSecondary on AccentFill (\(name)) - the paywall plan's price line - must reach 4.5:1"
-            )
-        }
-    }
-
-    // MARK: - Accent as text
-
-    /// The text-weight accent stays legible on every dark surface it is drawn on as small text: the
-    /// screen background, cards and inset-grouped rows, and a presented sheet's background.
-    func testAccentTextReachesTextContrastOnEverySurfaceItSitsOn() throws {
-        let surfaces: [(String, UITraitCollection, UIColor)] = [
-            ("light background", light, .systemBackground),
-            ("light surface", light, .secondarySystemBackground),
-            ("dark background", dark, .systemBackground),
-            ("dark surface/card", dark, .secondarySystemBackground),
-            ("dark grouped row", dark, .secondarySystemGroupedBackground),
-            ("dark sheet background", darkElevated, .systemBackground),
-        ]
-        for (name, traits, surface) in surfaces {
-            XCTAssertGreaterThanOrEqual(
-                contrast(try asset("AccentColor", traits), on: system(surface, traits)), textContrast,
-                "AccentColor text on the \(name) must reach 4.5:1"
-            )
-        }
-    }
-
-    /// The injury screen's Retry, presented as the coach's sheet, sits on a raised #2C2C2E row in dark
-    /// appearance, where the plain accent falls short; pushed from Settings it sits on a #1C1C1E row.
-    func testAccentOnElevatedSurfaceReachesTextContrastOnItsRow() throws {
-        for (name, traits) in [("light", light), ("dark", dark), ("dark sheet", darkElevated)] {
-            XCTAssertGreaterThanOrEqual(
-                contrast(
-                    token(Theme.Colors.accentOnElevatedSurface, traits),
-                    on: system(.secondarySystemBackground, traits)
-                ),
-                textContrast,
-                "accentOnElevatedSurface on a \(name) row must reach 4.5:1"
-            )
-        }
-    }
-
-    /// The Profile "Premium" badge: an accent caption on a faint accent wash over a card.
-    func testPremiumBadgeCaptionReachesTextContrastOnItsWash() throws {
-        for (name, traits) in [("light", light), ("dark", dark)] {
-            let wash = composite(
-                try asset("AccentBadgeFill", traits),
-                over: system(.secondarySystemBackground, traits)
-            )
-            XCTAssertGreaterThanOrEqual(
-                contrast(try asset("AccentColor", traits), on: wash), textContrast,
-                "the accent badge caption on its wash (\(name)) must reach 4.5:1"
-            )
-        }
-    }
-
-    // MARK: - What must not move
-
-    /// Light appearance is the brand's reference and already passes, so the new tokens are the accent
-    /// itself there; dark `AccentColor` keeps its shade for text, icons, links and controls, and so does
-    /// the injury screen's Retry everywhere but a sheet.
-    func testLightAppearanceAndTheDarkTextAccentAreUnchanged() throws {
-        let lightAccent = RGBA(red: 0.180, green: 0.310, blue: 0.380, alpha: 1)
-        let darkAccent = RGBA(red: 0.470, green: 0.560, blue: 0.620, alpha: 1)
-
-        assertComponents(try asset("AccentColor", light), lightAccent, "light AccentColor is the brand reference")
-        assertComponents(try asset("AccentColor", dark), darkAccent, "dark AccentColor stays the text-weight accent")
-        assertComponents(try asset("AccentFill", light), lightAccent, "light AccentFill must equal the accent")
-        for (name, traits) in [("light", light), ("light sheet", lightElevated)] {
-            assertComponents(
-                token(Theme.Colors.accentOnElevatedSurface, traits), lightAccent,
-                "accentOnElevatedSurface (\(name)) must equal the accent"
-            )
-        }
-        assertComponents(
-            token(Theme.Colors.accentOnElevatedSurface, dark), darkAccent,
-            "outside a sheet, accentOnElevatedSurface keeps the dark text accent"
+    private func hex(_ value: UInt32) -> RGBA {
+        RGBA(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            alpha: 1
         )
+    }
 
-        var lightWash = lightAccent
-        lightWash.alpha = 0.12
-        assertComponents(try asset("AccentBadgeFill", light), lightWash, "light badge wash stays the accent at 12%")
-        var darkWash = darkAccent
-        darkWash.alpha = 0.08
-        assertComponents(try asset("AccentBadgeFill", dark), darkWash, "dark badge wash is the dark accent at 8%")
+    // MARK: - The palette
 
-        var lightSecondary = white
-        lightSecondary.alpha = 0.9
-        assertComponents(try asset("OnAccentSecondary", light), lightSecondary, "light secondary on-accent stays 90% white")
+    /// The palette is the design tokens' (`tokens.json`), value for value.
+    func testThePaletteIsTheDesignTokens() {
+        let tokens: [(String, Color, UInt32)] = [
+            ("black", Theme.Colors.black, 0x000000), ("surface1", Theme.Colors.surface1, 0x131316),
+            ("surface2", Theme.Colors.surface2, 0x1D1D22), ("surface3", Theme.Colors.surface3, 0x2C2C33),
+            ("line", Theme.Colors.line, 0x2E2E36), ("text1", Theme.Colors.text1, 0xFFFFFF),
+            ("text2", Theme.Colors.text2, 0xB9B9C4), ("text3", Theme.Colors.text3, 0x8F8F9B),
+            ("sun", Theme.Colors.sun, 0xFFD23F), ("push", Theme.Colors.push, 0xFF6B3D),
+            ("pull", Theme.Colors.pull, 0x4D9BFF), ("legs", Theme.Colors.legs, 0x3DDC84),
+            ("rest", Theme.Colors.rest, 0xC9A7FF), ("danger", Theme.Colors.danger, 0xFF5468),
+            ("sun tint", Theme.Colors.sunTint, 0x2C2409), ("push tint", Theme.Colors.pushTint, 0x2B140C),
+            ("pull tint", Theme.Colors.pullTint, 0x0D1E36), ("legs tint", Theme.Colors.legsTint, 0x0C2B1A),
+            ("rest tint", Theme.Colors.restTint, 0x241C36), ("art outline", Theme.Colors.artOutline, 0xFFF4E4),
+            ("stage base", Theme.Colors.stageBase, 0x0B0B0D),
+        ]
+        for (name, color, value) in tokens {
+            assertComponents(token(color, dark), hex(value), "\(name) is the token value")
+        }
+        XCTAssertEqual(token(Theme.Colors.scrim, dark).alpha, 0.78, accuracy: 0.5 / 255, "the scrim is black at 78%")
+    }
+
+    /// System controls tint with the asset catalog's accent, so it mirrors `sun`; the badge wash is
+    /// `sun`'s tint and content on a vivid fill is black.
+    func testTheAssetCatalogMirrorsTheTheme() throws {
+        for name in ["AccentColor", "AccentFill", "AccentOnElevatedSurface"] {
+            assertComponents(try asset(name, dark), hex(0xFFD23F), "\(name) is sun")
+            assertComponents(try asset(name, light), hex(0xFFD23F), "\(name) is sun in every appearance")
+        }
+        assertComponents(try asset("AccentBadgeFill", dark), hex(0x2C2409), "the badge wash is sun's tint")
+        assertComponents(try asset("OnAccentSecondary", dark), black, "secondary content on a vivid fill is black")
+    }
+
+    // MARK: - Contrast
+
+    /// A vivid fill always carries black content (DESIGN "Color"), at 4.5:1 or better.
+    func testBlackOnEveryVividFillReachesTextContrast() {
+        let fills: [(String, Color)] = [
+            ("sun", Theme.Colors.sun), ("push", Theme.Colors.push), ("pull", Theme.Colors.pull),
+            ("legs", Theme.Colors.legs), ("rest", Theme.Colors.rest), ("danger", Theme.Colors.danger),
+        ]
+        for (name, fill) in fills {
+            XCTAssertGreaterThanOrEqual(
+                contrast(token(Theme.Colors.onAccent, dark), on: token(fill, dark)), textContrast,
+                "black on \(name) must reach 4.5:1"
+            )
+        }
+    }
+
+    /// Every text and meaning color reads at 4.5:1 on black and on the card and control surfaces.
+    func testTextAndMeaningColorsReachTextContrastOnEverySurface() {
+        let foregrounds: [(String, Color)] = [
+            ("text1", Theme.Colors.text1), ("text2", Theme.Colors.text2), ("text3", Theme.Colors.text3),
+            ("sun", Theme.Colors.sun), ("push", Theme.Colors.push), ("pull", Theme.Colors.pull),
+            ("legs", Theme.Colors.legs), ("rest", Theme.Colors.rest), ("danger", Theme.Colors.danger),
+        ]
+        let surfaces: [(String, Color)] = [
+            ("black", Theme.Colors.black), ("surface1", Theme.Colors.surface1), ("surface2", Theme.Colors.surface2),
+        ]
+        for (fore, foreground) in foregrounds {
+            for (back, background) in surfaces {
+                XCTAssertGreaterThanOrEqual(
+                    contrast(token(foreground, dark), on: token(background, dark)), textContrast,
+                    "\(fore) on \(back) must reach 4.5:1"
+                )
+            }
+        }
+    }
+
+    /// Selected option cards and the Premium badge put `sun` text on its tint over a card.
+    func testSunReadsOnItsTint() {
+        XCTAssertGreaterThanOrEqual(
+            contrast(token(Theme.Colors.accent, dark), on: token(Theme.Colors.accentBadgeFill, dark)), textContrast,
+            "the accent badge caption on its wash must reach 4.5:1"
+        )
+        XCTAssertGreaterThanOrEqual(
+            contrast(token(Theme.Colors.text1, dark), on: token(Theme.Colors.sunTint, dark)), textContrast,
+            "a selected option card's title must reach 4.5:1"
+        )
     }
 }

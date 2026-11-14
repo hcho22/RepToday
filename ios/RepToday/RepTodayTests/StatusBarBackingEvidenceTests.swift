@@ -185,8 +185,9 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
 
         let scrollView = try XCTUnwrap(primaryScrollView(in: root), "\(name) has no scroll view", file: file, line: line)
         let maxOffset = scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height
-        // Far enough that content has to pass behind the 20 pt band, whatever sits first on the screen.
-        let offset = min(maxOffset, 160)
+        // Far enough that content has to pass behind the 20 pt band, whatever sits first on the screen
+        // (the session-complete screen opens on its 132 pt day mark, which VoiceOver does not read).
+        let offset = min(maxOffset, 240)
         scrollView.setContentOffset(CGPoint(x: 0, y: offset - scrollView.adjustedContentInset.top), animated: false)
         HostedSurface.pump(for: 0.4)
 

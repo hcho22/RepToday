@@ -38,11 +38,12 @@ final class SettingsValueRowLayoutTests: XCTestCase {
             valueLineLimit: 2, trailingSystemImage: SettingsValueRowLayoutTests.disclosure),
     ]
 
-    /// The rounded body font the row draws at `size`.
+    /// The body font the row draws at `size`: `Theme.Typography.body`, Inter Regular 17 scaled for the
+    /// body text style and rounded to a whole point, as SwiftUI draws a custom font.
     private func font(at size: DynamicTypeSize) -> UIFont {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
-        let body = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
-        return body.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: body.pointSize) } ?? body
+        let pointSize = UIFontMetrics(forTextStyle: .body).scaledValue(for: 17, compatibleWith: traits).rounded()
+        return UIFont(name: Theme.Typography.FontName.textRegular, size: pointSize) ?? .systemFont(ofSize: pointSize)
     }
 
     /// Hosts every row at `size` and checks each.

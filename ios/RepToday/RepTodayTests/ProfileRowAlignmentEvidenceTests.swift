@@ -144,11 +144,9 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
             let traits = UITraitCollection(preferredContentSizeCategory: size)
             let column = UIFontMetrics(forTextStyle: .body).scaledValue(for: ProfileRowIcon.columnWidth,
                                                                         compatibleWith: traits)
-            let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+            let glyph = UIFontMetrics(forTextStyle: .body).scaledValue(for: ProfileRowIcon.glyphSize, compatibleWith: traits)
             for icon in ProfileRowIcon.allCases {
-                let glyph = try XCTUnwrap(UIImage(systemName: icon.rawValue,
-                                                  withConfiguration: UIImage.SymbolConfiguration(font: font)))
-                XCTAssertLessThanOrEqual(glyph.size.width, column,
+                XCTAssertLessThanOrEqual(glyph, column,
                                          "\(icon.rawValue) is wider than the icon column at \(size.rawValue)")
             }
         }
