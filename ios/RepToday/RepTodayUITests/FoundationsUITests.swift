@@ -24,6 +24,13 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["60 minute session"].waitForExistence(timeout: 15))
         let chips = app.descendants(matching: .scrollView)
             .containing(.button, identifier: "60 minute session").allElementsBoundByIndex.last!
+        // At the largest text sizes the chip row can sit below Today's fold, or above it when Today kept
+        // a scrolled position through the session; drag toward it.
+        let today = app.descendants(matching: .scrollView).firstMatch
+        let fiveMinutes = app.buttons["5 minute session"]
+        let chipsAbove = fiveMinutes.frame.maxY < today.frame.minY
+        scrollUntil(fiveMinutes.isHittable, in: app, within: today, from: chipsAbove ? 0.30 : 0.78, to: chipsAbove ? 0.78 : 0.30)
+        XCTAssertTrue(fiveMinutes.isHittable, "Today never brought the session length chips into reach")
         // XCTest raises an error for an off-screen horizontal chip's activation point instead of
         // returning false from isHittable. Scroll by its actual frame before asking it to tap.
         for _ in 0..<4 where app.buttons["60 minute session"].frame.maxX > chips.frame.maxX {
@@ -47,7 +54,8 @@ final class FoundationsUITests: XCTestCase {
 
         app.tabBars.buttons["Profile"].tap()
         app.buttons["Settings"].tap()
-        for _ in 0..<4 where !app.buttons["Areas to protect"].isHittable { swipeUp(in: app) }
+        scrollUntilHittable(app.buttons["Areas to protect"], in: app)
+        XCTAssertTrue(app.buttons["Areas to protect"].isHittable, "Settings never brought Areas to protect into reach")
         app.buttons["Areas to protect"].tap()
         let back = app.switches["Back"].firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 10))
@@ -57,7 +65,8 @@ final class FoundationsUITests: XCTestCase {
         back.switches.firstMatch.tap()
         let staged = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: back)
         XCTAssertEqual(XCTWaiter().wait(for: [staged], timeout: 5), .completed)
-        for _ in 0..<4 where !app.buttons["Save changes"].isHittable { swipeUp(in: app) }
+        scrollUntilHittable(app.buttons["Save changes"], in: app)
+        XCTAssertTrue(app.buttons["Save changes"].isHittable, "Areas to protect never brought Save changes into reach")
         app.buttons["Save changes"].tap()
         XCTAssertTrue(element("Saved. Your next session will use this.", in: app).waitForExistence(timeout: 10))
         try capture("06-back-protection-saved")
@@ -96,7 +105,7 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Profile"].waitForExistence(timeout: 20))
         app.tabBars.buttons["Profile"].tap()
         app.buttons["Settings"].tap()
-        for _ in 0..<4 where !app.buttons["Delete Account"].isHittable { swipeUp(in: app) }
+        scrollUntilHittable(app.buttons["Delete Account"], in: app)
         XCTAssertTrue(app.buttons["Delete Account"].isHittable)
         app.buttons["Delete Account"].tap()
         XCTAssertTrue(app.alerts.buttons["Delete Account"].waitForExistence(timeout: 5))
@@ -126,8 +135,11 @@ final class FoundationsUITests: XCTestCase {
         let completion = element("You showed up.", in: app)
         for _ in 0..<60 {
             if completion.exists { break }
-            let action = ["Skip rest", "Done", "Complete set", "Finish exercise", "Finish session"]
-                .map { app.buttons[$0] }.first { $0.exists && $0.isHittable }
+            let actions = ["Skip rest", "Done", "Complete set", "Finish exercise", "Finish session"].map { app.buttons[$0] }
+            let reachable = { actions.first { $0.exists && $0.isHittable } }
+            // At the largest text sizes the player's secondary controls sit below its fold.
+            if reachable() == nil { scrollUntil(reachable() != nil, in: app, maxSwipes: 8) }
+            let action = reachable()
             guard let action else {
                 XCTFail("The session offered no completion control: \(app.descendants(matching: .any).allElementsBoundByIndex.map(\.label))")
                 return
@@ -161,7 +173,7 @@ final class FoundationsUITests: XCTestCase {
         // ladder and the separate Legs sides must remain reachable through ordinary scrolling.
         for (index, label) in ["Where you stand", "Pull ladder.", "Single-Arm Supine Floor Row,", "Legs, squat side ladder.", "Legs, hinge side ladder."].enumerated() {
             let target = element(label, in: app)
-            for _ in 0..<24 where !target.isHittable { swipeUp(in: app) }
+            scrollUntilHittable(target, in: app)
             XCTAssertTrue(target.isHittable, "Could not reach \(label)")
             try capture("\(prefix)-map-\(index)")
         }
@@ -171,11 +183,6 @@ final class FoundationsUITests: XCTestCase {
     private func element(_ text: String, in app: TestApp) -> XCUIElement {
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-    }
-
-    private func swipeUp(in app: TestApp) {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)))
     }
 
     private func capture(_ name: String) throws {

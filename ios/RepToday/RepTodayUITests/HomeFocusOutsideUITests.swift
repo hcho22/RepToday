@@ -70,9 +70,8 @@ final class HomeFocusOutsideUITests: XCTestCase {
         attach("07-edit-activity-sheet")
         let deleteRow = app.buttons["Delete activity"].firstMatch
         let form = app.descendants(matching: .collectionView).firstMatch
-        for _ in 0..<10 where !(deleteRow.exists && deleteRow.isHittable) {
-            form.swipeUp()
-        }
+        scrollUntilHittable(deleteRow, in: app, within: form)
+        XCTAssertTrue(deleteRow.exists && deleteRow.isHittable, "Edit activity never brought Delete activity into reach")
         let rowFrame = deleteRow.frame
         deleteRow.tap()
         // The confirmation's own "Delete activity", not the form row behind it.
@@ -94,21 +93,20 @@ final class HomeFocusOutsideUITests: XCTestCase {
         let focusRow = app.buttons["Focus Areas"]
         let settingsList = app.descendants(matching: .collectionView).firstMatch
         XCTAssertTrue(settingsList.waitForExistence(timeout: 5))
-        for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
-            nudgeUp(settingsList)
-        }
+        scrollUntilHittable(focusRow, in: app, within: settingsList)
+        XCTAssertTrue(focusRow.exists && focusRow.isHittable, "Settings never brought Focus Areas into reach")
         XCTAssertEqual(focusRow.value as? String, "Chest, Abs")
         attach("08-settings")
         focusRow.tap()
         XCTAssertTrue(app.navigationBars["Focus Areas"].waitForExistence(timeout: 5))
         // "Back" is both a Focus Area and the word on a navigation button, so match the row by its detail.
         let backArea = app.buttons.matching(NSPredicate(format: "label == 'Back' AND value BEGINSWITH 'Rows'")).firstMatch
-        let editorList = app.descendants(matching: .collectionView).firstMatch
         let saveBar = app.buttons["Save changes"]
         // Clear of the pinned Save bar, not merely on screen: a row half under it takes the bar's tap.
-        for _ in 0..<10 where !(backArea.exists && backArea.frame.maxY < saveBar.frame.minY) {
-            editorList.swipeUp()
-        }
+        // At the largest text sizes a row is nearly as tall as the gap above the bar, so drag in short
+        // steps that start above the bar rather than on it.
+        scrollUntil(backArea.exists && backArea.frame.maxY < saveBar.frame.minY, in: app, from: 0.60, to: 0.40)
+        XCTAssertTrue(backArea.exists && backArea.frame.maxY < saveBar.frame.minY, "Focus Areas never brought Back clear of Save changes")
         backArea.tap()
         let selected = expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: backArea)
         wait(for: [selected], timeout: 5)
@@ -116,9 +114,8 @@ final class HomeFocusOutsideUITests: XCTestCase {
         app.buttons["Save changes"].tap()
         XCTAssertTrue(app.staticTexts["Saved. Your next session will use this."].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        for _ in 0..<10 where !(focusRow.exists && focusRow.isHittable) {
-            nudgeUp(settingsList)
-        }
+        scrollUntilHittable(focusRow, in: app, within: settingsList)
+        XCTAssertTrue(focusRow.exists && focusRow.isHittable, "Settings never brought Focus Areas back into reach")
         XCTAssertEqual(focusRow.value as? String, "Chest, Back, Abs")
 
         // The next cold launch opens on the Welcome Page: today is Pull Day, Push is done.
@@ -145,19 +142,9 @@ final class HomeFocusOutsideUITests: XCTestCase {
         return element.waitForExistence(timeout: timeout) ? element.label : nil
     }
 
-    /// A short drag with no fling. On a 375x667 screen one `swipeUp()` can carry a row from below the
-    /// fold to above it in a single move, and the lazy list then drops it from the tree, so a row near
-    /// the fold is never seen as hittable.
-    private func nudgeUp(_ list: XCUIElement) {
-        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
-            .press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.40)))
-    }
-
     private func scrollTo(_ element: XCUIElement) {
-        let scroll = app.descendants(matching: .scrollView).firstMatch
-        for _ in 0..<8 where !(element.exists && element.isHittable) {
-            scroll.swipeUp()
-        }
+        // Today's scroll view ends above the pinned Start bar, so drag inside it rather than the screen.
+        scrollUntilHittable(element, in: app, within: app.descendants(matching: .scrollView).firstMatch)
         XCTAssertTrue(element.exists && element.isHittable, "\(element) never came on screen")
     }
 

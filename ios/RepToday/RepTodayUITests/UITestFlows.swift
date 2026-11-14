@@ -46,10 +46,34 @@ extension XCTestCase {
     /// rows below the fold out of the tree entirely, so existence alone is not enough to wait on. The
     /// loop stops as soon as the element is reachable; the default allows for Settings at the largest
     /// accessibility text size on an iPhone SE size screen, which runs well past ten swipes.
-    func scrollUntilHittable(_ element: XCUIElement, in app: TestApp, maxSwipes: Int = 40) {
-        for _ in 0..<maxSwipes where !(element.exists && element.isHittable) {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
-                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)))
+    /// Pass `area` to drag inside one scrolling element (a sheet's form, or a scroll view that ends above
+    /// a pinned bar) rather than across the whole screen.
+    func scrollUntilHittable(_ element: XCUIElement, in app: TestApp, within area: XCUIElement? = nil, maxSwipes: Int = 40) {
+        scrollUntil(element.exists && element.isHittable, in: app, within: area, maxSwipes: maxSwipes)
+    }
+
+    /// Drags until `reached` holds, for a target that needs more than being hittable (a row clear of a
+    /// pinned bar, say). `start` and `end` are vertical offsets within the dragged area: the default
+    /// drags upward like `scrollUntilHittable`, a `start` above `end` drags back down, and a shorter
+    /// span keeps the drag clear of a pinned bar.
+    func scrollUntil(
+        _ reached: @autoclosure () -> Bool,
+        in app: TestApp,
+        within area: XCUIElement? = nil,
+        from start: CGFloat = 0.78,
+        to end: CGFloat = 0.30,
+        maxSwipes: Int = 40
+    ) {
+        let from = CGVector(dx: 0.5, dy: start)
+        let to = CGVector(dx: 0.5, dy: end)
+        for _ in 0..<maxSwipes where !reached() {
+            if let area {
+                area.coordinate(withNormalizedOffset: from)
+                    .press(forDuration: 0.05, thenDragTo: area.coordinate(withNormalizedOffset: to))
+            } else {
+                app.coordinate(withNormalizedOffset: from)
+                    .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: to))
+            }
         }
     }
 
