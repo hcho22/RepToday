@@ -101,7 +101,7 @@ describe("contextMessage", () => {
 
   test("an unknown age is treated as under 18", () => {
     const text = contextMessage({ ageGroup: "unknown", profile: null, focusAreas: [], logs: [], activities: [], customWorkouts: [], today: null });
-    expect(text).toContain("Age group: unknown. Treat as under 18: no diet topics.");
+    expect(text).toContain("Age group: unknown. Treat as under 18: no food, diet, supplement or weight topics; plain water is fine.");
     expect(text).toContain("- None yet.");
   });
 
@@ -121,5 +121,15 @@ describe("houseStyle", () => {
     expect(houseStyle("Rest \u2014 then train.")).toBe("Rest - then train.");
     expect(houseStyle("Push 3 \u2013 4 sets of a 10-minute warm-up.")).toBe("Push 3 - 4 sets of a 10-minute warm-up.");
     expect(houseStyle("Pages 3\u20134 stay as written.")).toBe("Pages 3\u20134 stay as written.");
+  });
+
+  test("markdown emphasis and headings become plain text; lists, multiplication and lone asterisks stay", () => {
+    expect(houseStyle("Aim for **7-9 hours of sleep** a night.")).toBe("Aim for 7-9 hours of sleep a night.");
+    expect(houseStyle("- **Breakfast:** Oats\n- **Lunch:** Rice")).toBe("- Breakfast: Oats\n- Lunch: Rice");
+    expect(houseStyle("Keep it *easy* today.")).toBe("Keep it easy today.");
+    expect(houseStyle("### Warm-up\nWalk for 5 minutes.")).toBe("Warm-up\nWalk for 5 minutes.");
+    expect(houseStyle("A __steady__ pace.")).toBe("A steady pace.");
+    expect(houseStyle("Do 3 * 10 reps, then 2 x 30s.")).toBe("Do 3 * 10 reps, then 2 x 30s.");
+    expect(houseStyle("Push-ups* are fine.")).toBe("Push-ups* are fine.");
   });
 });
