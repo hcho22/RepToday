@@ -56,4 +56,5 @@ The walk found the onboarding progress bar counting the skipped "Save your plan"
 - Live VoiceOver speech and focus: the Simulator has no VoiceOver; labels, traits and hints were read from the accessibility tree.
 - Apple and Google sign-in, real airplane mode and a real App Store purchase: device checks, as for M3 and M4; the walk used email-code sign-in, the offline launch switch and a development entitlement grant.
 - The system's removal of pending and delivered notifications: unit-tested through the scheduler seam; not observed in Notification Center.
-- `SignOutUITests` at the largest text size: the shared reset helper's ten swipes cannot reach Delete Account on a 375x667 screen at that size, so the suite stops before signing out; the look walk above covered those screens instead.
+- `SignOutUITests` at the largest text size: during this validation the shared reset helper's ten swipes could not reach Delete Account on a 375x667 screen at that size, so the suite stopped before signing out; the look walk above covered those screens instead.
+  The helper has since been fixed to swipe up to 40 times, stopping once Delete Account is reachable (`scrollUntilHittable` in `RepTodayUITests/UITestFlows.swift`); the suite has not been rerun at that size here.
