@@ -117,19 +117,11 @@ struct SettingsView: View {
                 NavigationLink {
                     RemindersView(service: services.reminders)
                 } label: {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "bell")
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .accessibilityHidden(true)
-                        Text(CoachReminderCopy.settingsTitle)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Spacer(minLength: Theme.Spacing.sm)
-                        Text(Self.reminderSummary(reminderCount))
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    }
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    SettingsValueRowLabel(
+                        systemImage: "bell",
+                        title: CoachReminderCopy.settingsTitle,
+                        value: Self.reminderSummary(reminderCount)
+                    )
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(CoachReminderCopy.settingsTitle)
@@ -145,21 +137,12 @@ struct SettingsView: View {
                 NavigationLink {
                     FocusAreasView(services: services)
                 } label: {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "scope")
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .accessibilityHidden(true)
-                        Text(FocusAreasCopy.title)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Spacer(minLength: Theme.Spacing.sm)
-                        Text(FocusAreasCopy.summary(focusAreas))
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .multilineTextAlignment(.trailing)
-                            .lineLimit(2)
-                    }
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    SettingsValueRowLabel(
+                        systemImage: "scope",
+                        title: FocusAreasCopy.title,
+                        value: FocusAreasCopy.summary(focusAreas),
+                        valueLineLimit: 2
+                    )
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(FocusAreasCopy.title)
@@ -432,25 +415,12 @@ struct SettingsView: View {
                 }
             }
         } label: {
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "figure.strengthtraining.functional")
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .accessibilityHidden(true)
-                Text(TrainerChoiceCopy.settingsTitle)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: Theme.Spacing.sm)
-                Text(model?.valueText ?? "")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .accessibilityHidden(true)
-            }
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            SettingsValueRowLabel(
+                systemImage: "figure.strengthtraining.functional",
+                title: TrainerChoiceCopy.settingsTitle,
+                value: model?.valueText ?? "",
+                trailingSystemImage: "chevron.up.chevron.down"
+            )
             .contentShape(Rectangle())
         }
         .disabled(model?.isLoaded != true || model?.isSaving == true)
@@ -626,4 +596,84 @@ struct SettingsView: View {
     }
     .environment(\.services, ServiceContainer.mock())
     .environment(AppState.preview(isOnboarded: true, selectedTab: .profile))
+}
+
+/// A Settings row that shows a current value: an icon, a title, the value and, for a row that opens a
+/// menu, a trailing glyph (a navigation row gets its chevron from the list).
+///
+/// At the accessibility text sizes the value moves under the title, as `ProfileRowLabel` moves its badge,
+/// so the title and the value each keep the row's full width rather than splitting it and breaking words
+/// in half. The title is never squeezed for the value: the value wraps first. Stacked, a text gets one line
+/// per word and shrinks, as far as `ProfileRowLabel`'s title does, rather than split a word too wide for
+/// its line ("Reminders" at the largest size on the narrowest phone); the glyphs stop growing at the first
+/// accessibility size, as `ProfileRowLabel`'s do, to leave the text the room.
+struct SettingsValueRowLabel: View {
+    let systemImage: String
+    let title: String
+    let value: String
+    /// The most lines the value may take; `nil` lets it wrap as far as it needs.
+    var valueLineLimit: Int?
+    var trailingSystemImage: String?
+
+    /// The largest text size the row's glyphs grow to.
+    static let largestGlyphSize = DynamicTypeSize.accessibility1
+
+    /// How far a stacked text shrinks before a word would split.
+    static let stackedMinimumScale: CGFloat = 0.7
+
+    /// One line per word: a word that does not fit its line overflows the limit, so the text shrinks
+    /// instead of breaking the word.
+    private static func lineLimit(forWordsIn text: String) -> Int {
+        max(1, text.split(separator: " ").count)
+    }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let stacksValue = dynamicTypeSize.isAccessibilitySize
+        // Stacked, the icon and the trailing glyph stay on the title's line rather than centering on the value.
+        HStack(alignment: stacksValue ? .firstTextBaseline : .center, spacing: Theme.Spacing.sm) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .dynamicTypeSize(...Self.largestGlyphSize)
+                .accessibilityHidden(true)
+            let textLayout = stacksValue
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            textLayout {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(stacksValue ? Self.lineLimit(forWordsIn: title) : nil)
+                    .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+                if !stacksValue {
+                    Spacer(minLength: Theme.Spacing.sm)
+                }
+                if !value.isEmpty {
+                    Text(value)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(stacksValue ? .leading : .trailing)
+                        .lineLimit(stacksValue
+                            ? min(Self.lineLimit(forWordsIn: value), valueLineLimit ?? .max)
+                            : valueLineLimit)
+                        .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if stacksValue {
+                Spacer(minLength: 0)
+            }
+            if let trailingSystemImage {
+                Image(systemName: trailingSystemImage)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .dynamicTypeSize(...Self.largestGlyphSize)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(minHeight: Theme.Spacing.minTouchTarget)
+    }
 }
