@@ -342,10 +342,7 @@ final class CoachEndToEndUITests: XCTestCase {
     }
 
     private func scrollUntilVisible(_ element: XCUIElement) {
-        for _ in 0..<6 where !(element.exists && element.isHittable) {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
-                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
-        }
+        scrollUntil(element.exists && element.isHittable, in: app, from: 0.65, to: 0.35)
     }
 
     private func deleteAccountThroughSettings() {
