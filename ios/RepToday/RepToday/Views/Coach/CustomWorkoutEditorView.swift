@@ -110,36 +110,54 @@ struct CustomWorkoutEditorView: View {
     }
 
     private var acceptBar: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Button {
-                onAccept(workout, false)
-                dismiss()
-            } label: {
-                Text("Accept")
-                    .font(Theme.Typography.button)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.buttonHeight)
+        // Side by side while both labels fit on one line; otherwise stacked, so neither wraps.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Spacing.sm) {
+                acceptButton(singleLine: true)
+                acceptAndPlayButton(singleLine: true)
             }
-            .secondaryButtonStyle()
-            .accessibilityHint("Saves this workout. It does not start yet.")
-
-            Button {
-                onAccept(workout, true)
-                dismiss()
-            } label: {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ScaledIcon(icon: .play, size: 20, relativeTo: .headline)
-                    Text("Accept and play")
-                }
-                .font(Theme.Typography.button)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: Theme.Spacing.buttonHeight)
+            VStack(spacing: Theme.Spacing.sm) {
+                acceptAndPlayButton(singleLine: false)
+                acceptButton(singleLine: false)
             }
-            .accentFilledButtonStyle()
         }
         .padding(.horizontal, Theme.Spacing.screenMargin)
         .padding(.vertical, Theme.Spacing.smd)
         .background(Theme.Colors.background)
+    }
+
+    private func acceptButton(singleLine: Bool) -> some View {
+        Button {
+            onAccept(workout, false)
+            dismiss()
+        } label: {
+            Text("Accept")
+                .font(Theme.Typography.button)
+                .capsuleLabelInset()
+                .fixedSize(horizontal: singleLine, vertical: false)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: Theme.Spacing.buttonHeight)
+        }
+        .secondaryButtonStyle()
+        .accessibilityHint("Saves this workout. It does not start yet.")
+    }
+
+    private func acceptAndPlayButton(singleLine: Bool) -> some View {
+        Button {
+            onAccept(workout, true)
+            dismiss()
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                ScaledIcon(icon: .play, size: 20, relativeTo: .headline)
+                Text("Accept and play")
+                    .fixedSize(horizontal: singleLine, vertical: false)
+            }
+            .font(Theme.Typography.button)
+            .capsuleLabelInset()
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.buttonHeight)
+        }
+        .accentFilledButtonStyle()
     }
 
     private func replace(_ step: CustomWorkoutStep) {

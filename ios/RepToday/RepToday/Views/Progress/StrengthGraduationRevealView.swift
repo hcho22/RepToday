@@ -84,7 +84,7 @@ struct StrengthGraduationRevealView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     DayMarkView(mark: .climb, color: Theme.Colors.sun, size: 116)
-                        .padding(.top, Theme.Spacing.xxl)
+                        .padding(.top, Theme.Spacing.lg)
 
                     header
 
@@ -119,6 +119,7 @@ struct StrengthGraduationRevealView: View {
             Text("You've earned the Strength Phase")
                 .cappedDisplayFont(size: 42)
                 .foregroundStyle(Theme.Colors.sun)
+                .keepsWordsWhole("You've earned the Strength Phase")
                 .fixedSize(horizontal: false, vertical: true)
             Text("You're someone who moves - and it shows. Here's what you've built and what it opens up.")
                 .font(Theme.Typography.body)
@@ -134,6 +135,7 @@ struct StrengthGraduationRevealView: View {
         Button(action: onDismiss) {
             Text("Keep climbing")
                 .font(Theme.Typography.button)
+                .capsuleLabelInset()
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: Theme.Spacing.startButtonHeight)
         }

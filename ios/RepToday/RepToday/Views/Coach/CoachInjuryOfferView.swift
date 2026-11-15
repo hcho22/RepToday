@@ -62,9 +62,15 @@ struct CoachInjuryOfferView: View {
     let onAccept: () -> Void
     let onDecline: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: Theme.Spacing.smd) {
+            // At accessibility sizes the icon sits above the words, which then keep the card's width.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.smd))
+            layout {
                 ScaledIcon(icon: .shield, size: 24, relativeTo: .headline)
                     .foregroundStyle(Theme.Colors.accent)
                     .padding(.top, 1)
@@ -84,6 +90,7 @@ struct CoachInjuryOfferView: View {
                 Button(action: onAccept) {
                     Text(CoachInjuryOfferCopy.accept)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -94,6 +101,7 @@ struct CoachInjuryOfferView: View {
                 Button(action: onDecline) {
                     Text(CoachInjuryOfferCopy.decline)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }

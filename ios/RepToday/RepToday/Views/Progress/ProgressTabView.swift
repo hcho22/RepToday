@@ -174,6 +174,7 @@ struct ProgressTabView: View {
             Text("Your progress")
                 .cappedDisplayFont(size: 44)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Your progress")
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             Text("Every show-up is proof of who you're becoming.")
@@ -193,6 +194,7 @@ struct ProgressTabView: View {
             Text("Your history starts with your first session.")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Your history starts with your first session.")
                 .fixedSize(horizontal: false, vertical: true)
             Text("Show up once and this space fills with proof - a calendar, a rising score, and the longest run you've ever put together.")
                 .font(Theme.Typography.callout)
@@ -226,7 +228,10 @@ private struct ConsistencyHeadlineCard: View {
                     .foregroundStyle(Theme.Colors.sun)
                     .lineLimit(1)
                     .fixedSize()
-                    .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : 112, alignment: .bottom)
+                    // The numeral's line box carries the font's tall ascender above the figures; the
+                    // 120 pt frame trims that so the score sits as close under the header as DESIGN's
+                    // 128/112 setting draws it.
+                    .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : 120, alignment: .bottom)
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Consistency Score".uppercased())
@@ -308,12 +313,16 @@ private struct ConsistencyHeadlineCard: View {
 private struct ScoreTrendCard: View {
     let trend: [ConsistencyTrendPoint]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Axis labels grow with text size only so far: past that the chart has no room left to draw, and
+    /// VoiceOver reads the whole trend from the chart's own value.
+    @ScaledMetric(relativeTo: .footnote) private var axisSize: CGFloat = 13
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             Text("Consistency over time")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Consistency over time")
                 .fixedSize(horizontal: false, vertical: true)
 
             if trend.count >= 2 {
@@ -373,7 +382,7 @@ private struct ScoreTrendCard: View {
                 AxisValueLabel {
                     if let score = value.as(Int.self) {
                         Text("\(score)")
-                            .font(Theme.Typography.footnote)
+                            .font(ThemeFont(Theme.Typography.FontName.textRegular, fixedSize: min(axisSize, 18)))
                             .foregroundStyle(Theme.Colors.text3)
                     }
                 }
@@ -382,13 +391,15 @@ private struct ScoreTrendCard: View {
         .chartXAxis {
             // At accessibility sizes the week labels are too wide to sit every week without overprinting.
             AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : 1)) { _ in
-                AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: false)
-                    .font(Theme.Typography.footnote.weight(.semibold).font(for: nil))
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day(), anchor: .top)
+                    .font(ThemeFont(Theme.Typography.FontName.textSemiBold, fixedSize: min(axisSize, 18)).font(for: nil))
                     .foregroundStyle(Theme.Colors.text2)
             }
         }
+        // Room at both ends so the first and last week's labels, centered under their points, stay whole.
+        .chartXScale(range: .plotDimension(startPadding: 20, endPadding: 20))
         .chartPlotStyle { $0.padding(.top, Theme.Spacing.lg) }
-        .frame(height: 200)
+        .frame(height: 190)
         .accessibilityLabel("Consistency score over time")
         .accessibilityValue(trendAccessibilityValue)
     }
@@ -408,6 +419,11 @@ private struct SessionCalendarCard: View {
     let now: Date
 
     @State private var monthAnchor: Date
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The day numbers and weekday initials grow with text size only as far as a seventh of the card
+    /// leaves room for, so two digits never crowd into their neighbors.
+    @ScaledMetric(relativeTo: .footnote) private var dayNumberSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption2) private var weekdaySize: CGFloat = 11
 
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
@@ -464,12 +480,26 @@ private struct SessionCalendarCard: View {
     }
 
     private var monthHeader: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Text(monthTitleFormatter.string(from: monthAnchor))
+        // At accessibility sizes the month takes the full width and the paging buttons sit under it.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+        let title = monthTitleFormatter.string(from: monthAnchor)
+        return layout {
+            Text(title)
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole(title)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Theme.Spacing.sm) {
+                pagingButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pagingButtons: some View {
             Button { step(-1) } label: {
                 IconView(icon: .chevl, size: 22)
             }
@@ -482,7 +512,6 @@ private struct SessionCalendarCard: View {
             .circleIconButtonStyle()
             .disabled(isCurrentMonth)
             .accessibilityLabel("Next month")
-        }
     }
 
     private var weekdayHeader: some View {
@@ -493,7 +522,7 @@ private struct SessionCalendarCard: View {
             // undefined results. The month grid below already keys its cells by offset.
             ForEach(Array(orderedWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
-                    .font(ThemeFont(Theme.Typography.FontName.textBold, size: 11, relativeTo: .caption2))
+                    .font(ThemeFont(Theme.Typography.FontName.textBold, fixedSize: min(weekdaySize, 16)))
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
@@ -528,7 +557,7 @@ private struct SessionCalendarCard: View {
             Text(dayFormatter.string(from: date))
                 .font(ThemeFont(isToday ? Theme.Typography.FontName.textExtraBold
                                 : isFuture ? Theme.Typography.FontName.textMedium : Theme.Typography.FontName.textSemiBold,
-                                size: 14, relativeTo: .footnote))
+                                fixedSize: min(dayNumberSize, 20)))
                 .monospacedDigit()
                 .foregroundStyle(isToday ? Theme.Colors.onAccent : isFuture ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
                 .lineLimit(1)
@@ -940,6 +969,7 @@ private struct PersonalBestsCard: View {
             Text("Your bests")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Your bests")
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 0) {
@@ -1258,6 +1288,7 @@ private struct PatternBalanceCard: View {
             Text("Movement patterns")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Movement patterns")
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 2) {
@@ -1330,6 +1361,7 @@ private struct DifficultyMixCard: View {
             Text("How it's felt")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("How it's felt")
                 .fixedSize(horizontal: false, vertical: true)
 
             if mix.ratedCount == 0 {
@@ -1684,12 +1716,14 @@ private struct StatusRow: View {
     }
 
     /// The foundation's mark in its color, or the same width left empty under it for a side.
+    @ScaledMetric(relativeTo: .body) private var markSize: CGFloat = FoundationLabel.markSize
+
     @ViewBuilder
     private var leading: some View {
         if let mark {
-            DayMarkView(mark: mark.mark, color: mark.tone.color, size: FoundationLabel.markSize)
+            DayMarkView(mark: mark.mark, color: mark.tone.color, size: markSize)
         } else {
-            Color.clear.frame(width: FoundationLabel.markSize, height: 1)
+            Color.clear.frame(width: markSize, height: 1)
         }
     }
 
@@ -1730,6 +1764,7 @@ private struct FoundationsUpdateNote: View {
             Button(action: onDismiss) {
                 Text("Got it")
                     .font(Theme.Typography.button)
+                    .capsuleLabelInset()
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 48)
             }
@@ -1852,6 +1887,7 @@ private struct CardHeader: View {
             Text(title)
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole(title)
                 .fixedSize(horizontal: false, vertical: true)
             Text(detail)
                 .font(Theme.Typography.callout)
@@ -1875,10 +1911,13 @@ private struct FoundationLabel: View {
     static let markColumn: CGFloat = markSize + Theme.Spacing.smd
     static let ladderFont = ThemeFont(Theme.Typography.FontName.displaySmall, size: 18, relativeTo: .title3)
 
+    @ScaledMetric(relativeTo: .body) private var rowMark: CGFloat = FoundationLabel.markSize
+    @ScaledMetric(relativeTo: .title3) private var ladderMark: CGFloat = 26
+
     var body: some View {
         HStack(spacing: style == .row ? Theme.Spacing.smd : 10) {
             DayMarkView(mark: foundation.mark, color: foundation.tone.color,
-                        size: style == .row ? Self.markSize : 26)
+                        size: style == .row ? rowMark : ladderMark)
             Text(foundation.displayName)
                 .font(style == .row ? Theme.Typography.body.weight(.semibold) : Self.ladderFont)
                 .foregroundStyle(style == .row ? Theme.Colors.textPrimary : foundation.tone.color)

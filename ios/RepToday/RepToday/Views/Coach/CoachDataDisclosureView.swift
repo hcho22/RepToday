@@ -131,6 +131,7 @@ struct CoachDataDisclosureView: View {
             Text(CoachDataDisclosureCopy.title)
                 .cappedDisplayFont(size: 32)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole(CoachDataDisclosureCopy.title)
                 .fixedSize(horizontal: false, vertical: true)
             Text(CoachDataDisclosureCopy.intro)
                 .font(Theme.Typography.callout)
@@ -147,6 +148,7 @@ struct CoachDataDisclosureView: View {
             Button(action: onAcknowledge) {
                 Text(CoachDataDisclosureCopy.acknowledge)
                     .font(Theme.Typography.button)
+                    .capsuleLabelInset()
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
             }
@@ -157,6 +159,7 @@ struct CoachDataDisclosureView: View {
             Button(action: onDecline) {
                 Text(CoachDataDisclosureCopy.decline)
                     .font(Theme.Typography.button)
+                    .capsuleLabelInset()
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
             }

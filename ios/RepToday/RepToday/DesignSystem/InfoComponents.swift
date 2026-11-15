@@ -177,3 +177,35 @@ struct BottomSheetOverlay<Content: View>: View {
         }
     }
 }
+
+// MARK: - Whole words
+
+extension View {
+    /// Keeps every word of `text` whole at large text sizes: the text may take one line per word, and a
+    /// word too wide for its line shrinks the text (down to `minimumScale`) instead of splitting in half.
+    /// Below that width it changes nothing.
+    func keepsWordsWhole(_ text: String, minimumScale: CGFloat = 0.6) -> some View {
+        lineLimit(max(1, text.split(whereSeparator: \.isWhitespace).count))
+            .minimumScaleFactor(minimumScale)
+    }
+}
+
+// MARK: - Capsule label inset
+
+extension View {
+    /// Insets a capsule button's label further from its rounded ends at accessibility text sizes, where
+    /// the label wraps onto several lines and its outer words would otherwise run into the curve.
+    func capsuleLabelInset() -> some View {
+        modifier(CapsuleLabelInset())
+    }
+}
+
+private struct CapsuleLabelInset: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.lg : 0)
+    }
+}

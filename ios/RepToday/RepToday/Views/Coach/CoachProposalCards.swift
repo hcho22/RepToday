@@ -82,9 +82,15 @@ struct CoachProposalCard: View {
     let onDecline: () -> Void
     let onUndo: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: Theme.Spacing.smd) {
+            // At accessibility sizes the icon sits above the words, which then keep the card's width.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.smd))
+            layout {
                 ScaledIcon(icon: CoachProposalCopy.icon(proposal.action), size: 24, relativeTo: .headline)
                     .foregroundStyle(Theme.Colors.accent)
                     .padding(.top, 1)
@@ -170,6 +176,7 @@ private struct ProposalControls: View {
                         }
                     }
                     .font(Theme.Typography.button)
+                    .capsuleLabelInset()
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 48)
                 }
@@ -180,6 +187,7 @@ private struct ProposalControls: View {
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -187,24 +195,33 @@ private struct ProposalControls: View {
                 .disabled(isBusy)
             }
         case .applied:
-            HStack(spacing: Theme.Spacing.sm) {
+            // At accessibility sizes Undo moves under the outcome, at full width, so neither word splits.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            layout {
                 HStack(spacing: Theme.Spacing.sm) {
                     ScaledIcon(icon: .check, size: 20)
                         .foregroundStyle(Theme.Colors.legs)
                     Text(CoachProposalCopy.applied)
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.legs)
+                        .fixedSize()
                 }
                 .accessibilityElement(children: .combine)
-                Spacer(minLength: Theme.Spacing.sm)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: Theme.Spacing.sm)
+                }
                 if canUndo {
                     Button(action: onUndo) {
                         HStack(spacing: Theme.Spacing.sm) {
                             ScaledIcon(icon: .undo, size: 20)
                             Text(CoachProposalCopy.undo)
                                 .font(Theme.Typography.callout.weight(.bold))
+                                .fixedSize()
                         }
                         .padding(.horizontal, 2)
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
                         .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
                     }
                     .outlineButtonStyle()
@@ -278,6 +295,7 @@ struct CustomWorkoutCard: View {
                 Text(accepted?.title ?? draft.title)
                     .cappedDisplayFont(Theme.Typography.FontName.displaySmall, size: 26, relativeTo: .title2)
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .keepsWordsWhole(accepted?.title ?? draft.title)
                     .fixedSize(horizontal: false, vertical: true)
                 if !draft.note.isEmpty {
                     Text(draft.note)
@@ -321,6 +339,7 @@ struct CustomWorkoutCard: View {
                 Button { onReview(false) } label: {
                     Text("Review and accept")
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                 }
@@ -331,6 +350,7 @@ struct CustomWorkoutCard: View {
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -346,6 +366,7 @@ struct CustomWorkoutCard: View {
                             Text("Play")
                         }
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                     }
@@ -360,6 +381,7 @@ struct CustomWorkoutCard: View {
                             Text(CoachProposalCopy.undo)
                         }
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                     }

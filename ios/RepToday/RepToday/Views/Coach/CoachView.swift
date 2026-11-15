@@ -326,8 +326,9 @@ struct CoachTabView: View {
                     Button {
                         begin { await viewModel.sendQuickAction(action) }
                     } label: {
+                        // The row scrolls sideways, so a chip keeps its whole title on one line.
                         Text(action.title)
-                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .buttonStyle(ChipButtonStyle(isSelected: false))
                     .disabled(viewModel.isSending || !viewModel.isDataSharingAcknowledged)
@@ -439,11 +440,13 @@ struct CoachHeader: View {
 struct CoachMessageBubble: View {
     let message: CoachMessage
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var isUser: Bool { message.role == .user }
 
     var body: some View {
         HStack {
-            if isUser { Spacer(minLength: Theme.Spacing.xxl) }
+            if isUser { Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.md : Theme.Spacing.xxl) }
             Text(message.text)
                 .font(isUser ? Theme.Typography.body.weight(.medium) : Theme.Typography.body)
                 .foregroundStyle(isUser ? Theme.Colors.black : Theme.Colors.textPrimary)
@@ -452,7 +455,7 @@ struct CoachMessageBubble: View {
                 .padding(.vertical, Theme.Spacing.smd)
                 .background(isUser ? Theme.Colors.text1 : Theme.Colors.surface2, in: bubbleShape)
                 .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
-            if !isUser { Spacer(minLength: Theme.Spacing.xl) }
+            if !isUser { Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.md : Theme.Spacing.xl) }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isUser ? "You said: \(message.text)" : "Coach said: \(message.text)")
@@ -498,6 +501,7 @@ struct CoachNotice: View {
                 Button(action: action) {
                     Text(actionTitle)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
@@ -544,6 +548,7 @@ struct CoachPreviewView: View {
                         Text(CoachCopy.previewTitle)
                             .cappedDisplayFont(size: 38)
                             .foregroundStyle(Theme.Colors.textPrimary)
+                            .keepsWordsWhole(CoachCopy.previewTitle)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityAddTraits(.isHeader)
                         Text(CoachCopy.previewBody)
@@ -591,6 +596,7 @@ struct CoachPreviewView: View {
                 Button(action: onUnlock) {
                     Text(CoachCopy.unlock)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
@@ -600,6 +606,7 @@ struct CoachPreviewView: View {
                 Button(action: onRestore) {
                     Text(CoachCopy.restore)
                         .font(Theme.Typography.callout.weight(.bold))
+                        .capsuleLabelInset()
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }

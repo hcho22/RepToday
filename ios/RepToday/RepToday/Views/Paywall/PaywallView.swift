@@ -98,7 +98,7 @@ struct PaywallView: View {
                     legalLinks
                 }
                 .padding(.horizontal, Theme.Spacing.screenMargin)
-                .padding(.top, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.xs)
                 .padding(.bottom, Theme.Spacing.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -136,6 +136,7 @@ struct PaywallView: View {
             Text("Go deeper with Premium")
                 .cappedDisplayFont(size: 44)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .keepsWordsWhole("Go deeper with Premium")
                 .fixedSize(horizontal: false, vertical: true)
             Text("Your workouts are always free. Premium adds the coach and the deeper view for when you want them.")
                 .font(Theme.Typography.body)
