@@ -68,8 +68,9 @@ enum CoachDataDisclosureCopy {
 /// Presentation is owned by `CoachTabView`, which layers this over the (idle) chat surface and, on
 /// acknowledgement, persists the current disclosure version on `AppState`. The same version survives
 /// relaunch; account deletion or a changed contract requires acknowledgement again. Every color, font,
-/// and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the card
-/// is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce Motion.
+/// and dimension comes from `Theme`; the controls are a 56 pt primary button and a 44 pt ghost button;
+/// the sheet is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under
+/// Reduce Motion.
 struct CoachDataDisclosureView: View {
     /// Records acknowledgement of the current disclosure contract and opens the coach.
     let onAcknowledge: () -> Void
@@ -79,65 +80,60 @@ struct CoachDataDisclosureView: View {
 
     private struct Point: Identifiable {
         let id = UUID()
-        let symbol: String
+        let icon: AppIcon
         let title: String
         let detail: String
     }
 
     private let points: [Point] = [
-        Point(symbol: "paperplane", title: CoachDataDisclosureCopy.whatIsSentTitle, detail: CoachDataDisclosureCopy.whatIsSent),
-        Point(symbol: "tray.full", title: CoachDataDisclosureCopy.leavesDeviceTitle, detail: CoachDataDisclosureCopy.leavesDevice),
-        Point(symbol: "hand.raised", title: CoachDataDisclosureCopy.notStoredTitle, detail: CoachDataDisclosureCopy.notStored)
+        Point(icon: .send, title: CoachDataDisclosureCopy.whatIsSentTitle, detail: CoachDataDisclosureCopy.whatIsSent),
+        Point(icon: .lock, title: CoachDataDisclosureCopy.leavesDeviceTitle, detail: CoachDataDisclosureCopy.leavesDevice),
+        Point(icon: .clock, title: CoachDataDisclosureCopy.notStoredTitle, detail: CoachDataDisclosureCopy.notStored)
     ]
 
     var body: some View {
-        ZStack {
-            // The scrim behind the card. Hidden from VoiceOver so focus lives inside the modal; a tap
-            // here is inert, keeping the two buttons the only ways out.
-            Theme.Colors.textPrimary.opacity(0.35)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
-            card
-                .padding(Theme.Spacing.lg)
+        // A sheet rising from the bottom over the scrim (C28). It hugs its content, and scrolls only
+        // when the words outgrow the screen (a small phone, the largest text sizes), with the two
+        // choices pinned below. The scrim is inert, keeping the two buttons the only ways out.
+        BottomSheetOverlay {
+            VStack(spacing: 0) {
+                ViewThatFits(in: .vertical) {
+                    details
+                    ScrollView { details }
+                        .scrollBounceBehavior(.basedOnSize)
+                }
+                buttons
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+                    .padding(.top, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.sm)
+            }
+            .frame(maxWidth: 560)
         }
     }
 
-    private var card: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    header
-
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        ForEach(points) { point in
-                            pointRow(point)
-                        }
-                    }
+    private var details: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            header
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(points) { point in
+                    // One element per point so VoiceOver reads a whole fact at a time.
+                    IconPointRow(icon: point.icon, title: point.title, detail: point.detail)
                 }
-                .padding(Theme.Spacing.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            buttons
-                .padding(Theme.Spacing.lg)
         }
-        .background(Theme.Colors.background)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .frame(maxWidth: 520)
-        // Trap VoiceOver inside the disclosure so the coach underneath is not reachable until the user
-        // has chosen - the modal semantics a system sheet would give for free.
-        .accessibilityAddTraits(.isModal)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             Text(CoachDataDisclosureCopy.title)
-                .font(Theme.Typography.largeTitle)
+                .cappedDisplayFont(size: 32)
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Text(CoachDataDisclosureCopy.intro)
-                .font(Theme.Typography.body)
+                .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -146,50 +142,25 @@ struct CoachDataDisclosureView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private func pointRow(_ point: Point) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            Image(systemName: point.symbol)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
-                .frame(width: 32)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(point.title)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(point.detail)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        // One element per point so VoiceOver reads a whole fact at a time.
-        .accessibilityElement(children: .combine)
-    }
-
     private var buttons: some View {
-        VStack(spacing: Theme.Spacing.sm) {
+        VStack(spacing: Theme.Spacing.xs) {
             Button(action: onAcknowledge) {
                 Text(CoachDataDisclosureCopy.acknowledge)
                     .font(Theme.Typography.button)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.buttonHeight)
             }
             .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(CoachDataDisclosureCopy.acknowledge)
             .accessibilityHint("Agrees to send your messages to OpenAI and opens the coach")
 
             Button(action: onDecline) {
                 Text(CoachDataDisclosureCopy.decline)
                     .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textSecondary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
             }
+            .ghostButtonStyle()
             .accessibilityLabel(CoachDataDisclosureCopy.decline)
             .accessibilityHint("Closes the coach without sending anything")
         }

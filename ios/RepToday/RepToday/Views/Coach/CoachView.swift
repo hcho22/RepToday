@@ -47,7 +47,10 @@ struct CoachTabView: View {
                 }
             }
             .navigationTitle(CoachCopy.title)
-            .navigationBarTitleDisplayMode(.inline)
+            // The tab draws its own header (the Coach mark and title) in the conversation, as on every
+            // other tab, so the bar itself stays hidden.
+            .toolbar(.hidden, for: .navigationBar)
+            .statusBarBacking()
         }
         .task { await viewModel.load() }
         .onChange(of: viewModel.access) { _, _ in resolveDisclosure() }
@@ -103,11 +106,12 @@ struct CoachTabView: View {
         switch viewModel.access {
         case .loading:
             ProgressView()
+                .tint(Theme.Colors.textSecondary)
                 .accessibilityLabel("Loading the coach")
         case .unavailable:
-            CoachNotice(symbol: "bubble.left.and.exclamationmark.bubble.right", text: CoachCopy.unavailable)
+            CoachNotice(text: CoachCopy.unavailable)
         case .offline:
-            CoachNotice(symbol: "wifi.slash", text: CoachCopy.offline, actionTitle: CoachCopy.retry) {
+            CoachNotice(text: CoachCopy.offline, actionTitle: CoachCopy.retry) {
                 Task { await viewModel.load() }
             }
         case .free:
@@ -117,12 +121,12 @@ struct CoachTabView: View {
                 onRestore: { Task { await viewModel.restorePurchases() } }
             )
         case let .unconfirmed(message):
-            CoachNotice(symbol: "creditcard.trianglebadge.exclamationmark", text: message, actionTitle: CoachCopy.restore) {
+            CoachNotice(text: message, actionTitle: CoachCopy.restore) {
                 Task { await viewModel.restorePurchases() }
             }
         case .premium:
             if declinedDisclosure && !viewModel.isDataSharingAcknowledged {
-                CoachNotice(symbol: "hand.raised", text: CoachDataDisclosureCopy.declined, actionTitle: CoachDataDisclosureCopy.review) {
+                CoachNotice(icon: .shield, text: CoachDataDisclosureCopy.declined, actionTitle: CoachDataDisclosureCopy.review) {
                     declinedDisclosure = false
                     present(disclosure: true)
                 }
@@ -172,7 +176,9 @@ struct CoachTabView: View {
                     // most 200 messages), every turn stays in VoiceOver's reach, and a lazy stack scrolled
                     // to its end while the keyboard resizes it re-placed its rows without end, hanging the
                     // main thread.
-                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        CoachHeader()
+                            .padding(.bottom, Theme.Spacing.xs)
                         if viewModel.messages.isEmpty && !viewModel.isLoadingHistory {
                             emptyState
                         }
@@ -200,7 +206,9 @@ struct CoachTabView: View {
                             .accessibilityHidden(true)
                             .id(Self.bottomID)
                     }
-                    .padding(Theme.Spacing.md)
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+                    .padding(.top, Theme.Spacing.xs)
+                    .padding(.bottom, Theme.Spacing.mlg)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 // Opening the tab on an existing conversation shows its newest turn.
@@ -276,8 +284,9 @@ struct CoachTabView: View {
     private var typingIndicator: some View {
         HStack(spacing: Theme.Spacing.sm) {
             ProgressView()
+                .tint(Theme.Colors.textSecondary)
             Text("Coach is thinking...")
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textSecondary)
             Spacer(minLength: 0)
         }
@@ -287,26 +296,25 @@ struct CoachTabView: View {
 
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Theme.Colors.danger)
-                .accessibilityHidden(true)
             Text(message)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if viewModel.canRetry {
                 Button(CoachCopy.retry) { begin { await viewModel.retry() } }
-                    .font(Theme.Typography.caption.weight(.semibold))
+                    .font(Theme.Typography.footnote.weight(.bold))
                     .foregroundStyle(Theme.Colors.accent)
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
                     .accessibilityHint("Sends your last message to the coach again")
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.xs)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface)
+        .background(Theme.Colors.surface1, in: RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, Theme.Spacing.sm)
         .accessibilityElement(children: .combine)
     }
 
@@ -318,34 +326,37 @@ struct CoachTabView: View {
                     Button {
                         begin { await viewModel.sendQuickAction(action) }
                     } label: {
-                        Label(action.title, systemImage: action.systemImage)
-                            .font(Theme.Typography.caption.weight(.semibold))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
-                            .background(Theme.Colors.surface, in: Capsule())
+                        Text(action.title)
+                            .lineLimit(1)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ChipButtonStyle(isSelected: false))
                     .disabled(viewModel.isSending || !viewModel.isDataSharingAcknowledged)
                     .accessibilityHint("Asks the coach: \(action.message)")
                 }
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.sm)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, 10)
         }
     }
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
             // At the accessibility sizes the full prompt no longer fits the field's one line.
-            TextField(dynamicTypeSize.isAccessibilitySize ? "Message" : "Message the coach", text: $viewModel.draft, axis: .vertical)
-                .font(Theme.Typography.body)
+            TextField(
+                "",
+                text: $viewModel.draft,
+                prompt: Text(dynamicTypeSize.isAccessibilitySize ? "Message" : "Message the coach")
+                    .foregroundStyle(Theme.Colors.textTertiary),
+                axis: .vertical
+            )
+                .font(Theme.Typography.body.weight(.medium))
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .tint(Theme.Colors.sun)
                 .lineLimit(1...5)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .frame(minHeight: Theme.Spacing.minTouchTarget)
-                .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .padding(.horizontal, Theme.Spacing.mlg)
+                .padding(.vertical, 14)
+                .frame(minHeight: Self.composerHeight)
+                .background(Theme.Colors.surface2, in: RoundedRectangle(cornerRadius: Self.composerHeight / 2))
                 .disabled(viewModel.isSending)
                 .focused($composerFocused)
                 .accessibilityLabel("Message to the coach")
@@ -353,16 +364,20 @@ struct CoachTabView: View {
                 composerFocused = false
                 begin { await viewModel.send() }
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(viewModel.canSend ? Theme.Colors.accent : Theme.Colors.textSecondary)
-                    .frame(width: Theme.Spacing.minTouchTarget, height: Theme.Spacing.minTouchTarget)
+                IconView(icon: .send, size: 24)
+                    .foregroundStyle(viewModel.canSend ? Theme.Colors.onAccent : Theme.Colors.textTertiary)
+                    .frame(width: Self.composerHeight, height: Self.composerHeight)
+                    .background(viewModel.canSend ? Theme.Colors.sun : Theme.Colors.surface2, in: Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .disabled(!viewModel.canSend)
             .accessibilityLabel("Send")
             .accessibilityHint("Sends your message to the coach")
         }
-        .padding(Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.sm)
         .background(Theme.Colors.background)
     }
 
@@ -375,6 +390,9 @@ struct CoachTabView: View {
     }
 
     private static let bottomID = "coach.bottom"
+
+    /// The composer's field and Send button: 52 pt.
+    private static let composerHeight: CGFloat = 52
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         if reduceMotion || !animated {
@@ -393,10 +411,31 @@ struct CustomWorkoutReview: Identifiable {
     var id: String { proposal.id }
 }
 
+// MARK: - Header
+
+/// The Coach tab's own header: the Coach mark beside its title.
+struct CoachHeader: View {
+    @ScaledMetric(relativeTo: .title) private var markSize: CGFloat = 30
+
+    var body: some View {
+        HStack(spacing: 10) {
+            DayMarkView(mark: .bubble, color: Theme.Colors.sun, size: markSize)
+            Text(CoachCopy.title)
+                .cappedDisplayFont(size: 28, relativeTo: .title1)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 // MARK: - Bubble
 
-/// One turn: the user's messages trail on the accent fill, the Coach's lead on the surface, and each
-/// names its speaker to VoiceOver.
+/// One turn: the user's messages trail on white, the Coach's lead on `surface2`, each with its tail
+/// corner tucked in, and each names its speaker to VoiceOver.
 struct CoachMessageBubble: View {
     let message: CoachMessage
 
@@ -404,40 +443,52 @@ struct CoachMessageBubble: View {
 
     var body: some View {
         HStack {
-            if isUser { Spacer(minLength: Theme.Spacing.xl) }
+            if isUser { Spacer(minLength: Theme.Spacing.xxl) }
             Text(message.text)
-                .font(Theme.Typography.body)
-                .foregroundStyle(isUser ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
+                .font(isUser ? Theme.Typography.body.weight(.medium) : Theme.Typography.body)
+                .foregroundStyle(isUser ? Theme.Colors.black : Theme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(
-                    isUser ? Theme.Colors.accentFill : Theme.Colors.surface,
-                    in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                )
+                .padding(.vertical, Theme.Spacing.smd)
+                .background(isUser ? Theme.Colors.text1 : Theme.Colors.surface2, in: bubbleShape)
                 .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
             if !isUser { Spacer(minLength: Theme.Spacing.xl) }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isUser ? "You said: \(message.text)" : "Coach said: \(message.text)")
     }
+
+    private var bubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 22,
+            bottomLeadingRadius: isUser ? 22 : 6,
+            bottomTrailingRadius: isUser ? 6 : 22,
+            topTrailingRadius: 22
+        )
+    }
 }
 
 // MARK: - Notices and preview
 
-/// A calm full-tab notice with an optional action.
+/// A calm full-tab notice with an optional action: the Coach mark in outline (or `icon`), the words, and
+/// the action as the primary button.
 struct CoachNotice: View {
-    let symbol: String
+    var icon: AppIcon?
     let text: String
     var actionTitle: String?
     var action: (() -> Void)?
 
     var body: some View {
         VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: symbol)
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .accessibilityHidden(true)
+            Group {
+                if let icon {
+                    IconView(icon: icon, size: 44)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                } else {
+                    DayMarkView(mark: .bubble, filled: false, color: Theme.Colors.textSecondary, size: 44)
+                }
+            }
+            .accessibilityHidden(true)
             Text(text)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textPrimary)
@@ -451,10 +502,11 @@ struct CoachNotice: View {
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .padding(.top, Theme.Spacing.sm)
             }
         }
-        .padding(Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.vertical, Theme.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -469,82 +521,93 @@ struct CoachPreviewView: View {
     let onRestore: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // At the top, so the answer to a Restore is on screen whatever the phone's size.
-                if let note {
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .accessibilityHidden(true)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    // At the top, so the answer to a Restore is on screen whatever the phone's size.
+                    if let note {
                         Text(note)
-                            .font(Theme.Typography.body)
+                            .font(Theme.Typography.callout)
                             .foregroundStyle(Theme.Colors.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
+                            .padding(Theme.Spacing.md)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.Colors.surface1, in: RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
+                            .accessibilityElement(children: .combine)
+                            .onAppear { AccessibilityNotification.Announcement(note).post() }
                     }
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                    .accessibilityElement(children: .combine)
-                    .onAppear { AccessibilityNotification.Announcement(note).post() }
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text(CoachCopy.previewTitle)
-                        .font(Theme.Typography.title)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(CoachCopy.previewBody)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text("Premium".uppercased())
+                            .overlineStyle()
+                            .foregroundStyle(Theme.Colors.sun)
+                            .accessibilityHidden(true)
+                        Text(CoachCopy.previewTitle)
+                            .cappedDisplayFont(size: 38)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(CoachCopy.previewBody)
+                            .font(Theme.Typography.callout)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 6)
 
-                VStack(spacing: Theme.Spacing.md) {
-                    CoachMessageBubble(message: CoachMessage(id: "preview-1", role: .user, text: "I ran 5k this morning.", createdAt: .distantPast, proposals: []))
-                    CoachMessageBubble(message: CoachMessage(
-                        id: "preview-2",
-                        role: .coach,
-                        text: "Nice work. Your legs get tomorrow off - I've put the run below for you to log.",
-                        createdAt: .distantPast,
-                        proposals: []
-                    ))
-                    CoachProposalCard(
-                        proposal: CoachProposal(id: "preview", status: .proposed, action: .outsideActivity(type: .run, minutes: 30, distanceMeters: 5000, day: .today)),
-                        isBusy: false,
-                        canUndo: false,
-                        error: nil,
-                        onConfirm: {},
-                        onDecline: {},
-                        onUndo: {}
+                    VStack(spacing: 10) {
+                        CoachMessageBubble(message: CoachMessage(id: "preview-1", role: .user, text: "I ran 5k this morning.", createdAt: .distantPast, proposals: []))
+                        CoachMessageBubble(message: CoachMessage(
+                            id: "preview-2",
+                            role: .coach,
+                            text: "Nice work. Your legs get tomorrow off - I've put the run below for you to log.",
+                            createdAt: .distantPast,
+                            proposals: []
+                        ))
+                        CoachProposalCard(
+                            proposal: CoachProposal(id: "preview", status: .proposed, action: .outsideActivity(type: .run, minutes: 30, distanceMeters: 5000, day: .today)),
+                            isBusy: false,
+                            canUndo: false,
+                            error: nil,
+                            onConfirm: {},
+                            onDecline: {},
+                            onUndo: {}
+                        )
+                        .disabled(true)
+                    }
+                    .padding(14)
+                    .background(Theme.Colors.stageBase, in: RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius)
+                            .strokeBorder(Theme.Colors.line, lineWidth: 1)
                     )
-                    .disabled(true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Example: you tell the coach about a run, and it offers to log it for you.")
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Example: you tell the coach about a run, and it offers to log it for you.")
-
-                VStack(spacing: Theme.Spacing.sm) {
-                    Button(action: onUnlock) {
-                        Text(CoachCopy.unlock)
-                            .font(Theme.Typography.button)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: Theme.Spacing.buttonHeight)
-                    }
-                    .accentFilledButtonStyle()
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                    .accessibilityHint("Shows the Premium plans")
-
-                    Button(action: onRestore) {
-                        Text(CoachCopy.restore)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.accent)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    }
-                    .buttonStyle(.plain)
-                }
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.mlg)
             }
-            .padding(Theme.Spacing.lg)
+
+            VStack(spacing: 10) {
+                Button(action: onUnlock) {
+                    Text(CoachCopy.unlock)
+                        .font(Theme.Typography.button)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.Spacing.buttonHeight)
+                }
+                .accentFilledButtonStyle()
+                .accessibilityHint("Shows the Premium plans")
+
+                Button(action: onRestore) {
+                    Text(CoachCopy.restore)
+                        .font(Theme.Typography.callout.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .ghostButtonStyle()
+            }
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, 10)
+            .padding(.bottom, Theme.Spacing.sm)
         }
     }
 }

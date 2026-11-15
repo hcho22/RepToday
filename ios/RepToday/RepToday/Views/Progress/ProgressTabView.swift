@@ -99,7 +99,7 @@ struct ProgressTabView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                 header
 
                 if viewModel.hasHistory {
@@ -152,7 +152,9 @@ struct ProgressTabView: View {
                     emptyState
                 }
             }
-            .padding(Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.mlg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -168,32 +170,36 @@ struct ProgressTabView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Your progress")
-                .font(Theme.Typography.largeTitle)
+                .cappedDisplayFont(size: 44)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
             Text("Every show-up is proof of who you're becoming.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var emptyState: some View {
+        // Not drawn in the handoff; built from the same parts as the drawn cards: the `sun` mark (you)
+        // in outline, since nothing has been done yet, over a card title and its supporting line.
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Image(systemName: "figure.walk.motion")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
+            DayMarkView(mark: .sun, filled: false, color: Theme.Colors.sun, size: 44)
+                .padding(.bottom, Theme.Spacing.xs)
             Text("Your history starts with your first session.")
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Show up once and this space fills with proof - a calendar, a rising score, and the longest run you've ever put together.")
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
         .accessibilityElement(children: .combine)
     }
 }
@@ -208,56 +214,68 @@ private struct ConsistencyHeadlineCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            // At accessibility sizes the score stacks under the message instead of squeezing the word
-            // "consistency" into a hyphenated column beside it.
+            // At accessibility sizes the score stacks above the message instead of squeezing the words
+            // into a narrow column beside a numeral that no longer leaves room for them.
             let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.md))
-                : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .bottom, spacing: 14))
             layout {
+                Text("\(Int(consistency.score.rounded()))")
+                    .cappedDisplayFont(Theme.Typography.FontName.displayLarge, size: 128)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.sun)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(height: dynamicTypeSize.isAccessibilitySize ? nil : 112, alignment: .bottom)
+
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Consistency Score".uppercased())
+                        .overlineStyle()
+                        .foregroundStyle(Theme.Colors.sun)
                     Text("You're someone who moves.")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(pride)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-
-                if !dynamicTypeSize.isAccessibilitySize {
-                    Spacer(minLength: Theme.Spacing.md)
-                }
-
-                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .center, spacing: 0) {
-                    Text("\(Int(consistency.score.rounded()))")
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.accent)
-                    Text("consistency")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
+                .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 0 : Theme.Spacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: Theme.Spacing.lg) {
+            // Two tiles side by side; at accessibility sizes one above the other, so neither number
+            // has to shrink into half a narrow screen.
+            let tiles = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 10))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
+            tiles {
                 stat(value: "\(consistency.totalWorkoutsCompleted)", label: sessionsNoun)
                 stat(value: "\(consistency.totalMinutesExercised)", label: minutesMovedNoun)
             }
         }
-        .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
 
     private func stat(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(Theme.Typography.title)
+                .cappedDisplayFont(size: 44)
+                .monospacedDigit()
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Text(label)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.calloutSemiBold)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .cardSurface()
     }
 
     /// The earned point of pride - the longest on-goal run ever achieved - or an encouraging,
@@ -292,74 +310,85 @@ private struct ScoreTrendCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             Text("Consistency over time")
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if trend.count >= 2 {
                 chart
             } else {
                 Text("Your trend line grows as the weeks add up. Keep showing up and it'll take shape.")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     private var chart: some View {
         Chart(trend) { point in
-            AreaMark(
-                x: .value("Week", point.weekStart),
-                y: .value("Consistency", point.score)
-            )
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [Theme.Colors.accent.opacity(0.25), Theme.Colors.accent.opacity(0.02)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .interpolationMethod(.monotone)
-
             LineMark(
                 x: .value("Week", point.weekStart),
                 y: .value("Consistency", point.score)
             )
-            .foregroundStyle(Theme.Colors.accent)
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            .foregroundStyle(Theme.Colors.sun)
+            .interpolationMethod(.linear)
+            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
-            PointMark(
-                x: .value("Week", point.weekStart),
-                y: .value("Consistency", point.score)
-            )
-            .foregroundStyle(Theme.Colors.accent)
-            .symbolSize(60)
+            // Each week an open ring; this week a filled dot carrying its score above it.
+            if point.id == trend.last?.id {
+                PointMark(
+                    x: .value("Week", point.weekStart),
+                    y: .value("Consistency", point.score)
+                )
+                .foregroundStyle(Theme.Colors.sun)
+                .symbolSize(220)
+                .annotation(position: .top, spacing: Theme.Spacing.xs) {
+                    Text("\(Int(point.score.rounded()))")
+                        .font(ThemeFont(Theme.Typography.FontName.displaySmall, fixedSize: 22))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.Colors.sun)
+                }
+            } else {
+                PointMark(
+                    x: .value("Week", point.weekStart),
+                    y: .value("Consistency", point.score)
+                )
+                .symbol {
+                    Circle()
+                        .strokeBorder(Theme.Colors.sun, lineWidth: 2.5)
+                        .background(Circle().fill(Theme.Colors.surface1))
+                        .frame(width: 12, height: 12)
+                }
+            }
         }
         .chartYScale(domain: 0...100)
         .chartYAxis {
             AxisMarks(values: [0, 50, 100]) { value in
-                AxisGridLine()
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .foregroundStyle(Theme.Colors.line)
                 AxisValueLabel {
                     if let score = value.as(Int.self) {
                         Text("\(score)")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.text3)
                     }
                 }
             }
         }
         .chartXAxis {
             // At accessibility sizes the week labels are too wide to sit every week without overprinting.
-            AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : 1)) { value in
+            AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : 1)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: false)
+                    .font(Theme.Typography.footnote.weight(.semibold).font(for: nil))
+                    .foregroundStyle(Theme.Colors.text2)
             }
         }
-        .frame(height: 180)
+        .chartPlotStyle { $0.padding(.top, Theme.Spacing.lg) }
+        .frame(height: 200)
         .accessibilityLabel("Consistency score over time")
         .accessibilityValue(trendAccessibilityValue)
     }
@@ -426,36 +455,34 @@ private struct SessionCalendarCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: 10) {
             monthHeader
             weekdayHeader
             grid
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     private var monthHeader: some View {
-        HStack {
+        HStack(spacing: Theme.Spacing.sm) {
             Text(monthTitleFormatter.string(from: monthAnchor))
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer()
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button { step(-1) } label: {
-                Image(systemName: "chevron.left")
-                    .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
+                IconView(icon: .chevl, size: 22)
             }
+            .circleIconButtonStyle()
             .accessibilityLabel("Previous month")
 
             Button { step(1) } label: {
-                Image(systemName: "chevron.right")
-                    .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
+                IconView(icon: .chevr, size: 22)
             }
+            .circleIconButtonStyle()
             .disabled(isCurrentMonth)
             .accessibilityLabel("Next month")
         }
-        .foregroundStyle(Theme.Colors.accent)
     }
 
     private var weekdayHeader: some View {
@@ -466,8 +493,10 @@ private struct SessionCalendarCard: View {
             // undefined results. The month grid below already keys its cells by offset.
             ForEach(Array(orderedWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
-                    .font(Theme.Typography.caption)
+                    .font(ThemeFont(Theme.Typography.FontName.textBold, size: 11, relativeTo: .caption2))
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -478,29 +507,51 @@ private struct SessionCalendarCard: View {
     }
 
     private var grid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.xs), count: 7), spacing: Theme.Spacing.sm) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
             ForEach(Array(monthCells.enumerated()), id: \.offset) { _, cell in
                 if let date = cell {
                     dayCell(date)
                 } else {
-                    Color.clear.frame(height: 36)
+                    Color.clear.frame(height: 50)
                 }
             }
         }
     }
 
+    /// A day: its number over a mark. A day with a session carries the filled `sun` mark (you showed
+    /// up); today is a filled `sun` tile with black type and a TODAY tag.
     private func dayCell(_ date: Date) -> some View {
         let didMove = completedDays.contains(calendar.startOfDay(for: date))
         let isToday = calendar.isDate(date, inSameDayAs: now)
-        return VStack(spacing: 2) {
+        let isFuture = !isToday && date > now
+        return VStack(spacing: 3) {
             Text(dayFormatter.string(from: date))
-                .font(Theme.Typography.caption)
-                .foregroundStyle(isToday ? Theme.Colors.accent : Theme.Colors.textPrimary)
-            Circle()
-                .fill(didMove ? Theme.Colors.accent : Color.clear)
-                .frame(width: 6, height: 6)
+                .font(ThemeFont(isToday ? Theme.Typography.FontName.textExtraBold
+                                : isFuture ? Theme.Typography.FontName.textMedium : Theme.Typography.FontName.textSemiBold,
+                                size: 14, relativeTo: .footnote))
+                .monospacedDigit()
+                .foregroundStyle(isToday ? Theme.Colors.onAccent : isFuture ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            if isToday {
+                // Fixed: the tag stays inside the tile at every text size; VoiceOver reads "today" from
+                // the cell's own label.
+                Text("TODAY")
+                    .font(ThemeFont(Theme.Typography.FontName.textExtraBold, fixedSize: 9))
+                    .tracking(0.54)
+                    .foregroundStyle(Theme.Colors.onAccent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(height: 16)
+            } else if didMove {
+                DayMarkView(mark: .sun, filled: true, color: Theme.Colors.sun, size: 16)
+            } else {
+                Color.clear.frame(width: 16, height: 16)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 36)
+        .padding(.vertical, Theme.Spacing.xs)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(isToday ? Theme.Colors.sun : Color.clear, in: RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: date, didMove: didMove, isToday: isToday))
     }
@@ -556,15 +607,13 @@ private struct PillarBalanceCard: View {
     let shares: [PillarShare]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("How you're balanced")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("The mix across strength, mobility, and primal movement.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            CardHeader(
+                title: "How you're balanced",
+                detail: "The mix across strength, mobility, and primal movement."
+            )
 
-            VStack(spacing: Theme.Spacing.sm) {
+            VStack(spacing: 2) {
                 ForEach(shares) { share in
                     ProgressAnalyticsBar(
                         label: PillarLabels.name(for: share.pillar),
@@ -574,9 +623,7 @@ private struct PillarBalanceCard: View {
                 }
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 }
 
@@ -589,35 +636,28 @@ private struct ChainPositionCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Where you stand")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Your current movement in each foundation.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            CardHeader(title: "Where you stand", detail: "Your current movement in each foundation.")
 
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(FoundationGroup.grouping(positions, line: \.line)) { group in
-                    if group.isShared {
-                        // A shared foundation (Legs) names itself once, then shows each side.
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text(group.foundation.displayName)
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textPrimary)
+            VStack(spacing: 0) {
+                ForEach(Array(FoundationGroup.grouping(positions, line: \.line).enumerated()), id: \.element.id) { index, group in
+                    if index > 0 { GroupSeparator() }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        if group.isShared {
+                            // A shared foundation (Legs) names itself once, then shows each side.
+                            FoundationLabel(foundation: group.foundation)
                                 .accessibilityAddTraits(.isHeader)
                             ForEach(group.items) { row($0) }
+                        } else {
+                            ForEach(group.items) { row($0) }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        ForEach(group.items) { row($0) }
                     }
+                    .padding(.vertical, Theme.Spacing.smd)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     /// The name column: wide enough for an indented "Squat side" beside the movement.
@@ -633,26 +673,35 @@ private struct ChainPositionCard: View {
         return layout {
             // A side of a shared foundation indents its *label* only, inside the same name column, so the
             // movement column lines up down every row (Push, Pull, both sides of Legs, Core).
-            Text(position.line.sideLabel)
-                .font(Theme.Typography.body)
-                .foregroundStyle(position.line.isSideOfSharedFoundation ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                .padding(.leading, position.line.isSideOfSharedFoundation ? Theme.Spacing.md : 0)
-                .frame(width: stacked ? nil : nameColumnWidth, alignment: .leading)
+            Group {
+                if position.line.isSideOfSharedFoundation {
+                    Text(position.line.sideLabel)
+                        .font(Theme.Typography.calloutMedium)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .padding(.leading, FoundationLabel.markColumn)
+                } else {
+                    FoundationLabel(foundation: position.line.foundation)
+                }
+            }
+            .frame(width: stacked ? nil : nameColumnWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let exercise = position.currentExercise {
                     Text(exercise.displayName)
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle(for: position))
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Not started yet")
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.calloutMedium)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
+            .padding(.leading, stacked ? FoundationLabel.markColumn : 0)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -695,28 +744,21 @@ private struct ProgressionMapCard: View {
     let phase: Phase
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("The ladder you're climbing")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Each foundation's path, from where you started up the ladder. \(lockedRungsSentence) This is the map, not a menu: the day's work is still chosen for you.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            CardHeader(
+                title: "The ladder you're climbing",
+                detail: "Each foundation's path, from where you started up the ladder. \(lockedRungsSentence) This is the map, not a menu: the day's work is still chosen for you."
+            )
 
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 ForEach(FoundationGroup.grouping(map.ladders, line: \.line)) { group in
                     if group.isShared {
                         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                            Text(group.foundation.displayName)
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.Colors.textPrimary)
+                            FoundationLabel(foundation: group.foundation, style: .ladder)
                                 .accessibilityAddTraits(.isHeader)
                             ForEach(group.items) { ladder in
                                 LadderView(ladder: ladder, phase: phase)
                             }
-                            .padding(.leading, Theme.Spacing.md)
                         }
                     } else {
                         ForEach(group.items) { ladder in
@@ -725,10 +767,9 @@ private struct ProgressionMapCard: View {
                     }
                 }
             }
+            .padding(.top, Theme.Spacing.sm)
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     /// Names what this map still holds locked: rungs beyond the classics for a user held to the staple
@@ -751,21 +792,37 @@ private struct LadderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            TitleNoteRow(
-                title: ladder.line.sideLabel,
-                titleFont: ladder.line.isSideOfSharedFoundation ? Theme.Typography.body : Theme.Typography.headline,
-                note: headerNote,
-                noteColor: Theme.Colors.textSecondary
-            )
+            Group {
+                if ladder.line.isSideOfSharedFoundation {
+                    TitleNoteRow(
+                        title: ladder.line.sideLabel,
+                        titleFont: Theme.Typography.headline,
+                        note: headerNote,
+                        noteColor: Theme.Colors.textSecondary,
+                        noteFont: Theme.Typography.footnote.weight(.semibold)
+                    )
+                } else {
+                    // The ladder's own line names itself with its mark, in its color.
+                    TitleNoteRow(
+                        title: ladder.line.sideLabel,
+                        titleFont: FoundationLabel.ladderFont,
+                        titleColor: ladder.line.foundation.tone.color,
+                        note: headerNote,
+                        noteColor: Theme.Colors.textSecondary,
+                        noteFont: Theme.Typography.footnote.weight(.semibold),
+                        leadingMark: ladder.line.foundation
+                    )
+                }
+            }
             // The header names the line once for VoiceOver; each rung below reads its own state.
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(ladder.line.spokenName) ladder. \(headerNote).")
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 ForEach(Array(ladder.rungs.enumerated()), id: \.element.id) { index, rung in
                     LadderRungRow(
                         rung: rung,
-                        isFirst: index == 0,
+                        tone: ladder.line.foundation.tone,
                         isLast: index == ladder.rungs.count - 1
                     )
                 }
@@ -785,22 +842,27 @@ private struct LadderView: View {
 /// right. No control - the whole row is a static accessibility element, not a button.
 private struct LadderRungRow: View {
     let rung: LadderRung
-    let isFirst: Bool
+    /// The ladder's foundation color: the climbed part of the rail and its cleared marks.
+    let tone: DayTone
     let isLast: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            rail
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: 14) {
+            LadderRail(
+                marker: marker,
+                connector: isLast ? nil : connectorColor
+            )
+            VStack(alignment: .leading, spacing: 1) {
                 Text(rung.displayName)
-                    .font(Theme.Typography.body)
+                    .font(nameFont)
                     .foregroundStyle(nameColor)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(stateNote)
-                    .font(Theme.Typography.caption)
+                    .font(stateNoteFont)
                     .foregroundStyle(stateNoteColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.bottom, isLast ? 0 : 14)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -809,43 +871,25 @@ private struct LadderRungRow: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// The left rail: the vertical connector line through the marker, so the rungs read as one
-    /// climbing ladder rather than a flat list.
-    private var rail: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(isFirst ? Color.clear : connectorColor)
-                .frame(width: 2, height: 8)
-            marker
-            Rectangle()
-                .fill(isLast ? Color.clear : connectorColor)
-                .frame(width: 2)
-                .frame(maxHeight: .infinity)
-        }
-        .frame(width: 22)
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var marker: some View {
+    private var marker: LadderMarker {
         switch rung.state {
-        case .cleared:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Theme.Colors.accent)
-        case .current:
-            Image(systemName: "location.circle.fill")
-                .foregroundStyle(Theme.Colors.accent)
-        case .ahead:
-            Image(systemName: rung.isLocked ? "lock.circle.fill" : "circle")
-                .foregroundStyle(rung.isLocked ? Theme.Colors.textSecondary : Theme.Colors.textSecondary.opacity(0.6))
+        case .cleared: return .cleared(tone.color)
+        case .current: return .current
+        case .ahead: return rung.isLocked ? .locked : .ahead
         }
     }
 
     private var connectorColor: Color {
-        // Cleared/current rungs sit on the climbed part of the ladder (accent); ahead rungs are dim.
+        // Cleared rungs sit on the climbed part of the ladder (the foundation's color); from the current
+        // rung up the rail is still to climb.
+        rung.state == .cleared ? tone.color : Theme.Colors.surface3
+    }
+
+    private var nameFont: ThemeFont {
         switch rung.state {
-        case .cleared, .current: return Theme.Colors.accent.opacity(0.5)
-        case .ahead: return Theme.Colors.textSecondary.opacity(0.25)
+        case .current: return ThemeFont(Theme.Typography.FontName.displaySmall, size: 20, relativeTo: .title3)
+        case .cleared: return Theme.Typography.headline.weight(.semibold)
+        case .ahead: return Theme.Typography.body.weight(.medium)
         }
     }
 
@@ -865,8 +909,16 @@ private struct LadderRungRow: View {
         }
     }
 
+    private var stateNoteFont: ThemeFont {
+        switch rung.state {
+        case .current: return Theme.Typography.footnote.weight(.heavy)
+        case .cleared: return Theme.Typography.footnote.weight(.semibold)
+        case .ahead: return Theme.Typography.footnote.weight(.medium)
+        }
+    }
+
     private var stateNoteColor: Color {
-        if rung.state == .current { return Theme.Colors.accent }
+        if rung.state == .current { return Theme.Colors.sun }
         return Theme.Colors.textSecondary
     }
 
@@ -883,45 +935,68 @@ private struct LadderRungRow: View {
 private struct PersonalBestsCard: View {
     let bests: PersonalBests
 
-    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
-
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Your bests")
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            LazyVGrid(columns: columns, spacing: Theme.Spacing.md) {
-                tile(
-                    value: "\(bests.totalSessions)",
-                    label: CountWording.noun(for: bests.totalSessions, singular: "session logged", plural: "sessions logged")
-                )
-                tile(value: "\(bests.longestSessionMinutes) min", label: "longest session")
-                tile(value: "\(bests.mostSessionsInAWeek)", label: "best week")
-                tile(value: "\(bests.totalMinutesMoved) min", label: "total moved")
-                if let reps = bests.bestReps {
-                    tile(value: CountWording.phrase(reps.value, singular: "rep", plural: "reps"), label: "best set - \(reps.displayName)")
-                }
-                if let hold = bests.bestHold {
-                    tile(value: "\(hold.value)s", label: "longest hold - \(hold.displayName)")
+            VStack(spacing: 0) {
+                let rows = self.rows
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    BestRow(value: row.value, label: row.label)
+                    if index < rows.count - 1 { GroupSeparator() }
                 }
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
-    private func tile(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.Colors.accent)
-            Text(label)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+    private var rows: [(value: String, label: String)] {
+        var rows: [(value: String, label: String)] = [
+            ("\(bests.totalSessions)", CountWording.noun(for: bests.totalSessions, singular: "session logged", plural: "sessions logged")),
+            ("\(bests.longestSessionMinutes) min", "longest session"),
+            ("\(bests.mostSessionsInAWeek)", "best week"),
+            ("\(bests.totalMinutesMoved) min", "total moved"),
+        ]
+        if let reps = bests.bestReps {
+            rows.append((CountWording.phrase(reps.value, singular: "rep", plural: "reps"), "best set - \(reps.displayName)"))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        if let hold = bests.bestHold {
+            rows.append(("\(hold.value)s", "longest hold - \(hold.displayName)"))
+        }
+        return rows
+    }
+}
+
+/// One best: what it is on the left, the number on the right in Bricolage; at accessibility sizes the
+/// number sits under its name, so neither truncates.
+private struct BestRow: View {
+    let value: String
+    let label: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.smd))
+        layout {
+            // The label reads as a sentence-case row title; VoiceOver keeps the words as written.
+            Text(label.prefix(1).uppercased() + label.dropFirst())
+                .font(Theme.Typography.body.weight(.medium))
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? nil : .infinity, alignment: .leading)
+            Text(value)
+                .font(ThemeFont(Theme.Typography.FontName.displaySmall, size: 24, relativeTo: .title2))
+                .monospacedDigit()
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .padding(.vertical, Theme.Spacing.xs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(value), \(label)")
     }
@@ -944,13 +1019,17 @@ private struct DeepAnalyticsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(Theme.Colors.accent)
-                Text("Deeper analytics")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+            HStack(spacing: Theme.Spacing.sm) {
+                ScaledIcon(icon: .spark, size: 22, relativeTo: .headline)
+                    .foregroundStyle(Theme.Colors.sun)
+                Text("Deeper analytics".uppercased())
+                    .overlineStyle()
+                    .foregroundStyle(Theme.Colors.sun)
+                    .accessibilityLabel("Deeper analytics")
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.top, Theme.Spacing.sm)
 
             StrengthJourneyCard(journey: deep.strengthJourney, phaseProgress: phaseProgress, phase: phase)
             PatternBalanceCard(shares: deep.patternBalance)
@@ -979,47 +1058,41 @@ private struct StrengthJourneyCard: View {
     let phase: Phase
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Your strength journey")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Not just this week - how far you've climbed over time, one foundation at a time.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            CardHeader(
+                title: "Your strength journey",
+                detail: "Not just this week - how far you've climbed over time, one foundation at a time."
+            )
 
             if journey.isEmpty {
                 Text("Train a foundation and your climb starts here - each tier you reach, with the date you first did it.")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     ForEach(FoundationGroup.grouping(journey.chains, line: \.line)) { group in
                         if group.isShared {
                             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                                Text(group.foundation.displayName)
-                                    .font(Theme.Typography.headline)
-                                    .foregroundStyle(Theme.Colors.textPrimary)
+                                FoundationLabel(foundation: group.foundation, style: .ladder)
                                     .accessibilityAddTraits(.isHeader)
                                 ForEach(group.items) { ChainJourneyView(chain: $0) }
-                                    .padding(.leading, Theme.Spacing.md)
                             }
                         } else {
                             ForEach(group.items) { ChainJourneyView(chain: $0) }
                         }
                     }
                 }
+                .padding(.top, Theme.Spacing.sm)
             }
 
             if let phaseProgress {
-                Divider().background(Theme.Colors.textSecondary.opacity(0.2))
+                GroupSeparator()
+                    .padding(.vertical, Theme.Spacing.xs)
                 PhaseEarningSummary(progress: phaseProgress, phase: phase)
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 }
 
@@ -1036,21 +1109,36 @@ private struct ChainJourneyView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            TitleNoteRow(
-                title: chain.line.sideLabel,
-                titleFont: chain.line.isSideOfSharedFoundation ? Theme.Typography.body : Theme.Typography.headline,
-                note: headline,
-                noteColor: Theme.Colors.accent
-            )
+            Group {
+                if chain.line.isSideOfSharedFoundation {
+                    TitleNoteRow(
+                        title: chain.line.sideLabel,
+                        titleFont: Theme.Typography.headline,
+                        note: headline,
+                        noteColor: Theme.Colors.sun,
+                        noteFont: Theme.Typography.footnote.weight(.semibold)
+                    )
+                } else {
+                    TitleNoteRow(
+                        title: chain.line.sideLabel,
+                        titleFont: FoundationLabel.ladderFont,
+                        titleColor: chain.line.foundation.tone.color,
+                        note: headline,
+                        noteColor: Theme.Colors.sun,
+                        noteFont: Theme.Typography.footnote.weight(.semibold),
+                        leadingMark: chain.line.foundation
+                    )
+                }
+            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(chain.line.spokenName) journey. \(spokenHeadline)")
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 ForEach(Array(chain.milestones.enumerated()), id: \.element.id) { index, milestone in
                     MilestoneRow(
                         milestone: milestone,
                         dateText: dateFormatter.string(from: milestone.firstReachedAt),
-                        isFirst: index == 0,
+                        tone: chain.line.foundation.tone,
                         isLast: index == chain.milestones.count - 1,
                         isCurrent: milestone.id == chain.currentMilestone?.id
                     )
@@ -1094,44 +1182,33 @@ private struct ChainJourneyView: View {
 private struct MilestoneRow: View {
     let milestone: TierMilestone
     let dateText: String
-    let isFirst: Bool
+    let tone: DayTone
     let isLast: Bool
     let isCurrent: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            rail
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: 14) {
+            LadderRail(
+                marker: isCurrent ? .current : .cleared(tone.color),
+                connector: isLast ? nil : tone.color
+            )
+            VStack(alignment: .leading, spacing: 1) {
                 Text(milestone.displayName)
-                    .font(Theme.Typography.body)
+                    .font(isCurrent ? ThemeFont(Theme.Typography.FontName.displaySmall, size: 20, relativeTo: .title3)
+                                    : Theme.Typography.headline.weight(.semibold))
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(isCurrent ? "Reached \(dateText) - you're here" : "Reached \(dateText)")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(isCurrent ? Theme.Colors.accent : Theme.Colors.textSecondary)
+                    .font(isCurrent ? Theme.Typography.footnote.weight(.heavy) : Theme.Typography.footnote.weight(.semibold))
+                    .foregroundStyle(isCurrent ? Theme.Colors.sun : Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.bottom, isLast ? 0 : 14)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var rail: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(isFirst ? Color.clear : Theme.Colors.accent.opacity(0.5))
-                .frame(width: 2, height: 8)
-            Image(systemName: isCurrent ? "location.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(Theme.Colors.accent)
-            Rectangle()
-                .fill(isLast ? Color.clear : Theme.Colors.accent.opacity(0.5))
-                .frame(width: 2)
-                .frame(maxHeight: .infinity)
-        }
-        .frame(width: 22)
-        .accessibilityHidden(true)
     }
 
     private var accessibilityLabel: String {
@@ -1151,10 +1228,11 @@ private struct PhaseEarningSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("Earning the Strength Phase")
-                .font(Theme.Typography.body)
+                .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
             Text(note)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1176,12 +1254,13 @@ private struct PatternBalanceCard: View {
     let shares: [PatternShare]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Movement patterns")
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: Theme.Spacing.sm) {
+            VStack(spacing: 2) {
                 ForEach(shares) { share in
                     ProgressAnalyticsBar(
                         label: PatternLabels.name(for: share.pattern),
@@ -1191,9 +1270,7 @@ private struct PatternBalanceCard: View {
                 }
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 }
 
@@ -1202,37 +1279,38 @@ private struct WeeklyVolumeCard: View {
     let points: [WeeklyVolumePoint]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Weekly volume")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Sets completed each week.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+            CardHeader(title: "Weekly volume", detail: "Sets completed each week.")
 
             Chart(points) { point in
                 BarMark(
                     x: .value("Week", point.weekStart, unit: .weekOfYear),
                     y: .value("Sets", point.setsCompleted)
                 )
-                .foregroundStyle(Theme.Colors.accent)
-                .cornerRadius(4)
+                .foregroundStyle(Theme.Colors.sun)
+                .cornerRadius(6)
             }
             .chartYAxis {
-                AxisMarks(position: .leading)
+                AxisMarks(position: .leading) { _ in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .foregroundStyle(Theme.Colors.line)
+                    AxisValueLabel()
+                        .font(Theme.Typography.footnote.font(for: nil))
+                        .foregroundStyle(Theme.Colors.text3)
+                }
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .weekOfYear)) { _ in
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                        .font(Theme.Typography.footnote.weight(.semibold).font(for: nil))
+                        .foregroundStyle(Theme.Colors.text2)
                 }
             }
             .frame(height: 160)
             .accessibilityLabel("Weekly training volume")
             .accessibilityValue(accessibilityValue)
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     private var accessibilityValue: String {
@@ -1248,30 +1326,31 @@ private struct DifficultyMixCard: View {
     let mix: DifficultyMix
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             Text("How it's felt")
-                .font(Theme.Typography.headline)
+                .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if mix.ratedCount == 0 {
                 Text("Rate a few sessions and your calibration shows up here.")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 segmentedBar
-                HStack(spacing: Theme.Spacing.md) {
+                LegendFlow(spacing: Theme.Spacing.md, lineSpacing: Theme.Spacing.xs) {
                     legend(label: "Too easy", count: mix.tooEasy, opacity: 0.35)
                     legend(label: "Just right", count: mix.justRight, opacity: 1.0)
                     legend(label: "Too hard", count: mix.tooHard, opacity: 0.6)
                 }
                 Text(calibrationNote)
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.footnote)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("How it's felt. \(mix.tooEasy) too easy, \(mix.justRight) just right, \(mix.tooHard) too hard. \(calibrationNote)")
     }
@@ -1284,23 +1363,23 @@ private struct DifficultyMixCard: View {
                 segment(width: geo.size.width, count: mix.tooHard, opacity: 0.6)
             }
         }
-        .frame(height: 12)
+        .frame(height: 10)
     }
 
     private func segment(width: CGFloat, count: Int, opacity: Double) -> some View {
         let fraction = mix.ratedCount > 0 ? CGFloat(count) / CGFloat(mix.ratedCount) : 0
         return Capsule()
-            .fill(Theme.Colors.accent.opacity(opacity))
+            .fill(Theme.Colors.sun.opacity(opacity))
             .frame(width: max(0, width * fraction))
     }
 
     private func legend(label: String, count: Int, opacity: Double) -> some View {
         HStack(spacing: Theme.Spacing.xs) {
             Circle()
-                .fill(Theme.Colors.accent.opacity(opacity))
+                .fill(Theme.Colors.sun.opacity(opacity))
                 .frame(width: 8, height: 8)
             Text("\(label) \(count)")
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote.weight(.semibold))
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
     }
@@ -1328,34 +1407,37 @@ private struct PremiumUpsellCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack(spacing: Theme.Spacing.xs) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(Theme.Colors.accent)
-                    Text("Go deeper with Premium")
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                    Spacer(minLength: Theme.Spacing.sm)
-                    Image(systemName: "chevron.right")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.accent)
+            VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+                HStack(alignment: .center, spacing: 14) {
+                    DayMarkView(mark: .bubble, color: Theme.Colors.sun, size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Premium".uppercased())
+                            .overlineStyle()
+                            .foregroundStyle(Theme.Colors.sun)
+                        Text("Go deeper with Premium")
+                            .font(ThemeFont(Theme.Typography.FontName.displaySmall, size: 20, relativeTo: .title3))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    IconView(icon: .chevr, size: 20)
+                        .foregroundStyle(Theme.Colors.sun)
                 }
                 Text("Unlock pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time.")
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Your workouts are always free - Premium just adds the deeper view.")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.footnote)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(Theme.Spacing.md)
+            .padding(18)
             .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
-            .background(Theme.Colors.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                    .strokeBorder(Theme.Colors.accent.opacity(0.25), lineWidth: 1)
-            )
+            .background(Theme.Colors.sunTint, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -1384,27 +1466,25 @@ private struct PhaseProgressCard: View {
     var onDismissFoundationsNote: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Your climb to Strength")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Strength is earned, not chosen. Keep showing up and keep clearing the foundations - here's where you stand.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            CardHeader(
+                title: "Your climb to Strength",
+                detail: "Strength is earned, not chosen. Keep showing up and keep clearing the foundations - here's where you stand."
+            )
 
             if showsFoundationsNote {
                 FoundationsUpdateNote(progress: progress, onDismiss: onDismissFoundationsNote)
                     .onAppear(perform: onShowFoundationsNote)
+                    .padding(.top, Theme.Spacing.xs)
             }
 
             consistencySection
+                .padding(.top, 6)
+            GroupSeparator()
+                .padding(.vertical, Theme.Spacing.xs)
             competenceSection
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .progressCard()
     }
 
     // MARK: Consistency
@@ -1413,25 +1493,23 @@ private struct PhaseProgressCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             TitleNoteRow(
                 title: "Steady practice",
-                titleFont: Theme.Typography.body,
+                titleFont: Theme.Typography.headline,
                 note: "\(progress.weeksSustained) of \(progress.requiredWeeks) weeks",
-                noteColor: Theme.Colors.accent,
-                noteFont: Theme.Typography.body
+                noteColor: Theme.Colors.sun,
+                noteFont: Theme.Typography.headline
             )
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.Colors.accent.opacity(0.12))
-                    Capsule()
-                        .fill(Theme.Colors.accent)
-                        .frame(width: max(0, geo.size.width * CGFloat(weeksFraction)))
-                }
+            // One step per required week while that stays readable; a longer bar fills by share.
+            if progress.requiredWeeks > 0 && progress.requiredWeeks <= 12 {
+                StepBar(count: progress.requiredWeeks, filled: min(progress.weeksSustained, progress.requiredWeeks))
+            } else {
+                ShareBar(fraction: weeksFraction, fill: Theme.Colors.sun)
             }
-            .frame(height: 10)
 
             Text(consistencyNote)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(consistencyAccessibility)
@@ -1465,13 +1543,13 @@ private struct PhaseProgressCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             TitleNoteRow(
                 title: "Foundations",
-                titleFont: Theme.Typography.body,
+                titleFont: Theme.Typography.headline,
                 note: "\(progress.clearedFoundationCount) of \(progress.foundationCount) cleared",
-                noteColor: Theme.Colors.accent,
-                noteFont: Theme.Typography.body
+                noteColor: Theme.Colors.textPrimary,
+                noteFont: Theme.Typography.headline
             )
 
-            VStack(spacing: Theme.Spacing.xs) {
+            VStack(spacing: 0) {
                 ForEach(progress.foundations) { foundation in
                     foundationRow(foundation)
                     // Legs is one foundation with two sides; each side shows its own tick, and the
@@ -1488,10 +1566,10 @@ private struct PhaseProgressCard: View {
     private func foundationRow(_ foundation: PhaseProgress.FoundationProgress) -> some View {
         StatusRow(
             isCleared: foundation.isCleared,
+            mark: foundation.foundation,
             title: foundation.foundation.displayName,
             titleColor: Theme.Colors.textPrimary,
-            status: status(of: foundation),
-            indent: 0
+            status: status(of: foundation)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(foundation.foundation.displayName), \(spokenStatus(of: foundation)).")
@@ -1501,10 +1579,10 @@ private struct PhaseProgressCard: View {
     private func lineRow(_ line: PhaseProgress.LineProgress) -> some View {
         StatusRow(
             isCleared: line.isCleared,
+            mark: nil,
             title: line.line.sideLabel,
             titleColor: Theme.Colors.textSecondary,
-            status: line.isCleared ? "Cleared" : "In progress",
-            indent: Theme.Spacing.lg
+            status: line.isCleared ? "Cleared" : "In progress"
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(line.line.spokenName), \(line.isCleared ? "cleared" : "in progress").")
@@ -1530,23 +1608,41 @@ private struct PhaseProgressCard: View {
 private struct TitleNoteRow: View {
     let title: String
     let titleFont: ThemeFont
+    var titleColor: Color = Theme.Colors.textPrimary
     let note: String
     let noteColor: Color
-    var noteFont: ThemeFont = Theme.Typography.caption
+    var noteFont: ThemeFont = Theme.Typography.footnote
+    /// A foundation's mark before the title, in the title's color (a ladder's own line).
+    var leadingMark: StrengthFoundation?
+
+    @ScaledMetric(relativeTo: .title3) private var markSize: CGFloat = 26
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                Text(title).font(titleFont).foregroundStyle(Theme.Colors.textPrimary).lineLimit(1)
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                mark
+                Text(title).font(titleFont).foregroundStyle(titleColor).lineLimit(1)
                 Spacer(minLength: Theme.Spacing.sm)
                 Text(note).font(noteFont).foregroundStyle(noteColor).lineLimit(1)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(titleFont).foregroundStyle(Theme.Colors.textPrimary)
+                HStack(spacing: Theme.Spacing.sm) {
+                    mark
+                    Text(title).font(titleFont).foregroundStyle(titleColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text(note).font(noteFont).foregroundStyle(noteColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var mark: some View {
+        if let leadingMark {
+            DayMarkView(mark: leadingMark.mark, color: titleColor, size: markSize)
+                .padding(.trailing, 2)
         }
     }
 }
@@ -1555,35 +1651,59 @@ private struct TitleNoteRow: View {
 /// status under the name - so a status never wraps into a two-line column beside its name.
 private struct StatusRow: View {
     let isCleared: Bool
+    /// The foundation's mark, or `nil` for one side of a shared foundation, which indents under it.
+    let mark: StrengthFoundation?
     let title: String
     let titleColor: Color
     let status: String
-    let indent: CGFloat
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: Theme.Spacing.sm) {
-                tick
-                Text(title).font(Theme.Typography.body).foregroundStyle(titleColor).lineLimit(1)
+            HStack(spacing: Theme.Spacing.smd) {
+                leading
+                Text(title).font(titleFont).foregroundStyle(titleColor).lineLimit(1)
                 Spacer(minLength: Theme.Spacing.sm)
-                Text(status).font(Theme.Typography.caption).foregroundStyle(Theme.Colors.textSecondary).lineLimit(1)
+                statusLabel.lineLimit(1)
             }
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                tick
+            HStack(alignment: .top, spacing: Theme.Spacing.smd) {
+                leading
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(Theme.Typography.body).foregroundStyle(titleColor)
-                    Text(status).font(Theme.Typography.caption).foregroundStyle(Theme.Colors.textSecondary)
+                    Text(title).font(titleFont).foregroundStyle(titleColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                    statusLabel
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
             }
         }
-        .padding(.leading, indent)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
     }
 
-    private var tick: some View {
-        Image(systemName: isCleared ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(isCleared ? Theme.Colors.accent : Theme.Colors.textSecondary)
+    private var titleFont: ThemeFont {
+        mark == nil ? Theme.Typography.body.weight(.medium) : Theme.Typography.body.weight(.semibold)
+    }
+
+    /// The foundation's mark in its color, or the same width left empty under it for a side.
+    @ViewBuilder
+    private var leading: some View {
+        if let mark {
+            DayMarkView(mark: mark.mark, color: mark.tone.color, size: FoundationLabel.markSize)
+        } else {
+            Color.clear.frame(width: FoundationLabel.markSize, height: 1)
+        }
+    }
+
+    /// A cleared line carries the success check in `legs`; anything else reads quietly in `text2`.
+    private var statusLabel: some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            if isCleared {
+                ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
+                    .foregroundStyle(Theme.Colors.legs)
+            }
+            Text(status)
+                .font(Theme.Typography.callout.weight(.semibold))
+                .foregroundStyle(isCleared ? Theme.Colors.legs : Theme.Colors.textSecondary)
+        }
     }
 }
 
@@ -1600,26 +1720,25 @@ private struct FoundationsUpdateNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Your foundations are now Push, Pull, Legs, and Core")
-                .font(Theme.Typography.body.weight(.semibold))
+                .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Text(detail)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.footnote)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: onDismiss) {
                 Text("Got it")
                     .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
             }
-            .buttonStyle(.bordered)
+            .secondaryButtonStyle()
             .accessibilityHint("Dismisses this note")
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .background(Theme.Colors.sunTint, in: RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius))
         .accessibilityElement(children: .contain)
     }
 
@@ -1670,51 +1789,223 @@ private struct ProgressAnalyticsBar: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var bar: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Theme.Colors.accent.opacity(0.12))
-                Capsule()
-                    .fill(Theme.Colors.accent)
-                    .frame(width: max(0, geo.size.width * CGFloat(min(1, max(0, fraction)))))
-            }
-        }
-        .frame(height: 10)
-    }
-
     var body: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 // No room for a label column beside the bar: the label and value share a line above it.
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(label)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+                        labelText
                         Spacer(minLength: Theme.Spacing.sm)
-                        Text(trailing)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
+                        trailingText
                     }
-                    bar
+                    ShareBar(fraction: fraction)
                 }
+                .padding(.vertical, Theme.Spacing.xs)
             } else {
-                HStack(spacing: Theme.Spacing.md) {
-                    Text(label)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                HStack(spacing: 10) {
+                    labelText
                         .frame(width: 96, alignment: .leading)
-                    bar
-                    Text(trailing)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                    ShareBar(fraction: fraction)
+                    trailingText
                         .frame(width: 40, alignment: .trailing)
                 }
+                .frame(minHeight: 32)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label), \(trailing)")
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .font(Theme.Typography.callout.weight(.semibold))
+            .foregroundStyle(Theme.Colors.textPrimary)
+    }
+
+    private var trailingText: some View {
+        Text(trailing)
+            .font(Theme.Typography.callout.weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(Theme.Colors.textSecondary)
+    }
+}
+
+// MARK: - Shared card parts
+
+extension View {
+    /// A Progress card: `surface1`, radius 24, 18 pt padding, full width.
+    fileprivate func progressCard() -> some View {
+        padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardSurface()
+    }
+}
+
+/// A card's title (Title, Bricolage 22) and its supporting line (Callout, `text2`).
+private struct CardHeader: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(title)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A foundation named with its mark in its color: in a row (22 pt mark, Inter SemiBold) or heading a
+/// ladder (26 pt mark, Bricolage 18 in the foundation's color).
+private struct FoundationLabel: View {
+    enum Style { case row, ladder }
+
+    let foundation: StrengthFoundation
+    var style: Style = .row
+
+    /// The mark's size in a row, and the column a side of a shared foundation indents by under it.
+    static let markSize: CGFloat = 22
+    static let markColumn: CGFloat = markSize + Theme.Spacing.smd
+    static let ladderFont = ThemeFont(Theme.Typography.FontName.displaySmall, size: 18, relativeTo: .title3)
+
+    var body: some View {
+        HStack(spacing: style == .row ? Theme.Spacing.smd : 10) {
+            DayMarkView(mark: foundation.mark, color: foundation.tone.color,
+                        size: style == .row ? Self.markSize : 26)
+            Text(foundation.displayName)
+                .font(style == .row ? Theme.Typography.body.weight(.semibold) : Self.ladderFont)
+                .foregroundStyle(style == .row ? Theme.Colors.textPrimary : foundation.tone.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A rung's marker on the ladder rail.
+private enum LadderMarker {
+    /// Climbed past: a filled circle in the foundation's color with a black check.
+    case cleared(Color)
+    /// Where the user is: a `sun` ring on black with a `sun`-tint halo.
+    case current
+    /// Still to climb and open.
+    case ahead
+    /// Still to climb, opening with the Strength Phase.
+    case locked
+}
+
+/// The rail down the left of a ladder: a 28 pt marker, then a 3 pt connector down to the next rung.
+private struct LadderRail: View {
+    let marker: LadderMarker
+    /// The connector's color, or `nil` on the top rung.
+    let connector: Color?
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.xs) {
+            markerView
+            if let connector {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(connector)
+                    .frame(width: 3)
+                    .frame(minHeight: 14, maxHeight: .infinity)
+            }
+        }
+        .frame(width: 28)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var markerView: some View {
+        switch marker {
+        case .cleared(let color):
+            ZStack {
+                Circle().fill(color)
+                IconView(icon: .check, size: 16).foregroundStyle(Theme.Colors.onAccent)
+            }
+            .frame(width: 28, height: 28)
+        case .current:
+            ZStack {
+                Circle().fill(Theme.Colors.sunTint).frame(width: 36, height: 36)
+                Circle().fill(Theme.Colors.black)
+                Circle().strokeBorder(Theme.Colors.sun, lineWidth: 4)
+            }
+            .frame(width: 28, height: 28)
+        case .ahead:
+            Circle()
+                .strokeBorder(Theme.Colors.surface3, lineWidth: 2)
+                .frame(width: 28, height: 28)
+        case .locked:
+            ZStack {
+                Circle().fill(Theme.Colors.surface3)
+                IconView(icon: .lock, size: 15).foregroundStyle(Theme.Colors.textSecondary)
+            }
+            .frame(width: 28, height: 28)
+        }
+    }
+}
+
+/// Wraps its children onto as many lines as they need (a chart legend at large text).
+private struct LegendFlow: Layout {
+    var spacing: CGFloat
+    var lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width {
+                y += lineHeight + lineSpacing
+                x = 0
+                lineHeight = 0
+            }
+            x += size.width + spacing
+            widest = max(widest, x - spacing)
+            lineHeight = max(lineHeight, size.height)
+        }
+        return CGSize(width: min(widest, width), height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                y += lineHeight + lineSpacing
+                x = bounds.minX
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
+private extension StrengthFoundation {
+    /// The foundation's color on Progress: each Training Day's own, and `sun` for Core.
+    var tone: DayTone {
+        switch self {
+        case .push: return .push
+        case .pull: return .pull
+        case .legs: return .legs
+        case .core: return .sun
+        }
+    }
+
+    /// The foundation's day mark: the Training Day's shape, and the `sun` circle for Core.
+    var mark: DayMark {
+        switch self {
+        case .push: return .push
+        case .pull: return .pull
+        case .legs: return .legs
+        case .core: return .sun
+        }
     }
 }
 

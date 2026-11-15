@@ -32,10 +32,12 @@ struct CustomWorkoutEditorView: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("About \(workout.estimatedMinutes) min · plays hands-free · counts like an Outside Activity")
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .listRowBackground(Theme.Colors.surface1)
+                .listRowSeparatorTint(Theme.Colors.line)
 
                 Section {
                     ForEach(prescriptions) { prescription in
@@ -44,10 +46,8 @@ struct CustomWorkoutEditorView: View {
                         } label: {
                             HStack {
                                 CustomWorkoutStepRow(prescription: prescription, trainer: trainer)
-                                Image(systemName: "chevron.right")
-                                    .font(Theme.Typography.caption)
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                                    .accessibilityHidden(true)
+                                IconView(icon: .chevr, size: 18)
+                                    .foregroundStyle(Theme.Colors.textTertiary)
                             }
                             .frame(minHeight: Theme.Spacing.minTouchTarget)
                             .contentShape(Rectangle())
@@ -65,15 +65,21 @@ struct CustomWorkoutEditorView: View {
                         workout.steps.remove(atOffsets: offsets)
                     }
                 } header: {
-                    Text("Steps")
-                        .font(Theme.Typography.caption)
+                    Text("Steps".uppercased())
+                        .overlineStyle()
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .accessibilityLabel("Steps")
                 } footer: {
                     Text("Tap a step to change it. Use Edit to reorder or remove steps.")
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
+                .listRowBackground(Theme.Colors.surface1)
+                .listRowSeparatorTint(Theme.Colors.line)
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+            .tint(Theme.Colors.sun)
             .navigationTitle(workout.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -111,27 +117,28 @@ struct CustomWorkoutEditorView: View {
             } label: {
                 Text("Accept")
                     .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
             }
-            .buttonStyle(.bordered)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .secondaryButtonStyle()
             .accessibilityHint("Saves this workout. It does not start yet.")
 
             Button {
                 onAccept(workout, true)
                 dismiss()
             } label: {
-                Label("Accept and play", systemImage: "play.fill")
-                    .font(Theme.Typography.button)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.buttonHeight)
+                HStack(spacing: Theme.Spacing.sm) {
+                    ScaledIcon(icon: .play, size: 20, relativeTo: .headline)
+                    Text("Accept and play")
+                }
+                .font(Theme.Typography.button)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: Theme.Spacing.buttonHeight)
             }
             .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         }
-        .padding(Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.vertical, Theme.Spacing.smd)
         .background(Theme.Colors.background)
     }
 
@@ -193,38 +200,53 @@ private struct CustomWorkoutStepEditor: View {
                     stepper("Rest after each set", value: $step.restSeconds, range: CustomWorkout.restRange, step: 5) { "\($0) sec" }
                 } header: {
                     Text(step.name)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote.weight(.semibold))
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .textCase(nil)
                 } footer: {
                     if step.perSide {
                         Text("Per side: each set is done on both sides.")
-                            .font(Theme.Typography.caption)
+                            .font(Theme.Typography.footnote)
                             .foregroundStyle(Theme.Colors.textSecondary)
                     }
                 }
+                .listRowBackground(Theme.Colors.surface1)
+                .listRowSeparatorTint(Theme.Colors.line)
 
                 Section {
                     Button {
                         dismiss()
                         onSwap()
                     } label: {
-                        Label("Swap for another movement", systemImage: "arrow.triangle.2.circlepath")
-                            .font(Theme.Typography.body)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        HStack(spacing: Theme.Spacing.smd) {
+                            ScaledIcon(icon: .swap, size: 22)
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                            Text("Swap for another movement")
+                                .font(Theme.Typography.headline)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                        }
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
                     }
                     if canRemove {
                         Button(role: .destructive) {
                             onRemove()
                             dismiss()
                         } label: {
-                            Label("Remove this step", systemImage: "trash")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.danger)
-                                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                            HStack(spacing: Theme.Spacing.smd) {
+                                ScaledIcon(icon: .trash, size: 22)
+                                Text("Remove this step")
+                                    .font(Theme.Typography.headline)
+                            }
+                            .foregroundStyle(Theme.Colors.danger)
+                            .frame(minHeight: Theme.Spacing.minTouchTarget)
                         }
                     }
                 }
+                .listRowBackground(Theme.Colors.surface1)
+                .listRowSeparatorTint(Theme.Colors.line)
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle("Edit step")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -237,10 +259,12 @@ private struct CustomWorkoutStepEditor: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
+                    .tint(Theme.Colors.sun)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        .sheetSurface()
     }
 
     private var repsBinding: Binding<Int> {
@@ -252,18 +276,14 @@ private struct CustomWorkoutStepEditor: View {
     }
 
     private func stepper(_ title: String, value: Binding<Int>, range: ClosedRange<Int>, step: Int, format: @escaping (Int) -> String) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            HStack {
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: Theme.Spacing.sm)
-                Text(format(value.wrappedValue))
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .monospacedDigit()
-            }
-        }
+        StepRowStepper(
+            title: title,
+            value: format(value.wrappedValue),
+            canDecrement: value.wrappedValue > range.lowerBound,
+            canIncrement: value.wrappedValue < range.upperBound,
+            onDecrement: { value.wrappedValue = max(range.lowerBound, value.wrappedValue - step) },
+            onIncrement: { value.wrappedValue = min(range.upperBound, value.wrappedValue + step) }
+        )
         .frame(minHeight: Theme.Spacing.minTouchTarget)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
@@ -275,6 +295,56 @@ private struct CustomWorkoutStepEditor: View {
             @unknown default: break
             }
         }
+    }
+}
+
+/// DESIGN's stepper for a step's value: the label, the value in Bricolage, and two 44 pt round
+/// `surface2` buttons; at accessibility sizes the value and buttons move under the label so nothing
+/// truncates.
+private struct StepRowStepper: View {
+    let title: String
+    let value: String
+    let canDecrement: Bool
+    let canIncrement: Bool
+    let onDecrement: () -> Void
+    let onIncrement: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.smd))
+        layout {
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Theme.Spacing.smd) {
+                Text(value)
+                    .font(Theme.Typography.value)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize()
+                if dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
+                stepButton(.minus, enabled: canDecrement, action: onDecrement)
+                stepButton(.plus, enabled: canIncrement, action: onIncrement)
+            }
+        }
+        .padding(.vertical, Theme.Spacing.xs)
+    }
+
+    private func stepButton(_ icon: AppIcon, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            IconView(icon: icon, size: 20)
+                .foregroundStyle(Theme.Colors.text1)
+                .frame(width: Theme.Spacing.minTouchTarget, height: Theme.Spacing.minTouchTarget)
+                .background(Theme.Colors.surface2, in: Circle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
     }
 }
 
@@ -307,14 +377,13 @@ private struct MovementPickerView: View {
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.Colors.textPrimary)
                             Text(exercise.movementPattern.rawValue.capitalized)
-                                .font(Theme.Typography.caption)
+                                .font(Theme.Typography.footnote)
                                 .foregroundStyle(Theme.Colors.textSecondary)
                         }
                         Spacer(minLength: Theme.Spacing.sm)
                         if exercise.id == current {
-                            Image(systemName: "checkmark")
+                            IconView(icon: .check, size: 20)
                                 .foregroundStyle(Theme.Colors.accent)
-                                .accessibilityHidden(true)
                         }
                     }
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
@@ -322,7 +391,11 @@ private struct MovementPickerView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(exercise.id == current ? [.isButton, .isSelected] : .isButton)
+                .listRowBackground(Theme.Colors.surface1)
+                .listRowSeparatorTint(Theme.Colors.line)
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .searchable(text: $query, prompt: "Search movements")
             .navigationTitle("Swap movement")
             .navigationBarTitleDisplayMode(.inline)

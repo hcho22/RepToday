@@ -54,13 +54,8 @@ struct PaywallView: View {
                 content
             }
             .navigationTitle("Premium")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-            }
+            // The sheet draws its own top row (Close and the "Premium" title), so the bar stays hidden.
+            .toolbar(.hidden, for: .navigationBar)
         }
         .task { await viewModel.load() }
         .onChange(of: viewModel.unlockedGrant) { _, grant in
@@ -72,62 +67,92 @@ struct PaywallView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                headline
-                benefits
-                plansSection
-                if let message = viewModel.catalogMessage {
-                    Text(message)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Retry plans") { Task { await viewModel.load() } }
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.accent)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
-                        .disabled(viewModel.isBusy)
-                        .accessibilityHint("Loads available Premium plans from the App Store")
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    topRow
+                    headline
+                    benefits
+                    plansSection
+                    if let message = viewModel.catalogMessage {
+                        Text(message)
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Retry plans") { Task { await viewModel.load() } }
+                            .font(Theme.Typography.callout.weight(.bold))
+                            .foregroundStyle(Theme.Colors.accent)
+                            .frame(minHeight: Theme.Spacing.minTouchTarget)
+                            .disabled(viewModel.isBusy)
+                            .accessibilityHint("Loads available Premium plans from the App Store")
+                    }
+                    if let message = viewModel.message {
+                        Text(message)
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel(message)
+                    }
+                    disclosure
+                    legalLinks
                 }
-                if let message = viewModel.message {
-                    Text(message)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel(message)
-                }
-                restoreButton
-                disclosure
-                legalLinks
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(Theme.Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            restoreButton
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.sm)
+        }
+    }
+
+    /// Close on the left, the sheet's name centered over the whole row.
+    private var topRow: some View {
+        ZStack {
+            Text("Premium")
+                .font(Theme.Typography.headline.weight(.bold))
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .padding(.horizontal, Theme.Spacing.minTouchTarget + Theme.Spacing.sm)
+                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Button { dismiss() } label: {
+                    IconView(icon: .close, size: 22)
+                }
+                .circleIconButtonStyle()
+                .accessibilityLabel("Close")
+                Spacer(minLength: 0)
+            }
         }
     }
 
     private var headline: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 32, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            DayMarkView(mark: .bubble, color: Theme.Colors.sun, size: 84)
+                .padding(.bottom, Theme.Spacing.sm)
             Text("Go deeper with Premium")
-                .font(Theme.Typography.largeTitle)
+                .cappedDisplayFont(size: 44)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Your workouts are always free. Premium adds the coach and the deeper view for when you want them.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var benefits: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 10) {
             // The Coach (M4): the one Premium surface that acts, always waiting for the user's OK.
-            PaywallBenefitRow(icon: "bubble.left.and.bubble.right.fill",
+            PaywallBenefitRow(icon: .coach,
                               text: "A coach that knows your training - it logs a run, adjusts today and writes workouts, with your OK")
-            PaywallBenefitRow(icon: "chart.bar.fill", text: "Pattern-by-pattern balance across every movement")
-            PaywallBenefitRow(icon: "calendar", text: "Your weekly training volume over time")
-            PaywallBenefitRow(icon: "dial.medium", text: "How your sessions have felt - your difficulty mix")
+            PaywallBenefitRow(icon: .chart, text: "Pattern-by-pattern balance across every movement")
+            PaywallBenefitRow(icon: .calendar, text: "Your weekly training volume over time")
+            PaywallBenefitRow(icon: .spark, text: "How your sessions have felt - your difficulty mix")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -142,7 +167,7 @@ struct PaywallView: View {
             }
             .padding(.vertical, Theme.Spacing.lg)
         } else {
-            VStack(spacing: Theme.Spacing.md) {
+            VStack(spacing: Theme.Spacing.sm) {
                 ForEach(viewModel.plans) { plan in
                     PaywallPlanButton(
                         plan: plan,
@@ -159,23 +184,24 @@ struct PaywallView: View {
         Button(action: { Task { await viewModel.restore() } }) {
             HStack(spacing: Theme.Spacing.xs) {
                 if viewModel.isRestoring {
-                    SwiftUI.ProgressView().tint(Theme.Colors.accent)
+                    SwiftUI.ProgressView().tint(Theme.Colors.textSecondary)
                 }
                 Text("Restore purchases")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.accent)
+                    .font(Theme.Typography.callout.weight(.bold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: Theme.Spacing.minTouchTarget)
+            .frame(minHeight: Theme.Spacing.minTouchTarget)
         }
+        .ghostButtonStyle()
         .disabled(viewModel.isBusy)
         .accessibilityLabel("Restore purchases")
     }
 
     private var disclosure: some View {
         Text("Subscriptions bill through your Apple ID and renew automatically unless canceled at least 24 hours before the period ends. Manage or cancel anytime in Settings. Any free trial's unused portion is forfeited when you buy a subscription.")
-            .font(Theme.Typography.caption)
+            .font(ThemeFont(Theme.Typography.FontName.textRegular, size: 12, relativeTo: .caption))
             .foregroundStyle(Theme.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel("Subscriptions bill through your Apple ID and renew automatically unless canceled at least 24 hours before the period ends. Manage or cancel anytime in Settings.")
     }
@@ -185,52 +211,56 @@ struct PaywallView: View {
     /// telemetry disclosure links to - one privacy-policy URL for the whole app, so the placeholder
     /// cannot be replaced in one surface and left stale in the other.
     private var legalLinks: some View {
-        HStack(spacing: Theme.Spacing.lg) {
-            Link(destination: LegalLinks.termsOfUse) {
-                Text("Terms of Use")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Spacing.lg) {
+                termsLink
+                privacyLink
             }
-            .accessibilityLabel("Terms of Use")
-
-            Link(destination: LegalLinks.privacyPolicy) {
-                Text("Privacy Policy")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+            VStack(spacing: 0) {
+                termsLink
+                privacyLink
             }
-            .accessibilityLabel("Privacy Policy")
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var termsLink: some View {
+        Link(destination: LegalLinks.termsOfUse) {
+            Text("Terms of Use")
+                .font(Theme.Typography.footnote.weight(.semibold))
+                .foregroundStyle(Theme.Colors.accent)
+                .frame(minHeight: Theme.Spacing.minTouchTarget)
+        }
+        .accessibilityLabel("Terms of Use")
+    }
+
+    private var privacyLink: some View {
+        Link(destination: LegalLinks.privacyPolicy) {
+            Text("Privacy Policy")
+                .font(Theme.Typography.footnote.weight(.semibold))
+                .foregroundStyle(Theme.Colors.accent)
+                .frame(minHeight: Theme.Spacing.minTouchTarget)
+        }
+        .accessibilityLabel("Privacy Policy")
     }
 }
 
 // MARK: - Benefit row
 
 private struct PaywallBenefitRow: View {
-    let icon: String
+    let icon: AppIcon
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            Image(systemName: icon)
-                .foregroundStyle(Theme.Colors.accent)
-                .frame(width: 24)
-            Text(text)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(text)
+        IconTextRow(icon: icon, text: text)
+            .accessibilityLabel(text)
     }
 }
 
 // MARK: - Plan button
 
+/// A plan, tapped to buy it: a `sun` card (a primary action outside a session) with the period, the
+/// price in Bricolage and any trial, in black.
 private struct PaywallPlanButton: View {
     let plan: SubscriptionPlan
     let isPurchasing: Bool
@@ -239,31 +269,37 @@ private struct PaywallPlanButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Theme.Spacing.md) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            HStack(spacing: Theme.Spacing.smd) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(plan.period.displayName)
-                        .font(Theme.Typography.headline)
+                        .font(Theme.Typography.callout.weight(.bold))
                         .foregroundStyle(Theme.Colors.onAccent)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(plan.priceLine)
-                        .font(Theme.Typography.body)
+                        .font(ThemeFont(Theme.Typography.FontName.displaySmall, size: 24, relativeTo: .title2))
+                        .monospacedDigit()
                         .foregroundStyle(Theme.Colors.onAccentSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let trial = plan.trialDescription {
                         Text(trial)
-                            .font(Theme.Typography.caption)
+                            .font(Theme.Typography.footnote.weight(.bold))
                             .foregroundStyle(Theme.Colors.onAccentSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Spacer(minLength: Theme.Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if isPurchasing {
                     SwiftUI.ProgressView().tint(Theme.Colors.onAccent)
                 } else {
-                    Image(systemName: "chevron.right")
+                    IconView(icon: .chevr, size: 22)
                         .foregroundStyle(Theme.Colors.onAccentSecondary)
                 }
             }
-            .padding(Theme.Spacing.md)
-            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, alignment: .leading)
-            .background(Theme.Colors.accentFill, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            .background(Theme.Colors.accentFill, in: RoundedRectangle(cornerRadius: 22))
+            .contentShape(RoundedRectangle(cornerRadius: 22))
         }
         .buttonStyle(.plain)
         .disabled(isDisabled || isPurchasing)
