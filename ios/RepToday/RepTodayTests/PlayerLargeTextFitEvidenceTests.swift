@@ -16,9 +16,14 @@ import SwiftUI
 final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     private let story = "player-large-text"
-    private let screen = CGSize(width: 375, height: 667)
-    /// An iPhone SE (3rd generation): a 20 pt status bar, no home indicator.
-    private let statusBar: CGFloat = 20
+    /// An iPhone SE (3rd generation): 375x667 pt, a 20 pt status bar, no home indicator.
+    private static let smallPhone = Phone(name: "375x667", size: CGSize(width: 375, height: 667), safeArea: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0))
+    /// An iPhone 16: 402x874 pt, a 62 pt status bar and a 34 pt home indicator.
+    private static let roomyPhone = Phone(name: "402x874", size: CGSize(width: 402, height: 874), safeArea: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0))
+    /// The phone hosted now; every test but the timer-placement ones runs on the small one.
+    private var phone = PlayerLargeTextFitEvidenceTests.smallPhone
+    private var screen: CGSize { phone.size }
+    private var statusBar: CGFloat { phone.safeArea.top }
     private var window: UIWindow?
 
     private let sizes: [DynamicTypeSize] = [.large, .xLarge, .xxxLarge, .accessibility1, .accessibility3, .accessibility5]
@@ -28,7 +33,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     /// The secondary controls by accessibility label, with the title each one shows.
     private let secondaryTitles: [String: String] = [
-        "More time": "+ More time",
+        "More time": ActiveSessionView.moreTimeTitle,
         "Swap this exercise": "Swap",
         "Complete set": "Complete set",
         "Finish exercise": "Finish exercise",
@@ -109,6 +114,51 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 XCTAssertGreaterThan(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
                                      ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
                                      "\(size) \(style): Bold Text measures no wider than regular")
+            }
+        }
+    }
+
+    /// At every accessibility text size the exercise screen opens with its workout timer whole and
+    /// above the pinned Done, with no scrolling, on a small and a roomy phone (DESIGN `Z2-Exercise-AX`):
+    /// the stage, the title row and the round tracker give way, never the timer.
+    func testWorkWindowTimerOpensAboveDoneAtAccessibilitySizes() throws {
+        for id in ["push_wall", "hinge_long_lever_bridge"] {
+            let session = workout([("Strength", .strength, [try prescription(id, sets: 4), try prescription("squat_bodyweight", sets: 4)])])
+            try assertTimerOpensAbovePrimary(session, primary: "Done", ring: "Work window, ", name: id)
+        }
+    }
+
+    /// The same for a running hold above Stop hold - a training hold and a per-side warm-up stretch,
+    /// whose round tracker carries its side line too.
+    func testRunningHoldTimerOpensAboveStopHoldAtAccessibilitySizes() throws {
+        let plank = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 4), try prescription("push_wall", sets: 4)])])
+        try assertTimerOpensAbovePrimary(plank, primary: "Stop hold", ring: "Hold, ", name: "core_forearm_plank")
+        let stretch = workout([("Warm-up", .mobility, [try prescription("mobility_kneeling_hip_flexor", sets: 1)]),
+                               ("Strength", .strength, [try prescription("push_wall", sets: 2)])])
+        try assertTimerOpensAbovePrimary(stretch, primary: "Stop hold", ring: "Hold, ", name: "mobility_kneeling_hip_flexor")
+    }
+
+    private func assertTimerOpensAbovePrimary(_ session: Workout, primary: String, ring: String, name: String,
+                                              file: StaticString = #filePath, line: UInt = #line) throws {
+        defer { phone = Self.smallPhone }
+        for device in [Self.roomyPhone, Self.smallPhone] {
+            phone = device
+            for size in [DynamicTypeSize.accessibility1, .accessibility3, .accessibility5] {
+                let look = "\(name) \(device.name) \(size)"
+                let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
+                host(ActiveSessionView(workout: session, workoutEngine: engine, user: user()), .dark, size: size)
+                XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix(ring) } }, timeout: 5),
+                              "\(look): no running countdown; tree reads \(labels())", file: file, line: line)
+                HostedSurface.pump(for: 0.5)
+
+                XCTAssertEqual(scrollView()?.contentOffset.y ?? 0, 0, accuracy: 0.5, "\(look): the player opened scrolled", file: file, line: line)
+                // Found by its prefix: the label carries the remaining seconds, which change as it runs.
+                let timer = try XCTUnwrap(frame(where: { $0.hasPrefix(ring) }), "\(look): no timer; tree reads \(labels())", file: file, line: line)
+                let pinned = try XCTUnwrap(frame(of: primary), "\(look): no \(primary)", file: file, line: line)
+                let visible = try XCTUnwrap(visibleScrollArea(), "\(look): no scroll area", file: file, line: line)
+                XCTAssertLessThanOrEqual(timer.maxY, pinned.minY + 0.5, "\(look): the timer at \(timer) runs under \(primary) at \(pinned)", file: file, line: line)
+                XCTAssertTrue(visible.insetBy(dx: 0, dy: -0.5).contains(timer), "\(look): the timer at \(timer) is not whole in the visible column \(visible)", file: file, line: line)
+                if size == .accessibility5 { try capture("timer-above-\(primary == "Done" ? "done" : "stop-hold")-\(name)-\(device.name)", .dark) }
             }
         }
     }
@@ -242,6 +292,13 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// A phone the player is hosted on: its screen and its safe area.
+    private struct Phone {
+        let name: String
+        let size: CGSize
+        let safeArea: UIEdgeInsets
+    }
+
     /// The Dynamic Type size of the surface hosted now.
     private var hostedSize: DynamicTypeSize = .large
     /// The legibility weight (Bold Text) of the surface hosted now.
@@ -286,7 +343,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         hostedWeight = weight
         let (_, hosted) = HostedSurface.host(
             view.environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight), size: screen, settleFor: 1.5, style: style,
-            emulatingSafeArea: UIEdgeInsets(top: statusBar, left: 0, bottom: 0, right: 0)
+            emulatingSafeArea: phone.safeArea
         )
         window = hosted
     }
@@ -302,6 +359,13 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     private func frame(of label: String) -> CGRect? {
         guard let root = root(), let origin = window?.frame.origin,
               let frame = AccessibilityTree.element(labeled: label, in: root)?.accessibilityFrame else { return nil }
+        return frame.offsetBy(dx: -origin.x, dy: -origin.y)
+    }
+
+    /// The frame of the element whose label satisfies `predicate`, in the hosted window's coordinates.
+    private func frame(where predicate: (String) -> Bool) -> CGRect? {
+        guard let root = root(), let origin = window?.frame.origin,
+              let frame = AccessibilityTree.element(whereLabel: predicate, in: root)?.accessibilityFrame else { return nil }
         return frame.offsetBy(dx: -origin.x, dy: -origin.y)
     }
 

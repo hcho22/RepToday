@@ -427,6 +427,7 @@ struct ActiveSessionView: View {
                             exerciseHeadline(step)
                             setTracker(step)
                         }
+                        .dynamicTypeSize(...Self.columnTypeCap)
                         // Measured without the card, so the card can be fitted to what is left.
                         .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
                             if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
@@ -438,6 +439,7 @@ struct ActiveSessionView: View {
 
                         VStack(alignment: .leading, spacing: rhythm) {
                             timer
+                                .dynamicTypeSize(...Self.columnTypeCap)
                             if stacksActions {
                                 stackedSecondaryActions
                             }
@@ -497,6 +499,12 @@ struct ActiveSessionView: View {
     /// The movement name and target on a short screen (DESIGN `Z1-Exercise-375`).
     private static let compactNameFont = ThemeFont(Theme.Typography.FontName.display, size: 28, relativeTo: .largeTitle)
     private static let compactTargetFont = ThemeFont(Theme.Typography.FontName.display, size: 24, relativeTo: .title)
+
+    /// The largest text size the column above the pinned actions - the overline, the stage's labels, the
+    /// title row, the round tracker and the timer's label - draws at (DESIGN `Z2-Exercise-AX`): past it
+    /// they stop growing and keep wrapping, so at every accessibility size the timer opens whole above
+    /// Done with no scrolling, even on a 375x667 screen.
+    static let columnTypeCap = DynamicTypeSize.xxxLarge
 
     /// The column's gap between its pieces, and above the first: full, and tight on a short screen.
     private static let columnRhythm = Theme.Spacing.smd
@@ -688,9 +696,11 @@ struct ActiveSessionView: View {
     /// Whether the secondary row gives up its side-by-side columns: when the columns cannot each hold the
     /// longest word of their title, the row would break words in two at large Dynamic Type sizes and grow
     /// past the screen, so its controls move into the scrolling column as full-width rows instead and only
-    /// the primary action stays pinned. A roomy screen at the default sizes keeps the row.
+    /// the primary action stays pinned. At accessibility sizes the pinned area holds only the primary
+    /// action, so the timer keeps its room above it (DESIGN `Z2-Exercise-AX`). A roomy screen at the
+    /// default sizes keeps the row.
     private var stacksSecondaryActions: Bool {
-        !Self.secondaryRowFits(
+        dynamicTypeSize.isAccessibilitySize || !Self.secondaryRowFits(
             titles: secondaryTitles,
             width: playerWidth - 2 * Theme.Spacing.screenMargin,
             size: dynamicTypeSize,
@@ -702,12 +712,17 @@ struct ActiveSessionView: View {
     /// whether or not the step's countdown runs right now, and a swap in flight by its resting "Swap",
     /// so starting or stopping a hold or a swap never moves the controls between the row and the column.
     private var secondaryTitles: [String] {
-        var titles = ["+ More time"]
+        var titles = [Self.moreTimeTitle]
         if viewModel.canSwap { titles.append("Swap") }
         if viewModel.holdSecondsPerSide != nil { titles.append(completeButtonTitle) }
         titles.append("Skip")
         return titles
     }
+
+    /// "+ More time"'s visible title, a no-break space holding the "+" to "More" so a narrow column wraps
+    /// it "+ More" / "time" rather than orphaning the "+"; `longestWordWidth` splits only at a breaking
+    /// space, so it measures "+ More" as the one word it draws. VoiceOver reads "More time".
+    static let moreTimeTitle = "+\u{00A0}More time"
 
     /// The gap between two quiet actions in the row.
     static let secondaryRowSpacing = Theme.Spacing.xs
@@ -759,7 +774,7 @@ struct ActiveSessionView: View {
         // down (the rest screen carries its own "+15s"), so the two never double up.
         if viewModel.canExtendActiveCountdown {
             secondaryAction(
-                title: "+ More time",
+                title: Self.moreTimeTitle,
                 icon: .moretime,
                 accessibilityLabel: "More time",
                 accessibilityHint: "Adds \(ActiveSessionViewModel.restExtension) seconds to the current timer",
@@ -771,7 +786,7 @@ struct ActiveSessionView: View {
             // A stopped hold keeps the slot, unseen and silent, so the row's columns - and how their
             // labels wrap - stay exactly as they were while the hold ran, and nothing moves.
             secondaryAction(
-                title: "+ More time", icon: .moretime, accessibilityLabel: "More time",
+                title: Self.moreTimeTitle, icon: .moretime, accessibilityLabel: "More time",
                 accessibilityHint: nil, isEnabled: false
             ) {}
             .hidden()
