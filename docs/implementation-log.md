@@ -1977,3 +1977,25 @@ Appearance only: behavior, data, copy, navigation, accessibility identifiers and
 - **Kept as today.** The tab bar stays the system `TabView` (shared with the other tabs).
   The calendar marks session days rather than each Training Day, and has no legend; the ladder has no Trainer art at the current rung and every ladder stays expanded; the Coach header has no data shortcut; the free preview has no feature list; the paywall buys a plan on tap rather than selecting one for a separate trial button.
   Each needs data or a control the app does not have, and is recorded as a follow-up.
+
+## Visual direction: Today, the Welcome Page, onboarding and sign-in (2026-11-14)
+
+Step 4 of the design handoff and the first-run screens of step 5, built on the Theme and components of the section above.
+Appearance only: behavior, data, persistence, copy, navigation, accessibility identifiers and VoiceOver labels are unchanged.
+
+- **New shared pieces (`DesignSystem/Forms.swift`, `DesignSystem/ScreenTypography.swift`).**
+  `FlowLayout` wraps chips onto new lines instead of scrolling or squeezing them; `themeInputField(isFocused:)` is the 18 pt `surface2` input with its `sun` focus outline; `FieldLabel`, `ThemeSegmentedPicker` (stacks at accessibility sizes) and `InlineLinkLabel` complete the forms.
+  `ScreenTypography` adds the in-between type sizes these mockups set (greeting, lead, card title, list value, input, stepper value, code digit), each scaling through `relativeTo:`.
+  No existing component changed.
+- **Today (`T10`, `T10b`, `T11`, `T12`, `T14`).**
+  The headline is the day in its color over its length in Display L, set at its 57 pt leading, with the day mark at the top right (stepping aside at accessibility sizes); VoiceOver still reads "Push Day: 30 min".
+  Duration chips take the day's color and wrap at accessibility sizes; Different workout is an outline button; the Consistency Score sits below it in the shared `ScoreCard` (the score Today already loads, which Progress also shows; before there is a score the card keeps its words alone, and at accessibility sizes the score stacks above them); block cards (an overline per block, the training block in the day's color, rows split by `line` separators, name above target at accessibility sizes), the resume card (outlined and filled in the paused session's color, with a progress bar), the Rest Day cards (Recovery in `rest`) and the Outside Activity card follow the mockups.
+  Start is pinned in the day's color, its label capped at accessibility2 so the list keeps the screen.
+  The Outside Activity sheet replaces its `Form` with a grid of activity tiles and When, Duration and Distance rows on the sheet's `surface1`; Duration keeps one adjustable VoiceOver element.
+- **Welcome Page (`F01`).** The big day mark, "Today is", the day name in Display XL in its color, and the Cycle strip with day-colored marks, a TODAY pill under today and "Done" under a done step; "Let's go" takes the day's color.
+- **Onboarding (`F02` to `F08`).** Display M questions capped at 68 pt, a `sun` segmented progress bar, both Trainers on a lit stage on the first step, the themed name and why inputs, the segmented sex choice, Bricolage stepper values in 44 pt round buttons (the press-and-hold repeat is unchanged), option cards for activity and Focus Areas, a `ThemeToggleStyle` row, wrapping injury chips and the duration tiles.
+- **Save your plan (`F09`, `F09b`, `F09c`) and the existing-user sign-in.** Continue with Apple is the system `ASAuthorizationAppleIDButton` in its white style, kept round; it still runs the existing sign-in and, at accessibility sizes, takes the height of the wrapped choices beside it so the three keep one height.
+  Continue with Google is Google's dark-theme button from its Sign in with Google branding guidelines (#131314 fill, 1 pt #8E918F stroke, #E3E3E3 label, the official full-color "G" at 20 pt with 12 pt after it), the mark bundled unaltered from Google's own assets (`docs/asset-attribution.md`); its label keeps the app's Inter rather than Google Sans so the three choices read alike.
+  Email is a `surface2` button; the email code shows one box per digit over the same text field, so typing, pasting, AutoFill and VoiceOver are unchanged.
+- **Kept as today.** The Rest Day's Recovery preview (Trainer art, movement count) and Cycle strip, the "Paused session" overline, the email and code steps' own titles and pinned buttons, and the mockups' copy edits are not built, since each needs new data or copy; the app has no End-session confirmation (End keeps the session resumable), so there is none to restyle.
+  The tab bar stays the system `TabView` (above), and the Outside Activity sheet keeps its navigation bar and system date picker.

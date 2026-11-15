@@ -23,7 +23,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         welcome.tap()
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
+        focus(name, in: app)
         name.typeText("Riley\n")
         let chest = app.buttons["Chest"]
         for _ in 0..<4 where !chest.exists {
@@ -69,7 +69,8 @@ final class HomeFocusOutsideUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Edit activity"].waitForExistence(timeout: 5))
         attach("07-edit-activity-sheet")
         let deleteRow = app.buttons["Delete activity"].firstMatch
-        let form = app.descendants(matching: .collectionView).firstMatch
+        let form = app.descendants(matching: .scrollView)
+            .containing(NSPredicate(format: "label == 'Delete activity'")).firstMatch
         scrollUntilHittable(deleteRow, in: app, within: form)
         XCTAssertTrue(deleteRow.exists && deleteRow.isHittable, "Edit activity never brought Delete activity into reach")
         let rowFrame = deleteRow.frame

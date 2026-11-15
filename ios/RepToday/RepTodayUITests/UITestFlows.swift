@@ -32,14 +32,25 @@ extension XCTestCase {
         continueWithEmail.tap()
         let address = app.textFields["Email address"]
         XCTAssertTrue(address.waitForExistence(timeout: 5), file: file, line: line)
-        address.tap()
+        focus(address, in: app, file: file, line: line)
         address.typeText(email)
         app.buttons["Send code"].tap()
         let codeField = app.textFields["Code from your email"]
         XCTAssertTrue(codeField.waitForExistence(timeout: 20), "the code screen never appeared", file: file, line: line)
-        codeField.tap()
+        focus(codeField, in: app, file: file, line: line)
         codeField.typeText(code)
         app.buttons["Sign in"].tap()
+    }
+
+    /// Taps a text field until it holds keyboard focus. A tap that lands while onboarding's step is still
+    /// sliding in can miss, and typing into a field that never took focus fails the test, so the tap is
+    /// repeated (a few times at most) until the keyboard is up.
+    func focus(_ field: XCUIElement, in app: TestApp, file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<4 where !app.keyboards.firstMatch.exists {
+            field.tap()
+            _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "\(field) never took keyboard focus", file: file, line: line)
     }
 
     /// Drags the screen upward until `element` exists and is reachable by a finger. Lazy lists keep
@@ -133,7 +144,7 @@ extension XCTestCase {
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 15))
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
-        app.textFields.firstMatch.tap()
+        focus(app.textFields.firstMatch, in: app)
         app.textFields.firstMatch.typeText("Riley\n")
         // Onboarding finishes by signing in on "Save your plan" (M3); there is no last "Start moving".
         finishOnboardingThroughSaveYourPlan(in: app)

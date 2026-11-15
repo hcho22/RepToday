@@ -29,43 +29,20 @@ enum FocusAreasCopy {
     }
 }
 
-/// The onboarding Focus Areas choice (US-HO02): one card per area, multi-select, each naming what it
-/// changes. Styled like the onboarding fitness-level cards.
+/// The onboarding Focus Areas choice (US-HO02): one option card per area, multi-select, each naming what
+/// it changes. Styled like the onboarding fitness-level cards.
 struct FocusAreaList: View {
     @Binding var selection: Set<FocusArea>
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
+        VStack(spacing: 10) {
             ForEach(FocusArea.allCases) { area in
                 let isSelected = selection.contains(area)
                 Button {
                     if isSelected { selection.remove(area) } else { selection.insert(area) }
                 } label: {
-                    HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text(area.label)
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Text(area.detail)
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .multilineTextAlignment(.leading)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(isSelected ? Theme.Colors.accent : Theme.Colors.textSecondary)
-                            .accessibilityHidden(true)
-                    }
-                    .padding(Theme.Spacing.md)
-                    .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
-                    .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                            .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 2)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                    OptionCard(title: area.label, detail: area.detail, isSelected: isSelected)
+                        .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
