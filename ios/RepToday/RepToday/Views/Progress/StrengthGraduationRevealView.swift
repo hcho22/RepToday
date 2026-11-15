@@ -135,7 +135,7 @@ struct StrengthGraduationRevealView: View {
         Button(action: onDismiss) {
             Text("Keep climbing")
                 .font(Theme.Typography.button)
-                .capsuleLabelInset()
+                .capsuleLabelInset("Keep climbing")
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: Theme.Spacing.startButtonHeight)
         }

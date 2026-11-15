@@ -148,7 +148,7 @@ struct CoachDataDisclosureView: View {
             Button(action: onAcknowledge) {
                 Text(CoachDataDisclosureCopy.acknowledge)
                     .font(Theme.Typography.button)
-                    .capsuleLabelInset()
+                    .capsuleLabelInset(CoachDataDisclosureCopy.acknowledge)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
             }
@@ -159,7 +159,7 @@ struct CoachDataDisclosureView: View {
             Button(action: onDecline) {
                 Text(CoachDataDisclosureCopy.decline)
                     .font(Theme.Typography.button)
-                    .capsuleLabelInset()
+                    .capsuleLabelInset(CoachDataDisclosureCopy.decline)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
             }

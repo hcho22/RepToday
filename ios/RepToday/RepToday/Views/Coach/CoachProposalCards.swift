@@ -176,7 +176,7 @@ private struct ProposalControls: View {
                         }
                     }
                     .font(Theme.Typography.button)
-                    .capsuleLabelInset()
+                    .capsuleLabelInset(confirmTitle)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 48)
                 }
@@ -187,7 +187,7 @@ private struct ProposalControls: View {
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachProposalCopy.decline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -339,7 +339,7 @@ struct CustomWorkoutCard: View {
                 Button { onReview(false) } label: {
                     Text("Review and accept")
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset("Review and accept")
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                 }
@@ -350,7 +350,7 @@ struct CustomWorkoutCard: View {
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachProposalCopy.decline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -366,7 +366,7 @@ struct CustomWorkoutCard: View {
                             Text("Play")
                         }
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset("Play")
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                     }
@@ -381,7 +381,7 @@ struct CustomWorkoutCard: View {
                             Text(CoachProposalCopy.undo)
                         }
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachProposalCopy.undo)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                     }

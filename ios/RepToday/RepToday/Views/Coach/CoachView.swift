@@ -501,7 +501,7 @@ struct CoachNotice: View {
                 Button(action: action) {
                     Text(actionTitle)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(actionTitle)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
@@ -596,7 +596,7 @@ struct CoachPreviewView: View {
                 Button(action: onUnlock) {
                     Text(CoachCopy.unlock)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachCopy.unlock)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
@@ -606,7 +606,7 @@ struct CoachPreviewView: View {
                 Button(action: onRestore) {
                     Text(CoachCopy.restore)
                         .font(Theme.Typography.callout.weight(.bold))
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachCopy.restore)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }

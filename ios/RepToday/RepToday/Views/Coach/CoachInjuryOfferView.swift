@@ -90,7 +90,7 @@ struct CoachInjuryOfferView: View {
                 Button(action: onAccept) {
                     Text(CoachInjuryOfferCopy.accept)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachInjuryOfferCopy.accept)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -101,7 +101,7 @@ struct CoachInjuryOfferView: View {
                 Button(action: onDecline) {
                     Text(CoachInjuryOfferCopy.decline)
                         .font(Theme.Typography.button)
-                        .capsuleLabelInset()
+                        .capsuleLabelInset(CoachInjuryOfferCopy.decline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }

@@ -389,8 +389,9 @@ private struct ScoreTrendCard: View {
             }
         }
         .chartXAxis {
-            // At accessibility sizes the week labels are too wide to sit every week without overprinting.
-            AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : 1)) { _ in
+            // The week labels are too wide to sit under every week once there are more than five, and at
+            // accessibility sizes, without overprinting (Charts would drop whichever collides).
+            AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : trend.count > 5 ? 2 : 1)) { _ in
                 AxisValueLabel(format: .dateTime.month(.abbreviated).day(), anchor: .top)
                     .font(ThemeFont(Theme.Typography.FontName.textSemiBold, fixedSize: min(axisSize, 18)).font(for: nil))
                     .foregroundStyle(Theme.Colors.text2)
@@ -1764,7 +1765,7 @@ private struct FoundationsUpdateNote: View {
             Button(action: onDismiss) {
                 Text("Got it")
                     .font(Theme.Typography.button)
-                    .capsuleLabelInset()
+                    .capsuleLabelInset("Got it")
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 48)
             }

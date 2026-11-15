@@ -133,7 +133,7 @@ struct CustomWorkoutEditorView: View {
         } label: {
             Text("Accept")
                 .font(Theme.Typography.button)
-                .capsuleLabelInset()
+                .capsuleLabelInset("Accept")
                 .fixedSize(horizontal: singleLine, vertical: false)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: Theme.Spacing.buttonHeight)
@@ -153,7 +153,7 @@ struct CustomWorkoutEditorView: View {
                     .fixedSize(horizontal: singleLine, vertical: false)
             }
             .font(Theme.Typography.button)
-            .capsuleLabelInset()
+            .capsuleLabelInset("Accept and play")
             .frame(maxWidth: .infinity)
             .frame(minHeight: Theme.Spacing.buttonHeight)
         }

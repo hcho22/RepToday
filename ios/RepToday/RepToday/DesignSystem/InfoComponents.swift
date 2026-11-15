@@ -194,9 +194,10 @@ extension View {
 
 extension View {
     /// Insets a capsule button's label further from its rounded ends at accessibility text sizes, where
-    /// the label wraps onto several lines and its outer words would otherwise run into the curve.
-    func capsuleLabelInset() -> some View {
-        modifier(CapsuleLabelInset())
+    /// the label wraps onto several lines and its outer words would otherwise run into the curve, and
+    /// keeps every word of `text` (the label's words) whole in the narrower space.
+    func capsuleLabelInset(_ text: String) -> some View {
+        modifier(CapsuleLabelInset()).keepsWordsWhole(text)
     }
 }
 
