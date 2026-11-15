@@ -116,7 +116,7 @@ struct InjuryFlagsView: View {
                 GroupFooter(InjuryFlagsCopy.reversible)
 
                 if dynamicTypeSize.isAccessibilitySize {
-                    status
+                    changeSummary
                 }
             }
             .padding(.horizontal, Theme.Spacing.screenMargin)
@@ -124,12 +124,14 @@ struct InjuryFlagsView: View {
         }
         // The confirmation, pinned: the change is named immediately above the control that makes it, so the
         // user is confirming something specific rather than pressing an opaque Save. At accessibility sizes
-        // the named change ends the scrolling column instead, so the pinned button never covers a switch.
+        // the named change ends the scrolling column instead, so the pinned block never covers a switch; what
+        // the save did stays pinned above the button either way.
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 if !dynamicTypeSize.isAccessibilitySize {
-                    status
+                    changeSummary
                 }
+                saveResult
 
                 Button(action: confirm) {
                     Text(InjuryFlagsCopy.confirm)
@@ -166,9 +168,9 @@ struct InjuryFlagsView: View {
         .task { await viewModel.load(preselecting: preselect) }
     }
 
-    /// The named change, the Saved line and any error: what the confirmation is about and what it did.
+    /// The named change: what the confirmation is about.
     @ViewBuilder
-    private var status: some View {
+    private var changeSummary: some View {
         if let summary = viewModel.changeSummary {
             Text(summary)
                 .font(Theme.Typography.callout)
@@ -177,7 +179,11 @@ struct InjuryFlagsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(summary)
         }
+    }
 
+    /// The Saved line and any error: what the confirmation did.
+    @ViewBuilder
+    private var saveResult: some View {
         if viewModel.didSave {
             Label {
                 Text(InjuryFlagsCopy.saved)
