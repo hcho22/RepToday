@@ -69,7 +69,8 @@ final class HomeFocusOutsideUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Edit activity"].waitForExistence(timeout: 5))
         attach("07-edit-activity-sheet")
         let deleteRow = app.buttons["Delete activity"].firstMatch
-        let form = app.descendants(matching: .collectionView).firstMatch
+        let form = app.descendants(matching: .scrollView)
+            .containing(NSPredicate(format: "label == 'Delete activity'")).firstMatch
         scrollUntilHittable(deleteRow, in: app, within: form)
         XCTAssertTrue(deleteRow.exists && deleteRow.isHittable, "Edit activity never brought Delete activity into reach")
         let rowFrame = deleteRow.frame

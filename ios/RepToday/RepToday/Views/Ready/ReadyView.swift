@@ -22,6 +22,7 @@ struct ReadyView: View {
     /// already on this screen instead of waiting for a relaunch.
     @Environment(AppState.self) private var appState: AppState?
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var viewModel: ReadyViewModel
     /// The Outside Activity sheet on screen (US-HO04): a new entry, or an edit of a logged one.
@@ -151,10 +152,14 @@ struct ReadyView: View {
 
     // MARK: - Session
 
+    /// The tone today takes: its Training Day's color for the headline, chips, the training block and
+    /// Start (DESIGN "Color": the session takes the color of its Training Day).
+    private var tone: DayTone { DayTone(viewModel.trainingDay) }
+
     private func sessionScroll(_ workout: Workout) -> some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     header
 
                     if showClassicsNote {
@@ -192,12 +197,14 @@ struct ReadyView: View {
                     }
 
                     ForEach(workout.blocks) { block in
-                        BlockCard(block: block)
+                        BlockCard(block: block, tone: tone)
                     }
 
                     outsideActivityCard
                 }
-                .padding(Theme.Spacing.lg)
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.mlg)
             }
             .onAppear(perform: presentClassicsNoteIfNeeded)
 
@@ -217,28 +224,49 @@ struct ReadyView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(greeting)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
-            Text(title)
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.textPrimary)
+        TodayHeader(
+            greeting: greeting,
+            mark: DayMark(viewModel.trainingDay),
+            tone: tone
+        ) {
+            // The headline: the day in its color over its honest length (Display L), read as one line,
+            // its two lines set at Display L's 57 pt leading rather than the font's looser own.
+            VStack(alignment: .leading, spacing: headlineLineGap) {
+                Text(viewModel.trainingDay?.displayName ?? WelcomeCopy.fallbackTitle)
+                    .foregroundStyle(tone.color)
+                Text(CountWording.phrase(viewModel.plannedMinutes, singular: "minute", plural: "minutes"))
+                    .foregroundStyle(Theme.Colors.text1)
+            }
+            .cappedDisplayFont(size: 56)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(.isStaticText)
+
             if viewModel.plannedMinutes < viewModel.requestedMinutes {
                 // The honest time (decision 17): even the top of the user's rep range and the longest rests
                 // cannot fill the request yet, so the session says how long it really runs.
                 Text("Runs \(viewModel.plannedMinutes) of your \(viewModel.requestedMinutes) minutes. It fills out as your reps grow.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(subtitle)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .font(Theme.Typography.lead)
+                .foregroundStyle(Theme.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "Push Day: 30 min" - today's Training Day and its honest length.
+    /// The gap that sets the headline's two lines at Display L's line height (57 for 56 pt) instead of
+    /// the font's own, taller one.
+    private var headlineLineGap: CGFloat {
+        let size = Theme.Typography.cappedDisplaySize(56, relativeTo: .largeTitle, dynamicTypeSize: dynamicTypeSize)
+        let natural = UIFont(name: Theme.Typography.FontName.display, size: size)?.lineHeight ?? size
+        return size * 57 / 56 - natural
+    }
+
+    /// "Push Day: 30 min" - today's Training Day and its honest length, as VoiceOver reads the headline.
     private var title: String {
         guard let day = viewModel.trainingDay else { return "Today: \(viewModel.plannedMinutes) min" }
         return "\(day.displayName): \(viewModel.plannedMinutes) min"
@@ -248,17 +276,14 @@ struct ReadyView: View {
 
     private var restDayScroll: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(greeting)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                TodayHeader(greeting: greeting, mark: .rest, tone: .rest) {
                     Text(WelcomeCopy.restTitle(for: viewModel.effectivePlan.restReason ?? .cycleComplete))
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .cappedDisplayFont(size: 56)
+                        .foregroundStyle(Theme.Colors.rest)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let state = viewModel.resumableSession {
                     ResumeSessionCard(
@@ -292,7 +317,9 @@ struct ReadyView: View {
 
                 outsideActivityCard
             }
-            .padding(Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.mlg)
         }
     }
 
@@ -376,25 +403,36 @@ struct ReadyView: View {
 
     /// A non-blocking, one-tap duration selector. Tapping a chip regenerates the session in place on
     /// the sub-100ms engine; the current session and Start stay put while it swaps, so the screen
-    /// never gates entry behind a duration question.
+    /// never gates entry behind a duration question. The row scrolls sideways, edge to edge; at the
+    /// accessibility text sizes the chips wrap onto more lines instead (DESIGN "Dynamic Type").
+    @ViewBuilder
     private var durationChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
-                ForEach(viewModel.durationChips, id: \.self) { minutes in
-                    DurationChip(
-                        minutes: minutes,
-                        isSelected: minutes == viewModel.selectedMinutes
-                    ) {
-                        Task { await viewModel.selectDuration(minutes) }
-                    }
-                }
+        if dynamicTypeSize.isAccessibilitySize {
+            FlowLayout { chips }
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) { chips }
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+            }
+            .padding(.horizontal, -Theme.Spacing.screenMargin)
+        }
+    }
+
+    private var chips: some View {
+        ForEach(viewModel.durationChips, id: \.self) { minutes in
+            DurationChip(
+                minutes: minutes,
+                isSelected: minutes == viewModel.selectedMinutes,
+                tone: tone
+            ) {
+                Task { await viewModel.selectDuration(minutes) }
             }
         }
     }
 
-    /// The pinned, visually dominant Start action. It is always present and enabled - the Ready
-    /// Screen never gates Start behind an unanswered question. Tapping it opens the active-session
-    /// player (US-K01) for the already-generated session.
+    /// The pinned, visually dominant Start action, in the day's color. It is always present and enabled -
+    /// the Ready Screen never gates Start behind an unanswered question. Tapping it opens the
+    /// active-session player (US-K01) for the already-generated session.
     private var startBar: some View {
         Button(action: {
             guard let workout = viewModel.workout else { return }
@@ -405,56 +443,96 @@ struct ReadyView: View {
             viewModel.sessionWillStart()
             presentedPlayer = .fresh(workout)
         }) {
-            Text("Start")
-                .font(Theme.Typography.button)
-                .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.buttonHeight)
+            HStack(spacing: Theme.Spacing.sm) {
+                ScaledIcon(icon: .play, size: 22, relativeTo: .headline)
+                Text("Start")
+                    .font(Theme.Typography.startButton)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.startButtonHeight)
+            // Pinned above the tab bar, the label stops growing at accessibility2 so the session list
+            // keeps most of a small screen to scroll beneath it (`screens/Z2-Today-AX.html`).
+            .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }
-        .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .padding(Theme.Spacing.lg)
+        .primaryButtonStyle(tone.color)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, 10)
+        .padding(.bottom, Theme.Spacing.sm)
         .background(Theme.Colors.background)
     }
 
     private var emptyState: some View {
         VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "figure.strengthtraining.functional")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
+            DayMarkView(mark: .sun, color: Theme.Colors.sun, size: 56)
             Text(viewModel.errorMessage ?? "No session yet.")
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.text2)
                 .multilineTextAlignment(.center)
-            Button("Try again") { Task { await viewModel.load() } }
-                .font(Theme.Typography.button)
-                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { Task { await viewModel.load() } } label: {
+                Text("Try again")
+                    .font(Theme.Typography.button)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+            }
+            .secondaryButtonStyle()
         }
-        .padding(Theme.Spacing.lg)
+        .padding(Theme.Spacing.screenMargin)
+    }
+}
+
+// MARK: - Header
+
+/// Today's header: the greeting, the headline the caller supplies, and the day's mark at the top right.
+/// The mark is drawn over the header's corner rather than beside it, so the minutes line and the line
+/// under it keep the full width; only the greeting leaves room for it. At the accessibility text sizes
+/// the mark steps aside entirely, leaving the headline the whole column.
+private struct TodayHeader<Headline: View>: View {
+    let greeting: String
+    let mark: DayMark
+    let tone: DayTone
+    @ViewBuilder let headline: () -> Headline
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private static var markSize: CGFloat { 60 }
+
+    var body: some View {
+        let showsMark = !dynamicTypeSize.isAccessibilitySize
+        VStack(alignment: .leading, spacing: 6) {
+            Text(greeting)
+                .font(Theme.Typography.greeting)
+                .foregroundStyle(Theme.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.trailing, showsMark ? Self.markSize + Theme.Spacing.smd : 0)
+            headline()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .topTrailing) {
+            if showsMark {
+                DayMarkView(mark: mark, color: tone.color, size: Self.markSize)
+                    .padding(.top, 6)
+            }
+        }
+        .padding(.top, 6)
     }
 }
 
 // MARK: - Duration chip
 
-/// A single, compact duration pill in the Ready Screen's one-tap selector. The selected chip fills
-/// with the accent color; the touch target meets the 44pt minimum.
+/// A single duration chip in the Ready Screen's one-tap selector. The selected chip fills with the day's
+/// color and carries a black label; the touch target meets the 44pt minimum.
 private struct DurationChip: View {
     let minutes: Int
     let isSelected: Bool
+    let tone: DayTone
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text("\(minutes) min")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
-                .padding(.horizontal, Theme.Spacing.md)
-                .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
-                .background(
-                    isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
-                    in: Capsule()
-                )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ChipButtonStyle(isSelected: isSelected, tone: tone.color))
         .accessibilityLabel("\(minutes) minute session")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -462,9 +540,9 @@ private struct DurationChip: View {
 
 // MARK: - Different workout
 
-/// The secondary control that rebuilds today's session at the same length with other moves. Styled like
-/// the duration chips rather than like Start, so Start stays the one dominant action; it regenerates in
-/// place with no spinner and no animation, and its label wraps under large Dynamic Type sizes.
+/// The secondary control that rebuilds today's session at the same length with other moves. An outline
+/// button rather than a filled one, so Start stays the one dominant action; it regenerates in place
+/// with no spinner and no animation, and its label wraps under large Dynamic Type sizes.
 struct DifferentWorkoutButton: View {
     let minutes: Int
     let action: () -> Void
@@ -479,21 +557,17 @@ struct DifferentWorkoutButton: View {
                 ? AnyLayout(VStackLayout(spacing: Theme.Spacing.xs))
                 : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
             layout {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(Theme.Colors.accent)
-                    .accessibilityHidden(true)
+                ScaledIcon(icon: .refresh, size: 22, relativeTo: .headline)
                 Text("Different workout")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.button)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.horizontal, Theme.Spacing.sm)
             .padding(.vertical, Theme.Spacing.sm)
-            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .frame(maxWidth: .infinity, minHeight: 48)
         }
-        .buttonStyle(.plain)
+        .outlineButtonStyle()
         .accessibilityLabel("Different workout")
         .accessibilityHint("Builds another \(minutes) minute workout with other moves.")
     }
@@ -513,15 +587,15 @@ struct ClassicsUpdateNote: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(ClassicsUpdateNoteCopy.headline)
-                    .font(Theme.Typography.body.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.text1)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(ClassicsUpdateNoteCopy.detail)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -531,16 +605,15 @@ struct ClassicsUpdateNote: View {
             Button(action: onDismiss) {
                 Text("Got it")
                     .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
             }
-            .buttonStyle(.bordered)
+            .secondaryButtonStyle()
             .accessibilityHint("Dismisses this note")
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .background(Theme.Colors.sunTint, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityElement(children: .contain)
         .onAppear(perform: onShow)
     }
@@ -553,15 +626,14 @@ enum ClassicsUpdateNoteCopy {
     static var full: String { "\(headline) \(detail)" }
 }
 
-// MARK: - Resume session card
+// MARK: - Rest Day card
 
-/// The Resume-or-Discard surface for an abandoned session (US-K04): when the user backgrounded out of
-/// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
-/// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
-/// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target.
 /// Today on a Rest Day (US-TD05, ADR-0012) or a day off an Outside Activity gave: the card says why,
 /// offers the optional mobility-only **Recovery** flow, and lets the user **Train anyway**, which starts
 /// the next group and forfeits the rest. Rest is framed as part of training, never as a gap.
+///
+/// Drawn as two cards (`screens/T11-Rest-Day.html`): why today is rest, then Recovery - a `rest` fill,
+/// the color of Recovery - over Train anyway.
 struct RestDayCard: View {
     let next: TrainingDay
     /// Why today holds no Training Day: the Cycle is done, its Rest Day came early, or an Outside
@@ -572,97 +644,150 @@ struct RestDayCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
                 Text(WelcomeCopy.restReason(reason, next: next))
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.cardTitle)
+                    .foregroundStyle(Theme.Colors.text1)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Rest is part of the program - it's where strength is built. Take today off, or loosen up with a five-minute stretch.")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardSurface()
             .accessibilityElement(children: .combine)
 
-            Button(action: onRecovery) {
-                Text("Recovery")
-                    .font(Theme.Typography.button)
+            VStack(spacing: 10) {
+                Button(action: onRecovery) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ScaledIcon(icon: .play, size: 22, relativeTo: .headline)
+                        Text("Recovery")
+                            .font(Theme.Typography.button)
+                    }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
-            }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .accessibilityHint("Starts a five-minute stretch. Today stays a \(WelcomeCopy.restTitle(for: reason)).")
+                }
+                .primaryButtonStyle(Theme.Colors.rest)
+                .accessibilityLabel("Recovery")
+                .accessibilityHint("Starts a five-minute stretch. Today stays a \(WelcomeCopy.restTitle(for: reason)).")
 
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Button(action: onTrainAnyway) {
                     Text("Train anyway")
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textPrimary)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.buttonHeight)
+                        .frame(minHeight: 52)
                 }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .secondaryButtonStyle()
                 .accessibilityHint("Builds your \(next.displayName) instead of resting today.")
+
                 Text("Builds your \(next.displayName) instead of resting today.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
                     .accessibilityHidden(true)
             }
+            .padding(Theme.Spacing.md)
+            .background(
+                EllipticalGradient(
+                    stops: [.init(color: Theme.Colors.restTint, location: 0), .init(color: Theme.Colors.surface1, location: 0.7)],
+                    center: UnitPoint(x: 0.2, y: 0),
+                    startRadiusFraction: 0,
+                    endRadiusFraction: 1
+                ),
+                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+            )
         }
-        .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityElement(children: .contain)
     }
 }
 
+// MARK: - Resume session card
+
+/// The Resume-or-Discard surface for an abandoned session (US-K04): when the user backgrounded out of
+/// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
+/// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
+/// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target. The
+/// card wears the paused session's Training Day color: its outline, its progress bar and Resume.
 private struct ResumeSessionCard: View {
     let state: ActiveSessionState
     let onResume: () -> Void
     let onDiscard: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var tone: DayTone { DayTone(state.workout.trainingDay) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Pick up where you left off")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(positionText)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: Theme.Spacing.md) {
-                Button(action: onResume) {
-                    Text("Resume")
-                        .font(Theme.Typography.button)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+            // How far into the session the player will reopen; the words above already say it.
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.Colors.surface3)
+                    Capsule().fill(tone.color).frame(width: proxy.size.width * progress)
                 }
-                .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            }
+            .frame(height: 8)
+            .accessibilityHidden(true)
+
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 10))
+                : AnyLayout(HStackLayout(spacing: 10))
+            layout {
+                Button(action: onResume) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ScaledIcon(icon: .play, size: 22, relativeTo: .headline)
+                        Text("Resume")
+                            .font(Theme.Typography.button)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: Theme.Spacing.buttonHeight)
+                }
+                .primaryButtonStyle(tone.color)
                 .accessibilityLabel("Resume session")
 
                 Button(action: onDiscard) {
                     Text("Discard")
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .padding(.horizontal, Theme.Spacing.sm)
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
+                        .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .secondaryButtonStyle()
                 .accessibilityLabel("Discard session")
             }
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                .strokeBorder(tone.color, lineWidth: 2)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session in progress. \(positionText)")
+    }
+
+    /// The share of the session's exercises already behind the user.
+    private var progress: CGFloat {
+        let total = state.slots.count
+        guard total > 0 else { return 0 }
+        return CGFloat(min(max(state.currentStepIndex, 0), total)) / CGFloat(total)
     }
 
     /// "You're on Push-up, exercise 3 of 8." - the exact place the player will reopen to. Falls back
@@ -683,7 +808,8 @@ private struct ResumeSessionCard: View {
 /// pride, never by loss. The copy leads with who the user *is* ("You're someone who moves.") and
 /// surfaces their best on-goal run as earned pride; the score is shown only once there is history,
 /// so a brand-new user is never greeted with a discouraging zero. There is no streak-to-break, no
-/// "you missed" language, no XP.
+/// "you missed" language, no XP. Drawn as DESIGN's score card: the `sun` numeral left, the overline,
+/// headline and footnote right.
 private struct ConsistencyCard: View {
     let consistency: Consistency
 
@@ -693,40 +819,42 @@ private struct ConsistencyCard: View {
     private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 || consistency.score > 0 }
 
     var body: some View {
-        // At the accessibility text sizes the score stacks under the words, so neither column is
+        // At the accessibility text sizes the score stacks above the words, so neither column is
         // squeezed into breaking a word across lines.
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
             : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
         layout {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("You're someone who moves.")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(pride)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if hasHistory {
+                Text("\(Int(consistency.score.rounded()))")
+                    .cappedDisplayFont(Theme.Typography.FontName.displayLarge, size: 76)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.sun)
+                    .lineLimit(1)
+                    .fixedSize()
             }
 
-            if hasHistory {
-                if !dynamicTypeSize.isAccessibilitySize {
-                    Spacer(minLength: Theme.Spacing.md)
+            VStack(alignment: .leading, spacing: 3) {
+                if hasHistory {
+                    Text("Consistency Score".uppercased())
+                        .overlineStyle()
+                        .foregroundStyle(Theme.Colors.sun)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .center, spacing: 0) {
-                    Text("\(Int(consistency.score.rounded()))")
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.accent)
-                    Text("consistency")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
+                Text("You're someone who moves.")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(pride)
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
@@ -752,23 +880,23 @@ private struct ConsistencyCard: View {
 
 /// The "what the app changed" surface (US-J02): the honest, templated note the Programmer attached
 /// to the last real change (US-F04/US-G03). It only ever appears when a note exists, and only ever
-/// names a change the sessions actually reflect. Rendered as a light accent callout, never a nag.
+/// names a change the sessions actually reflect. Rendered as a quiet card with the `sun` spark, never a nag.
 private struct PolicyNoteCard: View {
     let note: SessionPolicy.Note
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            Image(systemName: "sparkles")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.accent)
+        HStack(alignment: .top, spacing: Theme.Spacing.smd) {
+            ScaledIcon(icon: .spark, size: 22, relativeTo: .body)
+                .foregroundStyle(Theme.Colors.sun)
             Text(note.text)
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .foregroundStyle(Theme.Colors.text1)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("What changed: \(note.text)")
     }
@@ -776,43 +904,65 @@ private struct PolicyNoteCard: View {
 
 // MARK: - Block card
 
-/// One session block (warm-up / training / cooldown) with its prescribed exercises and targets.
+/// One session block (warm-up / training / cooldown) with its prescribed exercises and targets: an
+/// overline naming the block - in the day's color for the training block - over rows split by 1 pt
+/// `line` separators.
 private struct BlockCard: View {
     let block: WorkoutBlock
+    let tone: DayTone
+
+    private var isTraining: Bool { block.category == .strength || block.category == .primal }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text(block.title)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(block.title.uppercased())
+                .overlineStyle()
+                .foregroundStyle(isTraining ? tone.color : Theme.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(block.title)
 
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(block.exercises) { prescription in
+            VStack(spacing: 0) {
+                ForEach(Array(block.exercises.enumerated()), id: \.element.id) { index, prescription in
                     ExerciseRow(prescription: prescription)
+                    if index < block.exercises.count - 1 {
+                        GroupSeparator()
+                    }
                 }
             }
         }
-        .padding(Theme.Spacing.md)
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
     }
 }
 
 private struct ExerciseRow: View {
     let prescription: PrescribedExercise
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        // At the accessibility text sizes the target stacks under the name (DESIGN: name above value).
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.smd))
+        layout {
             Text(prescription.exercise.displayName)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer(minLength: Theme.Spacing.md)
+                .font(Theme.Typography.rowName)
+                .foregroundStyle(Theme.Colors.text1)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Text(targetText)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.trailing)
+                .font(Theme.Typography.listValue)
+                .monospacedDigit()
+                .foregroundStyle(Theme.Colors.text1)
+                .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(minHeight: Theme.Spacing.minTouchTarget)
+        .padding(.vertical, Theme.Spacing.sm)
+        .frame(minHeight: 52)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(prescription.exercise.displayName), \(spokenTarget)")
     }

@@ -14,6 +14,7 @@ struct WelcomePageView: View {
     let onContinue: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var hasAppeared = false
 
     init(viewModel: WelcomeViewModel, isReady: Bool, onContinue: @escaping () -> Void) {
@@ -29,18 +30,18 @@ struct WelcomePageView: View {
             VStack(spacing: 0) {
                 GeometryReader { viewport in
                     ScrollView {
-                        content
-                            .padding(.horizontal, Theme.Spacing.lg)
-                            .padding(.vertical, Theme.Spacing.xl)
+                        content(markSize: viewport.size.height < 620 ? 96 : 140)
+                            .padding(.horizontal, Theme.Spacing.screenMargin)
+                            .padding(.vertical, Theme.Spacing.mlg)
                             .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .center)
                     }
                     .scrollBounceBehavior(.basedOnSize)
                 }
 
                 letsGo
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, Theme.Spacing.md)
-                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+                    .padding(.bottom, Theme.Spacing.sm)
+                    .padding(.top, 10)
             }
             .opacity(hasAppeared ? 1 : 0)
             .offset(y: hasAppeared || reduceMotion ? 0 : Theme.Spacing.md)
@@ -55,21 +56,53 @@ struct WelcomePageView: View {
         }
     }
 
-    private var content: some View {
+    /// The day's color: its Training Day's, `rest` for a Rest Day or a day off, `sun` before the plan is
+    /// known.
+    private var tone: DayTone {
+        switch viewModel.plan {
+        case let .train(day)?: return DayTone(day)
+        case .rest?: return .rest
+        case nil: return .sun
+        }
+    }
+
+    private var mark: DayMark {
+        switch viewModel.plan {
+        case let .train(day)?: return DayMark(day)
+        case .rest?: return .rest
+        case nil: return .sun
+        }
+    }
+
+    /// The page's words under the day's mark, which draws at `markSize` (140, or 96 on a short screen so
+    /// the Cycle strip still clears "Let's go").
+    private func content(markSize: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Spacer(minLength: Theme.Spacing.mlg)
+
+            // The day's mark, big; it steps aside at the accessibility text sizes so the words keep the
+            // screen.
+            if !dynamicTypeSize.isAccessibilitySize {
+                DayMarkView(mark: mark, color: tone.color, size: markSize)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(viewModel.greeting)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.body.weight(.medium))
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Today is")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .font(Theme.Typography.todayIs)
+                        .foregroundStyle(Theme.Colors.text1)
                     Text(viewModel.dayTitle)
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .cappedDisplayFont(Theme.Typography.FontName.displayLarge, size: 84)
+                        .foregroundStyle(tone.color)
+                        // One line at the ordinary sizes, fitted down a little on the narrowest phone;
+                        // at the accessibility sizes it wraps at its cap instead.
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.75)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityElement(children: .combine)
@@ -78,7 +111,7 @@ struct WelcomePageView: View {
 
                 Text(viewModel.dayDetail)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -86,6 +119,8 @@ struct WelcomePageView: View {
             if !viewModel.steps.isEmpty {
                 CycleStripView(steps: viewModel.steps)
             }
+
+            Spacer(minLength: Theme.Spacing.sm)
         }
         // Holds the space while the plan loads, so nothing jumps when it lands.
         .opacity(viewModel.isLoaded ? 1 : 0)
@@ -97,17 +132,16 @@ struct WelcomePageView: View {
             ZStack {
                 if isReady {
                     Text(WelcomeCopy.letsGo)
-                        .font(Theme.Typography.button)
+                        .font(Theme.Typography.startButton)
                 } else {
                     ProgressView()
                         .tint(Theme.Colors.onAccent)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: Theme.Spacing.buttonHeight)
+            .frame(minHeight: Theme.Spacing.startButtonHeight)
         }
-        .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .primaryButtonStyle(tone.color)
         .disabled(!isReady)
         .accessibilityLabel(WelcomeCopy.letsGo)
         .accessibilityHint(isReady ? "Opens Today" : "Getting today ready")
@@ -123,13 +157,13 @@ struct CycleStripView: View {
     let steps: [CycleStep]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 14) {
             Text(WelcomeCopy.stripTitle.uppercased())
                 .overlineStyle()
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.text2)
 
             ViewThatFits(in: .horizontal) {
-                EqualColumnsLayout(spacing: Theme.Spacing.sm) {
+                EqualColumnsLayout(spacing: Theme.Spacing.xs) {
                     ForEach(steps) { step in
                         CycleStepView(step: step, isCompact: true)
                     }
@@ -141,9 +175,10 @@ struct CycleStripView: View {
                 }
             }
         }
-        .padding(Theme.Spacing.md)
+        .padding(.vertical, 18)
+        .padding(.horizontal, Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
@@ -176,35 +211,65 @@ private struct EqualColumnsLayout: Layout {
     }
 }
 
-/// One step of the strip: its day mark (filled for done and today, outlined for what is to come) and
-/// the step's name - in the day's color for today, `text2` for what is still to come. A done step's
-/// mark carries a check.
+/// One step of the strip (DESIGN "Cycle strip"): its day mark - filled in the day's color for done and
+/// today, outlined in it for what is to come - and the step's name, in the day's color for today, `text2`
+/// for what is still to come. Today carries a "TODAY" pill; a done step's mark carries a check and a
+/// "Done" line.
 private struct CycleStepView: View {
     let step: CycleStep
     /// A column in the row (ordinary sizes) rather than a line in the list (accessibility sizes).
     let isCompact: Bool
 
-    @ScaledMetric(relativeTo: .headline) private var markerSize: CGFloat = 36
+    @ScaledMetric(relativeTo: .headline) private var markerSize: CGFloat = 44
 
     var body: some View {
         let layout = isCompact
-            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+            ? AnyLayout(VStackLayout(spacing: 6))
             : AnyLayout(HStackLayout(spacing: Theme.Spacing.smd))
         layout {
             marker
             Text(step.title)
-                .font(step.status == .today ? Theme.Typography.headline : Theme.Typography.callout)
+                .font(step.status == .today ? Theme.Typography.calloutSemiBold.weight(.bold) : Theme.Typography.calloutSemiBold)
                 .foregroundStyle(titleColor)
                 .lineLimit(1)
+            badge
         }
         .frame(maxWidth: isCompact ? .infinity : nil, alignment: isCompact ? .center : .leading)
+    }
+
+    /// The line under the name: the "TODAY" pill, "Done", or an empty line of the same height so the
+    /// columns stay level.
+    @ViewBuilder
+    private var badge: some View {
+        switch step.status {
+        case .today:
+            Text("Today".uppercased())
+                .font(Theme.Typography.todayPill)
+                .tracking(0.8)
+                .foregroundStyle(Theme.Colors.onAccent)
+                .lineLimit(1)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, 1)
+                .background(tone.color, in: Capsule())
+        case .done:
+            Text("Done")
+                .font(ThemeFont(Theme.Typography.FontName.textSemiBold, size: 11, relativeTo: .caption2))
+                .foregroundStyle(Theme.Colors.text3)
+                .lineLimit(1)
+        case .upcoming:
+            if isCompact {
+                Text(" ")
+                    .font(ThemeFont(Theme.Typography.FontName.textSemiBold, size: 11, relativeTo: .caption2))
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private var titleColor: Color {
         switch step.status {
         case .today: return tone.color
-        case .done: return Theme.Colors.textPrimary
-        case .upcoming: return Theme.Colors.textSecondary
+        case .done: return Theme.Colors.text1
+        case .upcoming: return Theme.Colors.text2
         }
     }
 
@@ -213,7 +278,7 @@ private struct CycleStepView: View {
             DayMarkView(
                 mark: mark,
                 filled: step.status != .upcoming,
-                color: step.status == .upcoming ? Theme.Colors.textSecondary : tone.color,
+                color: tone.color,
                 size: markerSize
             )
             if step.status == .done {

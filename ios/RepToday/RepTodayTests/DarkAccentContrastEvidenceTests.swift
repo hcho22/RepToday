@@ -24,6 +24,8 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
     private let surface1 = (red: 0x13, green: 0x13, blue: 0x16)
     /// `rest`, the fill of Skip rest.
     private let restFill = (red: 0xC9, green: 0xA7, blue: 0xFF)
+    /// `push`, the fill of Today's Start on a Push Day: the session takes its Training Day's color.
+    private let pushFill = (red: 0xFF, green: 0x6B, blue: 0x3D)
 
     override func tearDown() {
         window = nil
@@ -193,7 +195,8 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         try assertAccentFill(of: "Continue", in: image)
     }
 
-    /// The Ready Screen: the selected duration chip and the pinned Start button.
+    /// The Ready Screen: the pinned Start button, in today's Training Day color (the sample user's first
+    /// session is a Push Day).
     func testReadyScreenFilledControls() throws {
         let services = ServiceContainer.mock()
         let saved = expectation(description: "a user to build today's session for")
@@ -205,7 +208,7 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         host(ReadyView(services: services))
         XCTAssertTrue(pump(until: { self.labels().contains("Start") }, timeout: 8), "\(labels())")
         let image = try capture("02-ready")
-        try assertAccentFill(of: "Start", in: image)
+        try assertAccentFill(of: "Start", in: image, expected: pushFill)
     }
 
     /// The player's work window (Done) and the rest overlay that follows it (Skip rest).

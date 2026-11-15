@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The account sign-in controls (M3, decision 23): Apple, Google and an email code, then the
@@ -5,10 +6,9 @@ import SwiftUI
 /// screen, which each supply their own heading.
 ///
 /// Every color, font and dimension comes from `Theme`; controls are full-width, at least 56pt tall, and
-/// grow with Dynamic Type instead of truncating. The three sign-in choices share one type size, weight
-/// and height at every text size: Apple's own button draws its title at a fixed size, so the Apple
-/// choice is a custom Sign in with Apple button in Apple's black (light) or white (dark) style with the
-/// Apple logo and "Continue with Apple", which Apple's guidelines allow.
+/// grow with Dynamic Type instead of truncating. Continue with Apple is the system
+/// `ASAuthorizationAppleIDButton` in its white style (DESIGN "Icons and marks"), fully round, which
+/// draws its own title at a fixed size; Google and email are `surface2` buttons whose titles wrap.
 struct AccountSignInPanel: View {
     @Bindable var viewModel: AccountSignInViewModel
     @FocusState private var focusedField: Field?
@@ -33,24 +33,21 @@ struct AccountSignInPanel: View {
             }
 
             if let message = viewModel.message {
-                Label {
-                    Text(message)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
+                Text(message)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Theme.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.Colors.surface2, in: RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
+                    .accessibilityElement(children: .combine)
             }
 
             #if DEBUG
             if !viewModel.isConfigured {
                 Text("Development build: sign-in is simulated and nothing leaves this phone. On the email code screen, use \(StubAccountAuthService.acceptedCode).")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             #endif
@@ -72,32 +69,26 @@ struct AccountSignInPanel: View {
 
     // MARK: - Choosing
 
+    /// The three choices share one height at every text size, so none looks bigger than another: Apple's
+    /// button, whose title stays its system size, takes the height the wrapped titles beside it need.
     private var choices: some View {
-        EqualHeightColumn(spacing: Theme.Spacing.sm) {
-            choiceButton(
-                "Continue with Apple",
-                logo: "apple.logo",
-                fill: Theme.Colors.signInWithAppleFill,
-                ink: Theme.Colors.signInWithAppleInk,
-                working: viewModel.activity == .apple
-            ) {
+        EqualHeightColumn(spacing: 10) {
+            AppleSignInButton(working: viewModel.activity == .apple) {
                 Task { await viewModel.signInWithApple() }
             }
+            .disabled(viewModel.isWorking)
+            .opacity(viewModel.isWorking && viewModel.activity != .apple ? 0.4 : 1)
+            .accessibilityLabel("Continue with Apple")
             .accessibilityHint("Signs in with your Apple Account")
 
             // Text only: Google's mark is a licensed asset this app does not ship
             // (docs/asset-attribution.md), and a stand-in glyph would misrepresent it.
-            choiceButton(
-                "Continue with Google",
-                fill: Theme.Colors.surface,
-                ink: Theme.Colors.textPrimary,
-                working: viewModel.activity == .google
-            ) {
+            choiceButton("Continue with Google", working: viewModel.activity == .google) {
                 Task { await viewModel.signInWithGoogle() }
             }
             .accessibilityHint("Opens Google sign-in")
 
-            choiceButton("Continue with email", fill: Theme.Colors.surface, ink: Theme.Colors.textPrimary, working: false) {
+            choiceButton("Continue with email", icon: .mail, working: false) {
                 viewModel.chooseEmail()
                 focusedField = .email
             }
@@ -109,11 +100,9 @@ struct AccountSignInPanel: View {
 
     private var emailEntry: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Your email")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            inputField {
-                TextField("you@example.com", text: $viewModel.email)
+            FieldLabel("Your email")
+            inputField(isFocused: focusedField == .email) {
+                TextField("you@example.com", text: $viewModel.email, prompt: Text(verbatim: "you@example.com").foregroundStyle(Theme.Colors.text3))
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -136,15 +125,16 @@ struct AccountSignInPanel: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Enter the code we sent to \(challenge.email).")
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .foregroundStyle(Theme.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
-            inputField {
+            CodeBoxes(code: viewModel.code, isFocused: focusedField == .code) {
                 TextField("Code", text: $viewModel.code)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .focused($focusedField, equals: .code)
                     .accessibilityLabel("Code from your email")
             }
+            .padding(.vertical, Theme.Spacing.xs)
             primaryButton("Sign in", working: viewModel.activity == .verifyingCode, enabled: viewModel.canVerifyCode) {
                 Task { await viewModel.verifyCode() }
             }
@@ -161,23 +151,25 @@ struct AccountSignInPanel: View {
 
     private func signedIn(_ identity: AccountIdentity) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Label {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                // Success is `legs`, always with the check glyph.
+                ScaledIcon(icon: .check, size: 22, relativeTo: .headline)
+                    .foregroundStyle(Theme.Colors.legs)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 6 }
                 Text(Self.signedInText(identity))
                     .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .foregroundStyle(Theme.Colors.text1)
                     .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(Theme.Colors.accent)
             }
             .accessibilityElement(children: .combine)
 
             if viewModel.activity == .finishing {
                 HStack(spacing: Theme.Spacing.sm) {
                     ProgressView()
+                        .tint(Theme.Colors.sun)
                     Text("Saving your plan")
                         .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .foregroundStyle(Theme.Colors.text2)
                 }
                 .frame(minHeight: Theme.Spacing.minTouchTarget)
                 .accessibilityElement(children: .combine)
@@ -195,13 +187,13 @@ struct AccountSignInPanel: View {
     private func anotherAccount(_ attempted: AccountIdentity) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(Self.anotherAccountTitle)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Colors.text1)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             Text(Self.anotherAccountText(attempted, canErase: viewModel.canEraseThisDevice))
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
             primaryButton("Sign in to my account", working: false, enabled: true) {
                 viewModel.showChoices()
@@ -213,9 +205,12 @@ struct AccountSignInPanel: View {
                     HStack(spacing: Theme.Spacing.sm) {
                         if viewModel.activity == .erasing {
                             ProgressView()
+                                .tint(Theme.Colors.danger)
+                        } else {
+                            ScaledIcon(icon: .trash, size: 20, relativeTo: .body)
                         }
                         Text("Erase this phone's Rep Today data")
-                            .font(Theme.Typography.body)
+                            .font(Theme.Typography.body.weight(.semibold))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -272,67 +267,156 @@ struct AccountSignInPanel: View {
             .frame(minHeight: Theme.Spacing.buttonHeight)
         }
         .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .disabled(!enabled || viewModel.isWorking)
         .accessibilityLabel(title)
     }
 
-    /// One sign-in choice: the same type, weight, padding and corner radius for every choice, filling the
-    /// height its column gives it so the three always match.
+    /// One sign-in choice after Apple's: a `surface2` capsule with a white label and an optional icon, the
+    /// same type, weight and padding for each, filling the height its column gives it so the two always
+    /// match.
     private func choiceButton(
         _ title: String,
-        logo: String? = nil,
-        fill: Color,
-        ink: Color,
+        icon: AppIcon? = nil,
         working: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: Theme.Spacing.sm) {
                 if working {
-                    ProgressView().tint(ink)
+                    ProgressView().tint(Theme.Colors.text1)
+                } else if let icon {
+                    ScaledIcon(icon: icon, size: 22, relativeTo: .headline)
                 }
-                // The logo sits inside the title text, so the title wraps exactly like the other
-                // choices' at large text sizes instead of being pushed narrower by a separate glyph.
-                // VoiceOver reads the button's own label, so the logo is never spoken.
-                (logo.map { Text("\(Image(systemName: $0))\u{00A0}\u{00A0}") } ?? Text("")) + Text(title)
+                Text(title)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
             .font(Theme.Typography.button)
-            .foregroundStyle(ink)
-            .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, maxHeight: .infinity)
-            .background(fill, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         }
-        .buttonStyle(.plain)
+        .secondaryButtonStyle()
         .disabled(viewModel.isWorking)
         .accessibilityLabel(title)
     }
 
     private func textButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.accent)
+            InlineLinkLabel(title: title, font: Theme.Typography.callout)
                 .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
-                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(viewModel.isWorking)
     }
 
-    private func inputField<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    private func inputField<Content: View>(isFocused: Bool, @ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .font(Theme.Typography.body)
-            .foregroundStyle(Theme.Colors.textPrimary)
-            .padding(.horizontal, Theme.Spacing.md)
-            .frame(minHeight: Theme.Spacing.buttonHeight)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .themeInputField(isFocused: isFocused)
+    }
+}
+
+// MARK: - Continue with Apple
+
+/// Continue with Apple as the system `ASAuthorizationAppleIDButton` in its white style, fully round, at
+/// least 56 pt tall. A tap runs the sign-in the view model already owns; the button only draws. While that
+/// sign-in works, a spinner covers it.
+private struct AppleSignInButton: View {
+    let working: Bool
+    let action: () -> Void
+
+    var body: some View {
+        AppleIDButtonRepresentable(action: action)
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, maxHeight: .infinity)
+            .overlay {
+                if working {
+                    ZStack {
+                        Capsule().fill(Theme.Colors.signInWithAppleFill)
+                        ProgressView().tint(Theme.Colors.signInWithAppleInk)
+                    }
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { action() }
+    }
+}
+
+private struct AppleIDButtonRepresentable: UIViewRepresentable {
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        let button = RoundAppleIDButton(authorizationButtonType: .continue, authorizationButtonStyle: .white)
+        button.addTarget(context.coordinator, action: #selector(Coordinator.tapped), for: .touchUpInside)
+        return button
+    }
+
+    func updateUIView(_ button: ASAuthorizationAppleIDButton, context: Context) {
+        context.coordinator.action = action
+        button.isEnabled = context.environment.isEnabled
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        @objc func tapped() { action() }
+    }
+}
+
+/// The system button, kept fully round at whatever height it is given.
+private final class RoundAppleIDButton: ASAuthorizationAppleIDButton {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        cornerRadius = bounds.height / 2
+    }
+}
+
+// MARK: - Email code
+
+/// The email code drawn as one box per digit (`surface2`, radius 16, 64 pt tall, Bricolage digits), the
+/// next box to fill outlined in `sun` while the field has focus. The real text field lies over the boxes
+/// with its own text and caret cleared, so typing, pasting, AutoFill and VoiceOver all go to it.
+private struct CodeBoxes<Field: View>: View {
+    let code: String
+    let isFocused: Bool
+    @ViewBuilder let field: () -> Field
+
+    private static var length: Int { 6 }
+
+    var body: some View {
+        let digits = Array(code)
+        let count = max(Self.length, digits.count)
+        HStack(spacing: Theme.Spacing.sm) {
+            ForEach(0..<count, id: \.self) { index in
+                Text(index < digits.count ? String(digits[index]) : " ")
+                    .font(Theme.Typography.codeDigit)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.text1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .background(Theme.Colors.surface2, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(isFocused && index == min(digits.count, count - 1) ? Theme.Colors.sun : .clear, lineWidth: 2)
+                    )
+            }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityHidden(true)
+        .overlay {
+            field()
+                .font(Theme.Typography.codeDigit)
+                .foregroundStyle(.clear)
+                .tint(.clear)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
     }
 }
 

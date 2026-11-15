@@ -57,9 +57,10 @@ enum OutsideActivityCopy {
         return [activity.label, CountWording.phrase(activity.durationMinutes, singular: "minute", plural: "minutes")].joined(separator: ", ")
     }
 
-    /// The icon an activity row shows.
-    static func systemImage(of activity: OutsideActivity) -> String {
-        activity.isCustomWorkout ? "figure.strengthtraining.functional" : activity.type.systemImage
+    /// The icon an activity row shows: the kind of workout, or the Coach's mark for a Custom Workout it
+    /// wrote.
+    static func icon(of activity: OutsideActivity) -> AppIcon {
+        activity.isCustomWorkout ? .coach : activity.type.icon
     }
 
     /// "Run · 30 min · 3.1 mi"
@@ -116,7 +117,6 @@ enum DistanceFormatting {
         return "\(amount) \(noun)"
     }
 }
-
 // MARK: - Today card
 
 /// Today's Outside Activity card (US-HO04): the activities logged this past week, each tappable to edit
@@ -127,40 +127,48 @@ struct OutsideActivityCard: View {
     let onEdit: (OutsideActivity) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             Text(OutsideActivityCopy.sectionTitle)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Colors.text1)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
             if activities.isEmpty {
                 Text(OutsideActivityCopy.sectionEmpty)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(activities) { activity in
+                VStack(spacing: 0) {
+                    ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
                         OutsideActivityRow(activity: activity) { onEdit(activity) }
+                        if index < activities.count - 1 {
+                            GroupSeparator()
+                        }
                     }
                 }
             }
 
             Button(action: onLog) {
-                Label(OutsideActivityCopy.logButton, systemImage: "plus")
-                    .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.buttonHeight)
+                HStack(spacing: Theme.Spacing.sm) {
+                    ScaledIcon(icon: .plus, size: 22, relativeTo: .headline)
+                    Text(OutsideActivityCopy.logButton)
+                        .font(Theme.Typography.button)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, Theme.Spacing.sm)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 52)
             }
-            .buttonStyle(.bordered)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .secondaryButtonStyle()
             .accessibilityLabel(OutsideActivityCopy.logButton)
             .accessibilityHint("Adds a run, swim or other workout you did outside Rep Today")
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
         .accessibilityElement(children: .contain)
     }
 }
@@ -169,34 +177,26 @@ private struct OutsideActivityRow: View {
     let activity: OutsideActivity
     let onTap: () -> Void
 
-    /// A fixed icon column, capped with the icon, so the summary keeps its width at large text sizes.
-    @ScaledMetric(relativeTo: .headline) private var iconColumnWidth: CGFloat = 32
-
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: Theme.Spacing.md) {
-                Image(systemName: OutsideActivityCopy.systemImage(of: activity))
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(width: iconColumnWidth)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            HStack(spacing: Theme.Spacing.smd) {
+                ScaledIcon(icon: OutsideActivityCopy.icon(of: activity), size: 24, relativeTo: .headline)
+                    .foregroundStyle(Theme.Colors.sun)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(OutsideActivityCopy.summary(of: activity))
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+                        .font(Theme.Typography.rowName)
+                        .foregroundStyle(Theme.Colors.text1)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(OutsideActivityCopy.day(activity.date))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .font(Theme.Typography.footnote)
+                        .foregroundStyle(Theme.Colors.text2)
                 }
-                Spacer(minLength: Theme.Spacing.sm)
-                Image(systemName: "chevron.right")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .accessibilityHidden(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                IconView(icon: .chevr, size: 18)
+                    .foregroundStyle(Theme.Colors.text3)
             }
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(minHeight: Theme.Spacing.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -221,31 +221,29 @@ struct HealthSuggestionCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             // The icon sits above the words at the accessibility sizes, so it never squeezes them.
             let header = dynamicTypeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
-                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.md))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.smd))
             header {
-                Image(systemName: candidate.type.systemImage)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .accessibilityHidden(true)
+                ScaledIcon(icon: candidate.type.icon, size: 28, relativeTo: .title2)
+                    .foregroundStyle(Theme.Colors.sun)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(OutsideActivityCopy.healthSource)
-                        .font(Theme.Typography.caption.weight(.semibold))
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text(OutsideActivityCopy.healthSource.uppercased())
+                        .overlineStyle()
+                        .foregroundStyle(Theme.Colors.text2)
                     Text(OutsideActivityCopy.summary(
                         type: candidate.type,
                         durationMinutes: candidate.durationMinutes,
                         distanceMeters: candidate.distanceMeters
                     ))
                     .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .foregroundStyle(Theme.Colors.text1)
                     .fixedSize(horizontal: false, vertical: true)
                     Text(OutsideActivityCopy.day(candidate.start))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .font(Theme.Typography.footnote)
+                        .foregroundStyle(Theme.Colors.text2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -261,34 +259,31 @@ struct HealthSuggestionCard: View {
             )
 
             let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
-                : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+                ? AnyLayout(VStackLayout(spacing: 10))
+                : AnyLayout(HStackLayout(spacing: 10))
             layout {
                 Button(action: onAdd) {
                     Text(OutsideActivityCopy.addIt)
                         .font(Theme.Typography.button)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 48)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .accessibilityHint("Logs it as an outside activity")
 
                 Button(action: onIgnore) {
                     Text(OutsideActivityCopy.ignore)
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textPrimary)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 48)
                 }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .secondaryButtonStyle()
                 .accessibilityHint("Won't suggest this workout again")
             }
         }
-        .padding(Theme.Spacing.md)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
         .accessibilityElement(children: .contain)
     }
 }
@@ -296,7 +291,9 @@ struct HealthSuggestionCard: View {
 // MARK: - Entry sheet
 
 /// The Outside Activity entry sheet (US-HO04): type, when, duration and an optional distance, logged or
-/// saved in place; an existing activity can be deleted here too.
+/// saved in place; an existing activity can be deleted here too. Drawn on the sheet's `surface1`
+/// (`screens/T14-Log-Outside-Activity.html`): the kinds of workout as a grid of tiles, then the When,
+/// Duration and Distance rows.
 struct OutsideActivitySheet: View {
     /// The activity being edited, or `nil` for a new one.
     let existing: OutsideActivity?
@@ -316,9 +313,7 @@ struct OutsideActivitySheet: View {
     @State private var isSaving = false
     @State private var confirmsDelete = false
     @State private var enabledHealth = false
-    /// The activity rows' icon column, wide enough for the widest glyph (the bike), growing with text up
-    /// to the size the icon itself is capped at.
-    @ScaledMetric(relativeTo: .headline) private var iconColumnWidth: CGFloat = 32
+    @FocusState private var distanceFocused: Bool
 
     private let now: Date
 
@@ -348,198 +343,292 @@ struct OutsideActivitySheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                // One row per kind of workout rather than a menu, so the choice is one tap and its name
-                // never truncates at the larger text sizes.
-                if let existing, existing.isCustomWorkout {
-                    // A played Custom Workout keeps what it was: only its time and length can change.
-                    Section {
-                        Label(existing.label, systemImage: OutsideActivityCopy.systemImage(of: existing))
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    } header: {
-                        Text("Activity")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    } footer: {
-                        Text(OutsideActivityCopy.customWorkoutEffect(group: existing.customWorkoutGroup))
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } else {
-                    Section {
-                        ForEach(OutsideActivityType.allCases) { option in
-                            typeRow(option)
-                        }
-                    } header: {
-                        Text("Activity")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    } footer: {
-                        Text(OutsideActivityCopy.effect(of: type))
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
+                    activitySection
+                    fieldRows
 
-                Section {
-                    DatePicker("When", selection: $date, in: earliestDate...now, displayedComponents: [.date, .hourAndMinute])
-                        .font(Theme.Typography.body)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    Stepper(value: $durationMinutes, in: 5...OutsideActivity.maxDurationMinutes, step: 5) {
-                        labeledValue("Duration") {
-                            Text("\(durationMinutes) min")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Duration")
-                    .accessibilityValue(CountWording.phrase(durationMinutes, singular: "minute", plural: "minutes"))
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment: durationMinutes = min(OutsideActivity.maxDurationMinutes, durationMinutes + 5)
-                        case .decrement: durationMinutes = max(5, durationMinutes - 5)
-                        @unknown default: break
-                        }
-                    }
-                    if type.hasDistance && existing?.isCustomWorkout != true {
-                        labeledValue("Distance") {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                TextField("Optional", text: $distanceText)
-                                    .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
-                                    .font(Theme.Typography.body)
-                                    .accessibilityLabel("Distance in \(DistanceFormatting.unit == .kilometers ? "kilometers" : "miles"), optional")
-                                Text(DistanceFormatting.unitSymbol)
-                                    .font(Theme.Typography.body)
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(Theme.Typography.caption)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.footnote)
                             .foregroundStyle(Theme.Colors.danger)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                }
 
-                if existing != nil {
-                    Section {
+                    if existing != nil {
                         Button(role: .destructive) {
                             confirmsDelete = true
                         } label: {
-                            Label(OutsideActivityCopy.delete, systemImage: "trash")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.danger)
-                                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ScaledIcon(icon: .trash, size: 22, relativeTo: .headline)
+                                Text(OutsideActivityCopy.delete)
+                                    .font(Theme.Typography.button)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: Theme.Spacing.buttonHeight)
                         }
+                        .dangerButtonStyle()
                         .disabled(isSaving)
-                    }
-                } else if offersHealthOptIn && !enabledHealth {
-                    Section {
-                        Button {
-                            enabledHealth = true
-                            onEnableHealthSuggestions()
-                        } label: {
-                            Label(OutsideActivityCopy.healthOptInTitle, systemImage: "heart.text.square")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.accent)
-                                .frame(minHeight: Theme.Spacing.minTouchTarget)
-                        }
-                    } footer: {
-                        Text(OutsideActivityCopy.healthOptInDetail)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(OutsideActivityCopy.delete)
+                    } else if offersHealthOptIn && !enabledHealth {
+                        healthOptIn
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xl)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.Colors.surface1)
             .navigationTitle(existing == nil ? OutsideActivityCopy.newTitle : OutsideActivityCopy.editTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.Colors.surface1, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(existing == nil ? OutsideActivityCopy.newTitle : OutsideActivityCopy.editTitle)
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.Colors.text1)
+                        .accessibilityAddTraits(.isHeader)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(OutsideActivityCopy.cancel) { dismiss() }
+                        .font(Theme.Typography.headline.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.text2)
                         .disabled(isSaving)
                 }
+                .plainToolbarItemBackground()
                 ToolbarItem(placement: .confirmationAction) {
                     Button(OutsideActivityCopy.save) { save() }
-                        .fontWeight(.semibold)
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(isSaving || !isDistanceValid ? Theme.Colors.text3 : Theme.Colors.sun)
                         .disabled(isSaving || !isDistanceValid)
                 }
+                .plainToolbarItemBackground()
             }
             .confirmationDialog(OutsideActivityCopy.deleteConfirm, isPresented: $confirmsDelete, titleVisibility: .visible) {
                 Button(OutsideActivityCopy.delete, role: .destructive) { delete() }
                 Button(OutsideActivityCopy.cancel, role: .cancel) {}
             }
         }
+        .sheetSurface()
+        .presentationDragIndicator(.visible)
     }
 
-    /// A row for one kind of workout: its icon, its name and a check when chosen.
-    private func typeRow(_ option: OutsideActivityType) -> some View {
-        Button {
+    // MARK: Activity
+
+    /// The kind of workout: a tile per kind rather than a menu, so the choice is one tap and its name never
+    /// truncates at the larger text sizes. Two columns, one at the accessibility text sizes. A played
+    /// Custom Workout keeps what it was: only its time and length can change.
+    @ViewBuilder
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+            if let existing, existing.isCustomWorkout {
+                HStack(spacing: Theme.Spacing.smd) {
+                    ScaledIcon(icon: OutsideActivityCopy.icon(of: existing), size: 24, relativeTo: .headline)
+                        .foregroundStyle(Theme.Colors.sun)
+                    Text(existing.label)
+                        .font(Theme.Typography.rowName)
+                        .foregroundStyle(Theme.Colors.text1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, Theme.Spacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                .background(Theme.Colors.surface2, in: RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
+                .accessibilityElement(children: .combine)
+                Text(OutsideActivityCopy.customWorkoutEffect(group: existing.customWorkoutGroup))
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                let columns = Array(
+                    repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm, alignment: .top),
+                    count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+                )
+                LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.sm) {
+                    ForEach(OutsideActivityType.allCases) { option in
+                        typeTile(option)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Activity")
+                Text(OutsideActivityCopy.effect(of: type))
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// A tile for one kind of workout: its icon, its name, and a check when chosen - when the tile also
+    /// fills with the `sun` tint inside a 2 pt `sun` outline.
+    private func typeTile(_ option: OutsideActivityType) -> some View {
+        let isSelected = type == option
+        return Button {
             type = option
         } label: {
-            HStack(spacing: Theme.Spacing.md) {
-                // A fixed column, capped like the Profile rows' icons, so every name starts at the same x
-                // and keeps the width it needs at the largest text sizes.
-                Image(systemName: option.systemImage)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(width: iconColumnWidth)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                    .accessibilityHidden(true)
+            HStack(spacing: 10) {
+                ScaledIcon(icon: option.icon, size: 24, relativeTo: .headline)
+                    .foregroundStyle(isSelected ? Theme.Colors.sun : Theme.Colors.text2)
                 Text(option.label)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.chip)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: Theme.Spacing.sm)
-                Image(systemName: "checkmark")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                    .opacity(type == option ? 1 : 0)
-                    .accessibilityHidden(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if isSelected {
+                    ScaledIcon(icon: .check, size: 18, relativeTo: .headline)
+                        .foregroundStyle(Theme.Colors.sun)
+                }
             }
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 14)
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            .animation(.easeOut(duration: 0.12)) {
+                $0.background(isSelected ? Theme.Colors.sunTint : Theme.Colors.surface2,
+                              in: RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius)
+                            .strokeBorder(isSelected ? Theme.Colors.sun : .clear, lineWidth: 2)
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Spacing.inputCornerRadius))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(option.label)
-        .accessibilityAddTraits(type == option ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
-    /// A field's name and its value side by side, or stacked at the accessibility text sizes so neither
-    /// is squeezed.
+    // MARK: Fields
+
+    /// When, Duration and (for a workout with a distance) Distance, as rows split by 1 pt separators.
+    private var fieldRows: some View {
+        VStack(spacing: 0) {
+            fieldRow("When") {
+                DatePicker("When", selection: $date, in: earliestDate...now, displayedComponents: [.date, .hourAndMinute])
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .tint(Theme.Colors.sun)
+                    .font(Theme.Typography.chip)
+            }
+            GroupSeparator()
+            durationRow
+            if type.hasDistance && existing?.isCustomWorkout != true {
+                GroupSeparator()
+                fieldRow("Distance") {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        TextField("Optional", text: $distanceText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
+                            .focused($distanceFocused)
+                            .themeInputField(isFocused: distanceFocused)
+                            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 140)
+                            .accessibilityLabel("Distance in \(DistanceFormatting.unit == .kilometers ? "kilometers" : "miles"), optional")
+                        Text(DistanceFormatting.unitSymbol)
+                            .font(Theme.Typography.calloutMedium)
+                            .foregroundStyle(Theme.Colors.text2)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The duration, in 5-minute steps, as one adjustable VoiceOver element - "Duration, 30 minutes",
+    /// swipe up or down to change it - with two 44 pt step buttons for touch.
+    private var durationRow: some View {
+        fieldRow("Duration") {
+            HStack(spacing: Theme.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(durationMinutes)")
+                        .font(Theme.Typography.stepperValue)
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.Colors.text1)
+                    Text("min")
+                        .font(Theme.Typography.calloutMedium)
+                        .foregroundStyle(Theme.Colors.text2)
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.trailing, Theme.Spacing.sm)
+                stepButton(.minus, enabled: durationMinutes > 5) {
+                    durationMinutes = max(5, durationMinutes - 5)
+                }
+                stepButton(.plus, enabled: durationMinutes < OutsideActivity.maxDurationMinutes) {
+                    durationMinutes = min(OutsideActivity.maxDurationMinutes, durationMinutes + 5)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Duration")
+        .accessibilityValue(CountWording.phrase(durationMinutes, singular: "minute", plural: "minutes"))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: durationMinutes = min(OutsideActivity.maxDurationMinutes, durationMinutes + 5)
+            case .decrement: durationMinutes = max(5, durationMinutes - 5)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func stepButton(_ icon: AppIcon, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            IconView(icon: icon, size: 22)
+                .foregroundStyle(Theme.Colors.text1)
+                .frame(width: Theme.Spacing.minTouchTarget, height: Theme.Spacing.minTouchTarget)
+                .background(Theme.Colors.surface2, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+    }
+
+    /// A field's name and its control side by side, at least 60 pt tall, or stacked at the accessibility
+    /// text sizes so neither is squeezed.
     @ViewBuilder
-    private func labeledValue<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                value()
+    private func fieldRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+        layout {
+            Text(title)
+                .font(Theme.Typography.rowName)
+                .foregroundStyle(Theme.Colors.text1)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? nil : .infinity, alignment: .leading)
+            value()
+        }
+        .padding(.vertical, Theme.Spacing.sm)
+        .frame(maxWidth: .infinity, minHeight: Theme.Spacing.rowHeight, alignment: .leading)
+    }
+
+    // MARK: Apple Health
+
+    private var healthOptIn: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Button {
+                enabledHealth = true
+                onEnableHealthSuggestions()
+            } label: {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ScaledIcon(icon: .health, size: 22, relativeTo: .headline)
+                    Text(OutsideActivityCopy.healthOptInTitle)
+                        .font(Theme.Typography.button)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 52)
             }
-        } else {
-            HStack {
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: Theme.Spacing.sm)
-                value()
-            }
+            .secondaryButtonStyle()
+            .accessibilityLabel(OutsideActivityCopy.healthOptInTitle)
+            Text(OutsideActivityCopy.healthOptInDetail)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -592,6 +681,19 @@ struct OutsideActivitySheet: View {
             let deleted = await onDelete(existing)
             isSaving = false
             if deleted { dismiss() }
+        }
+    }
+}
+
+private extension ToolbarItem {
+    /// The sheet's Cancel and Save as plain text (`screens/T14-Log-Outside-Activity.html`), without the
+    /// glass capsule iOS 26 puts behind a toolbar item.
+    @ToolbarContentBuilder
+    func plainToolbarItemBackground() -> some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
         }
     }
 }

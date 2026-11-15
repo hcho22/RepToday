@@ -52,30 +52,40 @@ struct OnboardingView: View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
 
-            VStack(spacing: Theme.Spacing.lg) {
+            VStack(spacing: 0) {
                 progressBar
+                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.bottom, Theme.Spacing.mlg)
 
-                ScrollView {
-                    stepContent
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.top, Theme.Spacing.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // The step fills at least the screen's height, so a step can push its last lines (the
+                // Welcome step's disclosure) down to the bottom and still scroll when the text is large.
+                GeometryReader { viewport in
+                    ScrollView {
+                        stepContent
+                            .padding(.horizontal, Theme.Spacing.screenMargin)
+                            .padding(.top, Theme.Spacing.smd)
+                            .padding(.bottom, Theme.Spacing.mlg)
+                            .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
                 }
 
                 // The sign-in panel explains its own outcome on the last step.
                 if let errorMessage = viewModel.errorMessage, viewModel.step != .saveYourPlan {
                     Text(errorMessage)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.danger)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.Spacing.lg)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Theme.Spacing.screenMargin)
+                        .padding(.bottom, Theme.Spacing.sm)
                 }
 
                 navigationControls
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, Theme.Spacing.md)
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+                    .padding(.top, 10)
+                    .padding(.bottom, Theme.Spacing.sm)
             }
-            .padding(.top, Theme.Spacing.md)
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.step)
         .onAppear {
@@ -88,17 +98,18 @@ struct OnboardingView: View {
 
     // MARK: - Progress
 
+    /// One 6 pt segment per step, filled `sun` up to and including this one, on `surface3`.
     private var progressBar: some View {
-        HStack(spacing: Theme.Spacing.xs) {
+        HStack(spacing: 5) {
             ForEach(viewModel.progressSteps) { step in
                 Capsule()
                     .fill(step.rawValue <= viewModel.step.rawValue
-                          ? Theme.Colors.accent
-                          : Theme.Colors.secondaryBackground)
+                          ? Theme.Colors.sun
+                          : Theme.Colors.surface3)
                     .frame(height: 6)
             }
         }
-        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
         .accessibilityElement()
         .accessibilityLabel("Step \(viewModel.step.rawValue + 1) of \(viewModel.progressSteps.count)")
     }
@@ -127,8 +138,8 @@ struct OnboardingView: View {
     /// sizes, where two half-width buttons would truncate their titles.
     private var navigationControls: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
-            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+            ? AnyLayout(VStackLayout(spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
         return layout {
             if viewModel.step == .saveYourPlan {
                 // Signing in is the only way forward from here, so Back stands alone.
@@ -146,15 +157,17 @@ struct OnboardingView: View {
     @ViewBuilder
     private var backButton: some View {
         if !viewModel.isFirstStep {
+            // Its own width beside the primary action; the full width when it stands alone (Save your
+            // plan) or stacks under it at the accessibility text sizes.
+            let fills = viewModel.step == .saveYourPlan || dynamicTypeSize.isAccessibilitySize
             Button(action: viewModel.goBack) {
                 Text("Back")
                     .font(Theme.Typography.button)
-                    .foregroundStyle(isBusy ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                    .frame(maxWidth: fills ? .infinity : nil)
                     .frame(minHeight: Theme.Spacing.buttonHeight)
             }
-            .buttonStyle(.bordered)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .secondaryButtonStyle()
             .disabled(isBusy)
         }
     }
@@ -173,7 +186,6 @@ struct OnboardingView: View {
             .frame(minHeight: Theme.Spacing.buttonHeight)
         }
         .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
 
@@ -200,19 +212,22 @@ struct OnboardingView: View {
 
 // MARK: - Step scaffold
 
-/// Shared header (title + subtitle) above each step's inputs, so every step reads consistently.
+/// Shared header (title + subtitle) above each step's inputs, so every step reads consistently: the
+/// question in Display M, capped at the accessibility sizes so it wraps rather than overflows, over the
+/// subtitle in `text2`.
 private struct StepHeader: View {
     let title: String
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .cappedDisplayFont(size: 40)
+                .foregroundStyle(Theme.Colors.text1)
+                .fixedSize(horizontal: false, vertical: true)
             Text(subtitle)
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,20 +240,19 @@ private struct WelcomeStep: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            Image(systemName: "figure.run")
-                .font(.system(size: 56, weight: .bold))
-                .foregroundStyle(Theme.Colors.accent)
-                .padding(.top, Theme.Spacing.xl)
-
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "Welcome to Rep Today",
                 subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
             )
 
+            WelcomeTrainerStage()
+
             if viewModel.offersSignInFromWelcome {
                 signInLink
             }
+
+            Spacer(minLength: 0)
 
             // The anonymous-usage-data disclosure (US-T06). It sits on the *first* screen rather
             // than the last because the first event the app emits hangs off app entry (US-T07's
@@ -247,6 +261,7 @@ private struct WelcomeStep: View {
             // model honest rather than merely legal.
             telemetryDisclosure
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     /// Someone who already has an account - back after signing out, or on a new phone - goes straight
@@ -254,11 +269,12 @@ private struct WelcomeStep: View {
     private var signInLink: some View {
         Button(action: viewModel.goToSignIn) {
             (Text("Already have an account? ")
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.text1)
              + Text("Sign in")
-                .foregroundStyle(Theme.Colors.accent)
-                .fontWeight(.semibold))
-                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.sun)
+                .fontWeight(.bold)
+                .underline())
+                .font(Theme.Typography.lead)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
@@ -275,46 +291,91 @@ private struct WelcomeStep: View {
     private var telemetryDisclosure: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("Rep Today collects anonymous usage data to see whether it's working - you can turn that off anytime in Profile, under Settings.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
 
             Link(destination: LegalLinks.privacyPolicy) {
-                Text("Privacy Policy")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                InlineLinkLabel(title: "Privacy Policy")
             }
             .accessibilityLabel("Privacy Policy")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, Theme.Spacing.sm)
     }
 
+}
+
+/// The Welcome step's Trainer stage: both Trainers on one lit `sun` stage - the male Trainer in a reverse
+/// lunge, the female Trainer standing tall - each over its floor glow, with the warm-white outline that
+/// keeps the ink line off the black. Decorative: the words beside it carry the step.
+private struct WelcomeTrainerStage: View {
+    /// The tallest each pose draws; a narrower column fits them down.
+    private static let maxPose: CGFloat = 170
+
+    private static let poses = [
+        TrainerPoseResolver.assetName(exerciseId: "lunge_reverse", trainer: .male, pose: .end),
+        TrainerPoseResolver.assetName(exerciseId: "squat_bodyweight", trainer: .female, pose: .start),
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(Self.maxPose, proxy.size.width / 2)
+            HStack(spacing: 0) {
+                ForEach(Self.poses, id: \.self) { name in
+                    ZStack {
+                        Ellipse()
+                            .fill(EllipticalGradient(
+                                colors: [Theme.Colors.sun.opacity(0.7), Theme.Colors.sun.opacity(0)],
+                                center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
+                            ))
+                            .frame(width: side * 0.9, height: side * 0.13)
+                            .position(x: side / 2, y: side * 0.865)
+                        Image(name)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: side, height: side)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
+                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
+                    }
+                    .frame(width: side, height: side)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .frame(height: Self.maxPose)
+        .frame(maxWidth: .infinity)
+        .background(ExerciseDemoView.stageBackground(.sun), in: RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
+        .padding(.top, Theme.Spacing.xs)
+        .accessibilityHidden(true)
+    }
 }
 
 // MARK: - Basics
 
 private struct BasicsStep: View {
     @Bindable var viewModel: OnboardingViewModel
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(title: "The basics", subtitle: "Just enough to tailor your sessions.")
 
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text("Your name")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                FieldLabel("Your name")
                 TextField("First name", text: $viewModel.displayName)
                     .textFieldStyle(.plain)
-                    .padding(Theme.Spacing.md)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                     .textInputAutocapitalization(.words)
+                    .focused($nameFocused)
+                    .themeInputField(isFocused: nameFocused)
             }
 
             SexPicker(sex: $viewModel.sex)
+
+            VStack(spacing: 0) {
 
             LabeledStepper(
                 label: "Age",
@@ -355,6 +416,7 @@ private struct BasicsStep: View {
                 display: UnitConversion.weightLabel(pounds:),
                 spoken: UnitConversion.weightAccessibilityLabel(pounds:)
             )
+            }
         }
     }
 }
@@ -364,15 +426,8 @@ private struct SexPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Sex")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Picker("Sex", selection: $sex) {
-                ForEach(Sex.allCases) { option in
-                    Text(option.label).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
+            FieldLabel("Sex")
+            ThemeSegmentedPicker(label: "Sex", options: Sex.allCases, selection: $sex, title: \.label)
         }
     }
 }
@@ -401,6 +456,7 @@ private struct LabeledStepper: View {
     /// At an accessibility type size the name, the value, and the buttons no longer share a line
     /// without the value wrapping mid-row, so the row stacks instead of squeezing.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
         Group {
@@ -418,12 +474,14 @@ private struct LabeledStepper: View {
                     name
                     Spacer(minLength: Theme.Spacing.sm)
                     readOut
+                        .padding(.trailing, Theme.Spacing.sm)
                     buttons
                 }
             }
         }
+        .padding(.vertical, Theme.Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: Theme.Spacing.minTouchTarget)
+        .frame(minHeight: Theme.Spacing.rowHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(spoken(value))
@@ -438,30 +496,37 @@ private struct LabeledStepper: View {
 
     private var name: some View {
         Text(label)
-            .font(Theme.Typography.headline)
-            .foregroundStyle(Theme.Colors.textPrimary)
+            .font(Theme.Typography.rowName)
+            .foregroundStyle(Theme.Colors.text1)
     }
 
+    /// The read-out with its numbers in big Bricolage and its units in small Inter ("35 years",
+    /// "5 ft 8 in"), on one baseline.
     private var readOut: some View {
-        Text(display(value))
-            .font(Theme.Typography.body)
-            .foregroundStyle(Theme.Colors.textSecondary)
+        let number = Theme.Typography.stepperValue.font(for: legibilityWeight).monospacedDigit()
+        let unit = Theme.Typography.calloutMedium.font(for: legibilityWeight)
+        let words = display(value).split(separator: " ").map(String.init)
+        return words.enumerated().reduce(Text("")) { text, item in
+            let (index, word) = item
+            let isNumber = word.allSatisfy(\.isNumber)
+            let piece = Text((index == 0 ? "" : " ") + word)
+                .font(isNumber ? number : unit)
+                .foregroundStyle(isNumber ? Theme.Colors.text1 : Theme.Colors.text2)
+            return text + piece
+        }
+        .lineLimit(1)
+        .fixedSize()
     }
 
     private var buttons: some View {
-        HStack(spacing: 0) {
-            StepButton(systemName: "minus", isEnabled: value > range.lowerBound) {
+        HStack(spacing: Theme.Spacing.sm) {
+            StepButton(icon: .minus, isEnabled: value > range.lowerBound) {
                 adjust(by: -step)
             }
-            Divider().frame(height: Theme.Spacing.lg)
-            StepButton(systemName: "plus", isEnabled: value < range.upperBound) {
+            StepButton(icon: .plus, isEnabled: value < range.upperBound) {
                 adjust(by: step)
             }
         }
-        .background(
-            Theme.Colors.surface,
-            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-        )
     }
 
     /// Move the value and clamp it to `range`, so neither the buttons nor the VoiceOver adjustment can
@@ -499,7 +564,7 @@ private struct LabeledStepper: View {
 /// It runs off the style's press state - the same signal that tints the glyph - so the repeat and the
 /// highlight start and stop together, on release, on cancel, and on disappear.
 private struct StepButton: View {
-    let systemName: String
+    let icon: AppIcon
     let isEnabled: Bool
     /// Steps the value, reporting whether it actually moved.
     let action: () -> Bool
@@ -510,12 +575,9 @@ private struct StepButton: View {
         Button {
             repeater.pressReleased(step: action)
         } label: {
-            Image(systemName: systemName)
-                .font(Theme.Typography.headline)
-                // The glyph scales with Dynamic Type like everything else, but only up to the point
-                // where it still fits its 44pt target - past that it drew straight through the
-                // button's own background. The row's text carries the larger sizes; this is chrome.
-                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            // A fixed 22 pt glyph in its 44 pt circle: the row's text carries the larger sizes; this is
+            // chrome, and a glyph that grew would draw past its own background.
+            IconView(icon: icon, size: 22)
         }
         .buttonStyle(
             StepButtonStyle { isPressing in
@@ -532,7 +594,7 @@ private struct StepButton: View {
     }
 }
 
-/// A step button's chrome: a 44pt square whose glyph tints while the finger is down.
+/// A step button's chrome: a 44pt `surface2` circle whose glyph tints while the finger is down.
 ///
 /// The press state is the platform's own - true while the finger is down on the button, false the
 /// moment it lifts, drags off, or the enclosing scroll view takes the press over - so one signal
@@ -568,7 +630,9 @@ private struct StepButtonStyle: ButtonStyle {
                     width: Theme.Spacing.minTouchTarget,
                     height: Theme.Spacing.minTouchTarget
                 )
-                .contentShape(Rectangle())
+                .background(Theme.Colors.surface2, in: Circle())
+                .opacity(isEnabled ? 1 : 0.4)
+                .contentShape(Circle())
                 .animation(pressAnimation, value: configuration.isPressed)
                 .onChange(of: configuration.isPressed) { _, isPressing in
                     onPressingChanged(isPressing)
@@ -576,8 +640,8 @@ private struct StepButtonStyle: ButtonStyle {
         }
 
         private var tint: Color {
-            guard isEnabled else { return Theme.Colors.textSecondary }
-            return configuration.isPressed ? Theme.Colors.accent : Theme.Colors.textPrimary
+            guard isEnabled else { return Theme.Colors.text2 }
+            return configuration.isPressed ? Theme.Colors.sun : Theme.Colors.text1
         }
 
         private var pressAnimation: Animation? {
@@ -597,13 +661,13 @@ private struct FitnessLevelStep: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "How active are you?",
                 subtitle: "We start you at a gentle, winnable level and let your sessions earn their way up."
             )
 
-            VStack(spacing: Theme.Spacing.md) {
+            VStack(spacing: 10) {
                 ForEach(FitnessLevel.allCases) { level in
                     SelectableCard(
                         title: level.label,
@@ -624,7 +688,7 @@ private struct FocusAreasStep: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: FocusAreasCopy.onboardingTitle,
                 subtitle: FocusAreasCopy.onboardingSubtitle
@@ -639,9 +703,10 @@ private struct FocusAreasStep: View {
 
 private struct WhyStep: View {
     @Bindable var viewModel: OnboardingViewModel
+    @FocusState private var whyFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "What's your why?",
                 subtitle: "One line, in your words. It reminds you why you showed up. (Optional.)"
@@ -650,12 +715,21 @@ private struct WhyStep: View {
             TextField(
                 "e.g. get on the floor with my grandkids",
                 text: $viewModel.whyStatement,
+                prompt: Text("e.g. get on the floor with my grandkids").foregroundStyle(Theme.Colors.text3),
                 axis: .vertical
             )
             .lineLimit(3, reservesSpace: true)
-            .padding(Theme.Spacing.md)
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .focused($whyFocused)
+            .font(Theme.Typography.input)
+            .foregroundStyle(Theme.Colors.text1)
+            .tint(Theme.Colors.sun)
+            .padding(18)
+            .frame(minHeight: 140, alignment: .topLeading)
+            .background(Theme.Colors.surface2, in: RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Spacing.tileCornerRadius)
+                    .strokeBorder(whyFocused ? Theme.Colors.sun : .clear, lineWidth: 2)
+            )
         }
     }
 }
@@ -666,7 +740,7 @@ private struct LifestyleStep: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "A couple of specifics",
                 subtitle: "So we keep every session safe and useful for your day."
@@ -676,24 +750,31 @@ private struct LifestyleStep: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("I sit 6+ hours most days")
                         .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .foregroundStyle(Theme.Colors.text1)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("We'll lean your warm-ups and cooldowns toward hip and posture stretches.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .font(Theme.Typography.callout)
+                        .foregroundStyle(Theme.Colors.text2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .tint(Theme.Colors.accent)
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            .toggleStyle(ThemeToggleStyle())
+            .padding(18)
+            .frame(minHeight: Theme.Spacing.rowHeight)
+            .cardSurface()
 
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("Anything we should work around?")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.cardTitle)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("Select any areas to protect. (Optional.)")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 ChipFlow(options: InjuryOption.allCases, selection: $viewModel.selectedInjuries)
+                    .padding(.top, Theme.Spacing.sm)
             }
         }
     }
@@ -707,15 +788,15 @@ private struct DurationStep: View {
     private let options = DefaultDurationLearning.chipValues
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "How long do you usually have?",
                 subtitle: "This is just your starting point - your sessions learn what you actually finish."
             )
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 88), spacing: Theme.Spacing.md)],
-                spacing: Theme.Spacing.md
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                spacing: 10
             ) {
                 ForEach(options, id: \.self) { minutes in
                     DurationChip(
@@ -738,7 +819,7 @@ private struct SaveYourPlanStep: View {
     let signIn: AccountSignInViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
             StepHeader(
                 title: "Save your plan",
                 subtitle: "Sign in to keep your plan and every session you finish, on this phone and the next. Rep Today still works offline - it saves to your account whenever you're connected."
@@ -748,14 +829,11 @@ private struct SaveYourPlanStep: View {
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("Already have an account? Sign in and your plan comes back.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .font(Theme.Typography.fieldLabel.weight(.regular))
+                    .foregroundStyle(Theme.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
                 Link(destination: LegalLinks.privacyPolicy) {
-                    Text("Privacy Policy")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.accent)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                    InlineLinkLabel(title: "Privacy Policy", font: Theme.Typography.fieldLabel)
                 }
                 .accessibilityLabel("Privacy Policy")
             }
@@ -770,19 +848,27 @@ private struct DurationChip: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: Theme.Spacing.xs) {
+            VStack(spacing: 0) {
                 Text("\(minutes)")
-                    .font(Theme.Typography.title)
+                    .cappedDisplayFont(Theme.Typography.FontName.displaySmall, size: 40, relativeTo: .title1)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text("min")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.unitLabel)
+                    .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.text2)
             }
+            .padding(.vertical, Theme.Spacing.sm)
             .frame(maxWidth: .infinity)
-            .frame(height: 72)
-            .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
-            .background(
-                isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
-                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-            )
+            .frame(minHeight: 92)
+            .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.text1)
+            .animation(.easeOut(duration: 0.12)) {
+                $0.background(
+                    isSelected ? Theme.Colors.sun : Theme.Colors.surface1,
+                    in: RoundedRectangle(cornerRadius: 22)
+                )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 22))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(minutes) minutes")
@@ -792,7 +878,7 @@ private struct DurationChip: View {
 
 // MARK: - Shared components
 
-/// A tappable card used for single-select choices (fitness level), styled per `Theme`.
+/// A tappable option card for single-select choices (fitness level): DESIGN's option card.
 private struct SelectableCard: View {
     let title: String
     let subtitle: String
@@ -801,62 +887,29 @@ private struct SelectableCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(title)
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                    Text(subtitle)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? Theme.Colors.accent : Theme.Colors.textSecondary)
-            }
-            .padding(Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                    .stroke(isSelected ? Theme.Colors.accent : .clear, lineWidth: 2)
-            )
+            OptionCard(title: title, detail: subtitle, isSelected: isSelected)
+                .multilineTextAlignment(.leading)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
-/// A wrapping row of multi-select injury chips.
+/// A wrapping row of multi-select injury chips, filled `sun` when chosen.
 private struct ChipFlow: View {
     let options: [InjuryOption]
     @Binding var selection: Set<InjuryOption>
 
     var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 100), spacing: Theme.Spacing.sm)],
-            alignment: .leading,
-            spacing: Theme.Spacing.sm
-        ) {
+        FlowLayout(spacing: Theme.Spacing.sm, lineSpacing: Theme.Spacing.sm) {
             ForEach(options) { option in
                 let isSelected = selection.contains(option)
                 Button {
                     if isSelected { selection.remove(option) } else { selection.insert(option) }
                 } label: {
                     Text(option.label)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
-                        .background(
-                            isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
-                            in: Capsule()
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChipButtonStyle(isSelected: isSelected))
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }

@@ -38,18 +38,6 @@ enum OutsideActivityType: String, Codable, CaseIterable, Identifiable, Hashable 
         }
     }
 
-    var systemImage: String {
-        switch self {
-        case .run: return "figure.run"
-        case .bike: return "figure.outdoor.cycle"
-        case .hike: return "figure.hiking"
-        case .swim: return "figure.pool.swim"
-        case .row: return "figure.rower"
-        case .climb: return "figure.climbing"
-        case .other: return "figure.mixed.cardio"
-        }
-    }
-
     /// Whether a distance means anything for this kind of workout.
     var hasDistance: Bool {
         switch self {
