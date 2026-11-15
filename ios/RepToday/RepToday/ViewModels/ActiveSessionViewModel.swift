@@ -97,7 +97,7 @@ final class ActiveSessionViewModel {
 
     /// One playable position in the session: a single prescribed exercise, tagged with the block it
     /// belongs to and its 1-based position across the whole session (for "3 of 8" progress copy).
-    struct Step: Identifiable {
+    struct Step: Identifiable, SessionBlockMember {
         /// Mirrors the prescription's id, so the step is stable across regenerations.
         let id: UUID
         let blockTitle: String
@@ -1463,23 +1463,14 @@ final class ActiveSessionViewModel {
         guard steps.indices.contains(index) else {
             return BlockSpan(range: index...index, isCircuit: false, roundCount: 1)
         }
-        let title = steps[index].blockTitle
-        let category = steps[index].blockCategory
-        var lower = index
-        while lower - 1 >= 0, steps[lower - 1].blockTitle == title, steps[lower - 1].blockCategory == category {
-            lower -= 1
-        }
-        var upper = index
-        while upper + 1 < steps.count, steps[upper + 1].blockTitle == title, steps[upper + 1].blockCategory == category {
-            upper += 1
-        }
-        let circuit = SessionAssembly.isCircuit(category)
+        let range = steps.blockRange(containing: index)
+        let circuit = SessionAssembly.isCircuit(steps[index].blockCategory)
         // M is the block's uniform set count (US-CC03 guarantees uniformity across a real training
         // block); taking the max keeps "Round N of M" well-defined and the rotation total-preserving
         // even on a hand-built non-uniform block, where a station simply drops out of the rounds beyond
         // its own set count.
-        let rounds = circuit ? ((lower...upper).map { steps[$0].prescription.sets }.max() ?? 1) : 1
-        return BlockSpan(range: lower...upper, isCircuit: circuit, roundCount: rounds)
+        let rounds = circuit ? (range.map { steps[$0].prescription.sets }.max() ?? 1) : 1
+        return BlockSpan(range: range, isCircuit: circuit, roundCount: rounds)
     }
 
     /// The next play position after the set at (`index`, `set`), and the rest gap that precedes it, or

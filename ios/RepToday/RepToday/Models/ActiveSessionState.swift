@@ -139,15 +139,9 @@ extension ActiveSessionState {
         let set = max(currentSet, 1)
         let done: Int
         if SessionAssembly.isCircuit(current.blockCategory) {
-            func inBlock(_ index: Int) -> Bool {
-                slots[index].blockTitle == current.blockTitle && slots[index].blockCategory == current.blockCategory
-            }
-            var lower = currentStepIndex
-            while lower > 0, inBlock(lower - 1) { lower -= 1 }
-            var upper = currentStepIndex
-            while upper + 1 < slots.count, inBlock(upper + 1) { upper += 1 }
-            let before = slots[..<lower].reduce(0) { $0 + $1.prescription.sets }
-            let within = (lower...upper).reduce(0) { sum, index in
+            let block = slots.blockRange(containing: currentStepIndex)
+            let before = slots[..<block.lowerBound].reduce(0) { $0 + $1.prescription.sets }
+            let within = block.reduce(0) { sum, index in
                 let sets = slots[index].prescription.sets
                 return sum + min(sets, set - 1) + (index < currentStepIndex && sets >= set ? 1 : 0)
             }
@@ -156,5 +150,30 @@ extension ActiveSessionState {
             done = slots[..<currentStepIndex].reduce(0) { $0 + $1.prescription.sets } + set - 1
         }
         return Double(min(done, total)) / Double(total)
+    }
+}
+
+extension ActiveSessionState.Slot: SessionBlockMember {}
+
+/// A place in a session's lineup that knows which block it was generated in.
+protocol SessionBlockMember {
+    var blockTitle: String { get }
+    var blockCategory: ExerciseCategory { get }
+}
+
+extension Array where Element: SessionBlockMember {
+    /// The contiguous block holding `index`: the consecutive members sharing its block title and
+    /// category. The one block rule the player's circuit walk and the resume card's progress both read.
+    func blockRange(containing index: Int) -> ClosedRange<Int> {
+        let title = self[index].blockTitle
+        let category = self[index].blockCategory
+        func inBlock(_ position: Int) -> Bool {
+            self[position].blockTitle == title && self[position].blockCategory == category
+        }
+        var lower = index
+        while lower > 0, inBlock(lower - 1) { lower -= 1 }
+        var upper = index
+        while upper + 1 < count, inBlock(upper + 1) { upper += 1 }
+        return lower...upper
     }
 }

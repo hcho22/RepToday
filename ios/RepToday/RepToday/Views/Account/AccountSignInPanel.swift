@@ -129,7 +129,7 @@ struct AccountSignInPanel: View {
                 .foregroundStyle(Theme.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
             CodeBoxes(code: viewModel.code, isFocused: focusedField == .code) {
-                TextField("Code", text: $viewModel.code)
+                TextField("Code", text: $viewModel.code, prompt: Text(""))
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .focused($focusedField, equals: .code)
