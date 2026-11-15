@@ -93,8 +93,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     /// The controls are measured at the width SwiftUI actually draws their titles - the quiet actions'
     /// type and the rest screen's button type, with Bold Text off and on - so the row-or-column choice
-    /// and each column's minimum match what is on screen. Bold Text leaves the bundled cuts unchanged, so
-    /// both weights draw, and measure, the same.
+    /// and each column's minimum account for the heavier cut Bold Text draws.
     func testMeasurementMatchesWhatSwiftUIDraws() {
         let text = "Skip rest Complete"
         for size in sizes {
@@ -107,9 +106,9 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style) \(weight): measured narrower than drawn")
                     XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style) \(weight): measured wider than drawn")
                 }
-                XCTAssertEqual(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
-                               ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
-                               "\(size) \(style): Bold Text leaves the bundled cut's width unchanged")
+                XCTAssertGreaterThan(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
+                                     ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
+                                     "\(size) \(style): Bold Text measures no wider than regular")
             }
         }
     }

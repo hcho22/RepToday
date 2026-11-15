@@ -495,8 +495,8 @@ struct ActiveSessionView: View {
     }
 
     /// The movement name and target on a short screen (DESIGN `Z1-Exercise-375`).
-    private static let compactNameFont = Font.custom(Theme.Typography.FontName.display, size: 28, relativeTo: .largeTitle)
-    private static let compactTargetFont = Font.custom(Theme.Typography.FontName.display, size: 24, relativeTo: .title)
+    private static let compactNameFont = ThemeFont(Theme.Typography.FontName.display, size: 28, relativeTo: .largeTitle)
+    private static let compactTargetFont = ThemeFont(Theme.Typography.FontName.display, size: 24, relativeTo: .title)
 
     /// The column's gap between its pieces, and above the first: full, and tight on a short screen.
     private static let columnRhythm = Theme.Spacing.smd
@@ -536,35 +536,18 @@ struct ActiveSessionView: View {
     }
 
     /// The movement name (Bricolage 34, 28 on a short screen) with its target (30, 24 on a short screen)
-    /// in the session's color on the same baseline, the target dropping below the name when the two no
-    /// longer fit on one line.
+    /// in the session's color on the same baseline (`MovementTitleRow`).
     private func exerciseHeadline(_ step: ActiveSessionViewModel.Step) -> some View {
-        let nameSize: CGFloat = isCompactColumn ? 28 : 34
-        let name = Text(step.prescription.exercise.displayName)
-            .font(isCompactColumn ? Self.compactNameFont : Theme.Typography.largeTitle)
-            .tracking(Theme.Typography.displayTracking * nameSize)
-            .foregroundStyle(Theme.Colors.textPrimary)
-        // The per-side targets are the longest strings this line renders; letting it wrap keeps
-        // "3 × 0:30 per side" whole at the largest Dynamic Type sizes rather than truncating away the
-        // part that says how much work the set actually is.
-        let target = Text(Self.targetText(step.prescription))
-            .font(isCompactColumn ? Self.compactTargetFont : Theme.Typography.target)
-            .monospacedDigit()
-            .foregroundStyle(tone.color)
-        return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.smd) {
-                name.fixedSize()
-                Spacer(minLength: 0)
-                target.fixedSize()
-            }
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                // A long movement name must wrap at the largest Dynamic Type sizes rather than
-                // truncate away the end of the name (US-CC14, AC3).
-                name.fixedSize(horizontal: false, vertical: true)
-                target.fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // The per-side targets are the longest strings this line renders; the row wraps them rather than
+        // truncating away the part that says how much work the set actually is.
+        MovementTitleRow(
+            name: step.prescription.exercise.displayName,
+            target: Self.targetText(step.prescription),
+            nameFont: isCompactColumn ? Self.compactNameFont : Theme.Typography.largeTitle,
+            targetFont: isCompactColumn ? Self.compactTargetFont : Theme.Typography.target,
+            targetColor: tone.color,
+            width: playerWidth - 2 * Theme.Spacing.screenMargin
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
     }
@@ -750,27 +733,20 @@ struct ActiveSessionView: View {
         /// The rest screen's buttons (+15s, Skip rest): Inter Bold 20.
         case sessionSecondaryButton
 
-        /// The bundled cut, its size and the text style it scales with.
-        var font: (name: String, size: CGFloat, style: UIFont.TextStyle) {
+        /// The type token the style draws in.
+        var font: ThemeFont {
             switch self {
-            case .quietAction: return (Theme.Typography.FontName.textSemiBold, 13, .footnote)
-            case .sessionSecondaryButton: return (Theme.Typography.FontName.textBold, 20, .headline)
+            case .quietAction: return Theme.Typography.quietAction
+            case .sessionSecondaryButton: return Theme.Typography.sessionSecondaryButton
             }
         }
     }
 
-    /// The width `text` takes on one line in Theme's type for `style` at `size` - the measurement behind
-    /// the player's and the rest screen's choice between side-by-side and stacked controls.
-    ///
-    /// It draws the way SwiftUI draws a `Font.custom(_:size:relativeTo:)`: the size scaled for the text
-    /// style and rounded to a whole point. Bold Text does not change a bundled cut, so `weight` does not
-    /// change the width; it stays in the signature so callers pass what the screen is drawn with.
+    /// The width `text` takes on one line in Theme's type for `style` at `size`, in the heavier cut when
+    /// `weight` is Bold Text (`ThemeFont.width(of:size:weight:)`) - the measurement behind the player's
+    /// and the rest screen's choice between side-by-side and stacked controls.
     static func textWidth(_ text: String, style: MeasuredStyle, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
-        let spec = style.font
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
-        let pointSize = UIFontMetrics(forTextStyle: spec.style).scaledValue(for: spec.size, compatibleWith: traits).rounded()
-        let font = UIFont(name: spec.name, size: pointSize) ?? .systemFont(ofSize: pointSize)
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        style.font.width(of: text, size: size, weight: weight)
     }
 
     /// The secondary row's controls, laid side by side in the pinned controls or stacked in the column.
@@ -1170,11 +1146,11 @@ struct ActiveSessionView: View {
     }
 
     /// The completion screen's type (DESIGN `X20-Complete`, `Z1-Complete-375`).
-    private static let completionSubtitleFont = Font.custom(Theme.Typography.FontName.textMedium, size: 19, relativeTo: .body)
-    private static let completionHeaderFont = Font.custom(Theme.Typography.FontName.textBold, size: 18, relativeTo: .headline)
-    private static let statFont = Font.custom(Theme.Typography.FontName.displayLarge, size: 64, relativeTo: .largeTitle)
-    private static let narrowStatFont = Font.custom(Theme.Typography.FontName.display, size: 48, relativeTo: .largeTitle)
-    private static let statUnitFont = Font.custom(Theme.Typography.FontName.textSemiBold, size: 14, relativeTo: .footnote)
+    private static let completionSubtitleFont = ThemeFont(Theme.Typography.FontName.textMedium, size: 19, relativeTo: .body)
+    private static let completionHeaderFont = ThemeFont(Theme.Typography.FontName.textBold, size: 18, relativeTo: .headline)
+    private static let statFont = ThemeFont(Theme.Typography.FontName.displayLarge, size: 64, relativeTo: .largeTitle)
+    private static let narrowStatFont = ThemeFont(Theme.Typography.FontName.display, size: 48, relativeTo: .largeTitle)
+    private static let statUnitFont = ThemeFont(Theme.Typography.FontName.textSemiBold, size: 14, relativeTo: .footnote)
 
     /// Whether the completion screen is laid out on a narrow phone (375 pt), where its numbers step down.
     private var isNarrowCompletion: Bool { completionWidth < 390 }
@@ -1657,10 +1633,9 @@ private struct RestView: View {
     /// Inside a training-block circuit the rest paces toward a round ("Round N of M", US-CC02); a linear
     /// bookend paces toward the exercise's next set.
     ///
-    /// A between-station **transition beat** (US-CC04) gets its own prominent treatment (US-CC11): since
-    /// there is no spoken "next up", the overline reads "NEXT" and the movement name takes the session's
-    /// color so the visual cue reads at a glance. A between-round rest and a plain bookend rest keep "NEXT
-    /// UP" and a white name; a switch-sides beat names the owed side instead.
+    /// A between-station **transition beat** (US-CC04) keeps its own cue (US-CC11): its overline reads
+    /// "NEXT" where a between-round rest and a plain bookend rest read "NEXT UP", and VoiceOver announces
+    /// it as "Next: <exercise>"; a switch-sides beat names the owed side instead.
     @ViewBuilder
     private var nextUp: some View {
         if let step = viewModel.currentStep {
@@ -1680,30 +1655,19 @@ private struct RestView: View {
                 return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
             }()
             let heading = transition ? "Next" : (switching ? "Same stretch" : "Next up")
-            let nameText = Text(name)
-                .font(Theme.Typography.largeTitle)
-                .tracking(Theme.Typography.displayTracking * 34)
-                .foregroundStyle(transition ? tone.color : Theme.Colors.textPrimary)
-            let target = Text(ActiveSessionView.targetText(step.prescription))
-                .font(Theme.Typography.target)
-                .monospacedDigit()
-                .foregroundStyle(tone.color)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("\(heading) · \(progressText)".uppercased())
                     .overlineStyle()
                     .foregroundStyle(tone.color)
                     .fixedSize(horizontal: false, vertical: true)
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.smd) {
-                        nameText.fixedSize()
-                        Spacer(minLength: 0)
-                        target.fixedSize()
-                    }
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        nameText.fixedSize(horizontal: false, vertical: true)
-                        target.fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                MovementTitleRow(
+                    name: name,
+                    target: ActiveSessionView.targetText(step.prescription),
+                    nameFont: Theme.Typography.largeTitle,
+                    targetFont: Theme.Typography.target,
+                    targetColor: tone.color,
+                    width: width - 2 * Theme.Spacing.screenMargin
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .ignore)

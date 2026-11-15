@@ -1529,10 +1529,10 @@ private struct PhaseProgressCard: View {
 /// large text), under it - so the title never wraps into a sliver next to a wrapped note.
 private struct TitleNoteRow: View {
     let title: String
-    let titleFont: Font
+    let titleFont: ThemeFont
     let note: String
     let noteColor: Color
-    var noteFont: Font = Theme.Typography.caption
+    var noteFont: ThemeFont = Theme.Typography.caption
 
     var body: some View {
         ViewThatFits(in: .horizontal) {

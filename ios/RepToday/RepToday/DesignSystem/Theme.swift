@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 import UIKit
 
@@ -115,7 +116,8 @@ enum Theme {
     // MARK: - Typography
 
     /// Font tokens. Bricolage Grotesque (ExtraBold, Bold for values in lists) sets headlines and every
-    /// number; Inter sets reading text. Every style scales with Dynamic Type through `relativeTo:`,
+    /// number; Inter sets reading text. Each token is a `ThemeFont`, applied with `.font(_:)`, which
+    /// draws the heavier cut when Bold Text is on. Every style scales with Dynamic Type through `relativeTo:`,
     /// except the workout timer's numerals, which are already past the largest text style. The files
     /// are bundled under `Resources/Fonts` (see `tools/fonts/README.md`); each optical size of
     /// Bricolage is its own file.
@@ -136,6 +138,19 @@ enum Theme {
             static let textSemiBold = "Inter-SemiBold"
             static let textBold = "Inter-Bold"
             static let textExtraBold = "Inter-ExtraBold"
+
+            /// The cut a style takes when Bold Text is on: Inter one step heavier per DESIGN's weights
+            /// (400 to 600, 500 to 700, 600 and up to 800) and Bricolage Bold to ExtraBold. Display cuts
+            /// already at ExtraBold stay. SwiftUI does not embolden a custom font by itself.
+            static func boldTextCut(of name: String) -> String {
+                switch name {
+                case textRegular: return textSemiBold
+                case textMedium: return textBold
+                case textSemiBold, textBold: return textExtraBold
+                case value: return displaySmall
+                default: return name
+                }
+            }
         }
 
         /// Display styles track tighter by 2% of their size, the timer by 3%; overlines open by 9%.
@@ -146,58 +161,58 @@ enum Theme {
         // MARK: Existing semantic tokens
 
         /// Large screen titles and the session's movement name: Bricolage 34.
-        static let largeTitle = Font.custom(FontName.display, size: 34, relativeTo: .largeTitle)
+        static let largeTitle = ThemeFont(FontName.display, size: 34, relativeTo: .largeTitle)
 
         /// Section and card titles: Bricolage 22 (Title).
-        static let title = Font.custom(FontName.displaySmall, size: 22, relativeTo: .title2)
+        static let title = ThemeFont(FontName.displaySmall, size: 22, relativeTo: .title2)
 
         /// Card and row headings: Inter Bold 17 (Headline).
-        static let headline = Font.custom(FontName.textBold, size: 17, relativeTo: .headline)
+        static let headline = ThemeFont(FontName.textBold, size: 17, relativeTo: .headline)
 
         /// Default body copy: Inter 17 (Body).
-        static let body = Font.custom(FontName.textRegular, size: 17, relativeTo: .body)
+        static let body = ThemeFont(FontName.textRegular, size: 17, relativeTo: .body)
 
         /// Supporting copy: Inter 13 (Footnote).
-        static let caption = Font.custom(FontName.textRegular, size: 13, relativeTo: .footnote)
+        static let caption = ThemeFont(FontName.textRegular, size: 13, relativeTo: .footnote)
 
         /// Text inside buttons: Inter Bold 17.
-        static let button = Font.custom(FontName.textBold, size: 17, relativeTo: .headline)
+        static let button = ThemeFont(FontName.textBold, size: 17, relativeTo: .headline)
 
         // MARK: The full ramp
 
         /// Display XL: the Welcome Page day name.
-        static let displayXL = Font.custom(FontName.displayLarge, size: 84, relativeTo: .largeTitle)
+        static let displayXL = ThemeFont(FontName.displayLarge, size: 84, relativeTo: .largeTitle)
         /// Display L: Today's headline and "You showed up."
-        static let displayL = Font.custom(FontName.display, size: 56, relativeTo: .largeTitle)
+        static let displayL = ThemeFont(FontName.display, size: 56, relativeTo: .largeTitle)
         /// Display M: screen titles and onboarding questions.
-        static let displayM = Font.custom(FontName.display, size: 40, relativeTo: .largeTitle)
+        static let displayM = ThemeFont(FontName.display, size: 40, relativeTo: .largeTitle)
         /// A big number in a card (the session summary's minutes and sets).
-        static let statValue = Font.custom(FontName.display, size: 52, relativeTo: .largeTitle)
+        static let statValue = ThemeFont(FontName.display, size: 52, relativeTo: .largeTitle)
         /// A value in a list or a stepper: Bricolage Bold 22.
-        static let value = Font.custom(FontName.value, size: 22, relativeTo: .title2)
+        static let value = ThemeFont(FontName.value, size: 22, relativeTo: .title2)
         /// Inter 15 (Callout), regular and medium.
-        static let callout = Font.custom(FontName.textRegular, size: 15, relativeTo: .callout)
-        static let calloutMedium = Font.custom(FontName.textMedium, size: 15, relativeTo: .callout)
+        static let callout = ThemeFont(FontName.textRegular, size: 15, relativeTo: .callout)
+        static let calloutMedium = ThemeFont(FontName.textMedium, size: 15, relativeTo: .callout)
         /// Inter SemiBold 15: a secondary line that names state ("Round 1 of 4").
-        static let calloutSemiBold = Font.custom(FontName.textSemiBold, size: 15, relativeTo: .callout)
+        static let calloutSemiBold = ThemeFont(FontName.textSemiBold, size: 15, relativeTo: .callout)
         /// Inter 13 (Footnote).
-        static let footnote = Font.custom(FontName.textRegular, size: 13, relativeTo: .footnote)
+        static let footnote = ThemeFont(FontName.textRegular, size: 13, relativeTo: .footnote)
         /// Overline: Inter Bold 12, set uppercase with `overlineTracking`.
-        static let overline = Font.custom(FontName.textBold, size: 12, relativeTo: .caption)
+        static let overline = ThemeFont(FontName.textBold, size: 12, relativeTo: .caption)
         /// The label inside a filled or outlined pill (the timer's "LAST 3 SECONDS" and "PAUSED").
-        static let pill = Font.custom(FontName.textExtraBold, size: 12, relativeTo: .caption)
+        static let pill = ThemeFont(FontName.textExtraBold, size: 12, relativeTo: .caption)
         /// Chip label: Inter SemiBold 16.
-        static let chip = Font.custom(FontName.textSemiBold, size: 16, relativeTo: .callout)
+        static let chip = ThemeFont(FontName.textSemiBold, size: 16, relativeTo: .callout)
         /// Tab label: Inter SemiBold 11. It stays 11 pt and relies on the large content viewer.
-        static let tabLabel = Font.custom(FontName.textSemiBold, fixedSize: 11)
+        static let tabLabel = ThemeFont(FontName.textSemiBold, fixedSize: 11)
         /// The primary button on a session screen (Done): Inter Bold 22.
-        static let sessionButton = Font.custom(FontName.textBold, size: 22, relativeTo: .headline)
+        static let sessionButton = ThemeFont(FontName.textBold, size: 22, relativeTo: .headline)
         /// The secondary buttons on a session screen (+15s, Skip rest): Inter Bold 20.
-        static let sessionSecondaryButton = Font.custom(FontName.textBold, size: 20, relativeTo: .headline)
+        static let sessionSecondaryButton = ThemeFont(FontName.textBold, size: 20, relativeTo: .headline)
         /// A quiet action's label under its icon (+ More time, Swap, Skip): Inter SemiBold 13.
-        static let quietAction = Font.custom(FontName.textSemiBold, size: 13, relativeTo: .footnote)
+        static let quietAction = ThemeFont(FontName.textSemiBold, size: 13, relativeTo: .footnote)
         /// The target beside a movement name ("4 × 15"): Bricolage 30.
-        static let target = Font.custom(FontName.display, size: 30, relativeTo: .title)
+        static let target = ThemeFont(FontName.display, size: 30, relativeTo: .title)
 
         // MARK: Timer
 
@@ -335,6 +350,117 @@ extension EnvironmentValues {
     var dayTone: DayTone {
         get { self[DayToneKey.self] }
         set { self[DayToneKey.self] = newValue }
+    }
+}
+
+// MARK: - Theme fonts
+
+/// One type token: a bundled cut, its size, and the text style it scales with (or a fixed size). Applied
+/// with `.font(_:)`, it reads the environment's legibility weight and draws `boldTextCut(of:)` under Bold
+/// Text, which SwiftUI does not do for a custom font on its own.
+struct ThemeFont: Equatable {
+    let name: String
+    let size: CGFloat
+    /// The text style the size scales with; `nil` for a fixed size.
+    let style: Font.TextStyle?
+
+    init(_ name: String, size: CGFloat, relativeTo style: Font.TextStyle) {
+        self.name = name
+        self.size = size
+        self.style = style
+    }
+
+    init(_ name: String, fixedSize size: CGFloat) {
+        self.name = name
+        self.size = size
+        self.style = nil
+    }
+
+    /// The cut drawn under `legibilityWeight`.
+    func fontName(for legibilityWeight: LegibilityWeight?) -> String {
+        legibilityWeight == .bold ? Theme.Typography.FontName.boldTextCut(of: name) : name
+    }
+
+    /// The font drawn under `legibilityWeight`.
+    func font(for legibilityWeight: LegibilityWeight?) -> Font {
+        let cut = fontName(for: legibilityWeight)
+        guard let style else { return Font.custom(cut, fixedSize: size) }
+        return Font.custom(cut, size: size, relativeTo: style)
+    }
+
+    /// The UIKit text style the size scales with, for measuring outside SwiftUI; `nil` for a fixed size.
+    var uiTextStyle: UIFont.TextStyle? {
+        switch style {
+        case .largeTitle: return .largeTitle
+        case .title: return .title1
+        case .title2: return .title2
+        case .title3: return .title3
+        case .headline: return .headline
+        case .subheadline: return .subheadline
+        case .body: return .body
+        case .callout: return .callout
+        case .footnote: return .footnote
+        case .caption: return .caption1
+        case .caption2: return .caption2
+        case nil: return nil
+        default: return .body
+        }
+    }
+
+    /// The width `text` takes on one line in this token at `size`, drawn the way SwiftUI draws a custom
+    /// font - the size scaled for its text style and rounded to a whole point - in its Bold Text cut when
+    /// `weight` is bold, with `tracking` points between glyphs, and in tabular figures when the text draws
+    /// them. What a layout measures to choose between side-by-side and stacked.
+    func width(of text: String, size: DynamicTypeSize, weight: LegibilityWeight?,
+               tracking: CGFloat = 0, tabularFigures: Bool = false) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+        let pointSize = uiTextStyle.map {
+            UIFontMetrics(forTextStyle: $0).scaledValue(for: self.size, compatibleWith: traits).rounded()
+        } ?? self.size
+        var font = UIFont(name: fontName(for: weight), size: pointSize) ?? .systemFont(ofSize: pointSize)
+        if tabularFigures {
+            let tabular = font.fontDescriptor.addingAttributes([.featureSettings: [[
+                UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+            ]]])
+            font = UIFont(descriptor: tabular, size: pointSize)
+        }
+        // A `.kern` of zero would switch off the font's own pair kerning, so it is set only for tracking.
+        var attributes: [NSAttributedString.Key: Any] = [.font: font]
+        if tracking != 0 { attributes[.kern] = tracking }
+        return ceil((text as NSString).size(withAttributes: attributes).width)
+    }
+
+    /// The same token in Inter's cut for `weight` (regular 400 to heavy 800). A Bricolage token keeps its
+    /// cut: display type is ExtraBold throughout.
+    func weight(_ weight: Font.Weight) -> ThemeFont {
+        guard name.hasPrefix("Inter-") else { return self }
+        let names = Theme.Typography.FontName.self
+        let cut: String
+        switch weight {
+        case .medium: cut = names.textMedium
+        case .semibold: cut = names.textSemiBold
+        case .bold: cut = names.textBold
+        case .heavy, .black: cut = names.textExtraBold
+        default: cut = names.textRegular
+        }
+        return style.map { ThemeFont(cut, size: size, relativeTo: $0) } ?? ThemeFont(cut, fixedSize: size)
+    }
+}
+
+extension View {
+    /// Sets a Theme type token, in its heavier cut when Bold Text is on.
+    func font(_ font: ThemeFont) -> some View {
+        modifier(ThemeFontModifier(font: font))
+    }
+}
+
+private struct ThemeFontModifier: ViewModifier {
+    let font: ThemeFont
+    @Environment(\.legibilityWeight) private var legibilityWeight
+
+    func body(content: Content) -> some View {
+        content.font(font.font(for: legibilityWeight))
     }
 }
 

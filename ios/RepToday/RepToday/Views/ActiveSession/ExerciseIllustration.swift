@@ -40,9 +40,10 @@ struct ExerciseDemoView: View {
     @Environment(\.dayTone) private var tone
 
     /// The tallest the exercise card grows in the player: two square poses side by side across the
-    /// widest phone's column. One value for every state, so moving between them shifts nothing below
-    /// the card wherever the column fits; a narrower column or a short screen fits it down.
-    static let height: CGFloat = 200
+    /// widest phone's column, under their label band. One value for every state, so moving between them
+    /// shifts nothing below the card wherever the column fits; a narrower column or a short screen fits
+    /// it down.
+    static let height: CGFloat = 220
 
     /// The smallest a card shrinks to on a short screen, in the player and the rest preview alike.
     static let minHeight: CGFloat = 100
@@ -54,10 +55,10 @@ struct ExerciseDemoView: View {
         min(height, max(room, minHeight))
     }
 
-    /// The height at which two square poses and their gap exactly fill `width`: the stage never draws
-    /// taller than its poses need.
+    /// The height at which two square poses and their gap exactly fill `width`, plus the label band
+    /// above them: the stage never draws taller than its poses need.
     static func naturalHeight(width: CGFloat) -> CGFloat {
-        max(0, (width - ExerciseIllustration.poseSpacing) / 2)
+        max(0, (width - ExerciseIllustration.poseSpacing) / 2) + ExerciseIllustration.labelBand
     }
 
     var body: some View {
@@ -136,11 +137,15 @@ struct ExerciseIllustration: View {
     /// The gap between the two poses of a pair.
     static let poseSpacing: CGFloat = Theme.Spacing.sm
 
+    /// The band above the poses that holds their START / END / HOLD labels, so a label never sits on art
+    /// that reaches the top of its square (a wall, raised arms).
+    static let labelBand: CGFloat = 24
+
     @ViewBuilder
     private func content(_ art: TrainerPoseArt, in size: CGSize) -> some View {
         // One pose's square: half the width (less the gap) or the full height, whichever is smaller -
         // the same for a pair and a single pose, so a single pose is never bigger than a paired one.
-        let side = max(0, min((size.width - Self.poseSpacing) / 2, size.height))
+        let side = max(0, min((size.width - Self.poseSpacing) / 2, size.height - (showsPoseLabels ? Self.labelBand : 0)))
         if isTextOnly {
             Text(prescription.exercise.displayName)
                 .font(Theme.Typography.title)
@@ -174,42 +179,50 @@ struct ExerciseIllustration: View {
     /// One square pose, shown whole (`.fit`, never cropped or stretched). On the stage it sits over a
     /// floor glow - an ellipse across 5-95% of the frame's width and 80-93% of its height, the day's
     /// color at 70% fading to clear, under feet the art places at 87% - with its overline label in the
-    /// frame's empty top-left. A 1 pt warm-white outline (four 1 pt shadows) keeps the ink line off the
-    /// black.
+    /// band above the square, never on the art. A 1 pt warm-white outline (four 1 pt shadows) keeps the
+    /// ink line off the black.
+    @ViewBuilder
     private func pose(_ name: String, side: CGFloat, label: String?) -> some View {
-        ZStack(alignment: .topLeading) {
-            if showsPoseLabels {
-                Ellipse()
-                    .fill(EllipticalGradient(
-                        colors: [tone.color.opacity(0.7), tone.color.opacity(0)],
-                        center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
-                    ))
-                    .frame(width: side * 0.9, height: side * 0.13)
-                    .position(x: side / 2, y: side * 0.865)
-            }
-            Image(name)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(width: side, height: side)
-                .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
-                .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
-                .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
-                .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
-            if showsPoseLabels, let label {
-                // Fixed at 11 pt: the label sits inside the art's square, which does not grow with text.
-                Text(label.uppercased())
-                    .font(Font.custom(Theme.Typography.FontName.textBold, fixedSize: 11))
+        if showsPoseLabels {
+            VStack(alignment: .leading, spacing: 0) {
+                // Fixed at 11 pt: the band does not grow with text.
+                Text((label ?? "").uppercased())
+                    .font(ThemeFont(Theme.Typography.FontName.textBold, fixedSize: 11))
                     .tracking(Theme.Typography.overlineTracking * 11)
                     .foregroundStyle(Theme.Colors.text2)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .padding(.leading, 12)
-                    .padding(.top, 10)
+                    .frame(width: side, height: Self.labelBand, alignment: .bottomLeading)
+                ZStack {
+                    Ellipse()
+                        .fill(EllipticalGradient(
+                            colors: [tone.color.opacity(0.7), tone.color.opacity(0)],
+                            center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
+                        ))
+                        .frame(width: side * 0.9, height: side * 0.13)
+                        .position(x: side / 2, y: side * 0.865)
+                    poseImage(name, side: side)
+                }
+                .frame(width: side, height: side)
             }
+            .accessibilityHidden(true)
+        } else {
+            poseImage(name, side: side)
+                .accessibilityHidden(true)
         }
-        .frame(width: side, height: side)
-        .accessibilityHidden(true)
+    }
+
+    private func poseImage(_ name: String, side: CGFloat) -> some View {
+        Image(name)
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(1, contentMode: .fit)
+            .frame(width: side, height: side)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
     }
 
     /// The no-art fallback: the movement's day mark in the session's color, pulsing gently on an idle

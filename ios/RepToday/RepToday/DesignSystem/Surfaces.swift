@@ -260,7 +260,7 @@ struct ScoreCard: View {
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.md) {
             Text("\(score)")
-                .font(Font.custom(Theme.Typography.FontName.displayLarge, size: 76, relativeTo: .largeTitle))
+                .font(ThemeFont(Theme.Typography.FontName.displayLarge, size: 76, relativeTo: .largeTitle))
                 .monospacedDigit()
                 .foregroundStyle(Theme.Colors.sun)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
