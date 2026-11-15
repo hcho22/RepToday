@@ -7,11 +7,11 @@ import SwiftUI
 /// Every test hosts the **production** `ActiveSessionView` (or `SettingsView`) over real catalog
 /// movements and the real bundled art, at the default phone size (393x852 pt) and the small phone size
 /// (375x667 pt), in dark and light, and:
-/// - asserts the US-TP09 pose labels and the compact ring labels on the live accessibility tree, and
-///   that no element exists per individual pose image;
-/// - asserts the small-phone fit: the compact ring and the round tracker are above the controls, and on
-///   the rest overlay the heading, ring, next-up text, poses and both controls stack without
-///   overlapping, all on screen;
+/// - asserts the US-TP09 pose labels and the timer labels on the live accessibility tree, and that no
+///   element exists per individual pose image;
+/// - asserts the small-phone fit: the round tracker and the workout timer are above the controls, and on
+///   the rest screen the timer, next-up text, poses and both controls stack without overlapping, all on
+///   screen;
 /// - writes a PNG per state, size and appearance under `artifacts/reports/US-TP13/` when run with
 ///   `REPTODAY_WRITE_EVIDENCE=1` (a temporary directory otherwise).
 @MainActor
@@ -152,24 +152,25 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         return scrollView(in: root).map { $0.convert($0.bounds, to: window) }
     }
 
-    /// On every size, the compact ring beside the name and the round tracker below it (its label and
-    /// set dots) sit whole inside the player's scroll area - visible without scrolling, not cut by the
-    /// controls below them.
-    private func assertRingAboveTheFold(prefix: String, primary: String, file: StaticString = #filePath, line: UInt = #line) {
-        guard let ring = frame({ $0.hasPrefix(prefix) }), let control = frame({ $0 == primary }),
+    /// On every size, the round tracker (its label and set dots) and the workout timer below it sit
+    /// whole inside the player's scroll area - visible without scrolling, not cut by the controls below
+    /// them - and the timer is never drawn under the art or the movement name.
+    private func assertTimerAboveTheFold(prefix: String, primary: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let timer = frame({ $0.hasPrefix(prefix) }), let control = frame({ $0 == primary }),
               let tracker = frame({ $0.hasPrefix("Round ") || $0.hasPrefix("Set ") }),
               let visible = visibleScrollArea() else {
-            return XCTFail("missing ring, \(primary), tracker or the scroll area; tree reads \(labels())", file: file, line: line)
+            return XCTFail("missing timer, \(primary), tracker or the scroll area; tree reads \(labels())", file: file, line: line)
         }
-        XCTAssertLessThanOrEqual(ring.maxY, control.minY, "the ring must be visible above the controls", file: file, line: line)
-        XCTAssertLessThanOrEqual(ring.maxY, visible.maxY, "the ring is cut by the bottom of the scroll area", file: file, line: line)
-        XCTAssertLessThanOrEqual(ring.width, CountdownRingSize.compact + 1, "the ring must be the compact one", file: file, line: line)
+        XCTAssertLessThanOrEqual(timer.maxY, control.minY, "the timer must be visible above the controls", file: file, line: line)
+        XCTAssertLessThanOrEqual(timer.maxY, visible.maxY + 0.5, "the timer is cut by the bottom of the scroll area", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(timer.minY, tracker.maxY - 0.5, "the timer sits below the movement and its round tracker", file: file, line: line)
+        XCTAssertGreaterThan(timer.height, TimerSize.minimumHeight, "the timer must be the full workout timer", file: file, line: line)
         XCTAssertLessThanOrEqual(tracker.maxY, visible.maxY + 0.5,
                                  "the round tracker is cut by the bottom of the scroll area", file: file, line: line)
     }
 
-    /// The rest overlay stacks heading, ring, next-up text, poses and both controls without overlap,
-    /// all inside the screen (US-TP08, decision 12).
+    /// The rest screen stacks its timer, next-up text, poses and both controls without overlap, all
+    /// inside the screen (US-TP08, decision 12).
     private func assertRestFits(heading: String, nextUpPrefix: String, posesLabel: String, _ variant: Variant,
                                 file: StaticString = #filePath, line: UInt = #line) {
         let ring = frame { $0.hasPrefix("\(heading), ") }
@@ -180,25 +181,25 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         guard let ring, let next, let poses, let extend, let skip else {
             return XCTFail("rest overlay piece missing; tree reads \(labels())", file: file, line: line)
         }
-        XCTAssertLessThanOrEqual(ring.maxY, next.minY + 0.5, "ring overlaps the next-up text", file: file, line: line)
+        XCTAssertLessThanOrEqual(ring.maxY, next.minY + 0.5, "the timer overlaps the next-up text", file: file, line: line)
         XCTAssertLessThanOrEqual(next.maxY, poses.minY + 0.5, "next-up text overlaps the poses", file: file, line: line)
         XCTAssertLessThanOrEqual(poses.maxY, skip.minY, "poses overlap the controls", file: file, line: line)
         XCTAssertLessThanOrEqual(skip.maxY, variant.size.height, "Skip rest is off screen", file: file, line: line)
         XCTAssertLessThanOrEqual(extend.maxY, variant.size.height, "+15s is off screen", file: file, line: line)
         XCTAssertGreaterThanOrEqual(poses.height, 100, "the poses shrank past legibility", file: file, line: line)
-        print("US-TP13 REST FIT \(variant.suffix): ring \(Int(ring.height))pt, poses card \(Int(poses.height))pt, controls top \(Int(skip.minY))pt")
+        print("US-TP13 REST FIT \(variant.suffix): timer \(Int(ring.height))pt, poses card \(Int(poses.height))pt, controls top \(Int(skip.minY))pt")
     }
 
     // MARK: - Exercise card states (US-TP06/US-TP07/US-TP09)
 
-    /// Rep work window: the female Trainer's pair fills the card; the compact ring sits beside the name.
-    func testRepWorkWindowShowsThePairAndTheCompactRing() throws {
+    /// Rep work window: the female Trainer's pair fills the card; the workout timer sits below the name.
+    func testRepWorkWindowShowsThePairAndTheTimer() throws {
         let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2), try prescription("push_wall", sets: 2)])])
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
             assertPoseLabel("Glute Bridge, trainer showing start and end positions", exerciseName: "Glute Bridge")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
-            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
+            assertTimerAboveTheFold(prefix: "Work window, ", primary: "Done")
             // A roomy phone keeps about 150 pt per pose; a short one shrinks them to fit, only so far.
             if let poses = frame({ $0 == "Glute Bridge, trainer showing start and end positions" }) {
                 XCTAssertGreaterThanOrEqual(poses.height, variant.isSmall ? 100 : 150, "the poses shrank too far")
@@ -207,13 +208,13 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
-    /// At the largest accessibility text size the long name wraps beside the compact ring rather than
-    /// truncating, and the ring stays the compact one.
-    func testLargestDynamicTypeWrapsTheNameBesideTheRing() throws {
+    /// At the largest accessibility text size the long name wraps rather than truncating, and the timer
+    /// stays below it.
+    func testLargestDynamicTypeWrapsTheNameAboveTheTimer() throws {
         let session = workout([("Strength", .strength, [try prescription("hinge_long_lever_bridge", sets: 2)])])
         // The headline sits below the fold at this size on any phone (the controls grow too), exactly as
         // before; the default-size fold is asserted above. Hosted at full content height so the capture
-        // shows the wrapped name beside the ring.
+        // shows the wrapped name above the timer.
         for variant in variants where variant.isSmall {
             let variant = Variant(size: CGSize(width: variant.size.width, height: 1100), style: variant.style)
             host(
@@ -230,15 +231,14 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                   let title = frame({ $0.hasPrefix("Long-Lever Single-Leg Bridge, 2 sets") }) else {
                 return XCTFail("missing ring or title; tree reads \(labels())")
             }
-            XCTAssertLessThanOrEqual(ring.width, CountdownRingSize.compact + 1)
-            XCTAssertLessThanOrEqual(title.maxX, ring.minX, "the name must not run under the ring")
+            XCTAssertGreaterThanOrEqual(ring.minY, title.maxY - 0.5, "the timer must sit below the name, never beside or under it")
             XCTAssertGreaterThan(title.height, 120, "the long name must wrap onto several lines, not truncate")
             try capture("13-largest-dynamic-type-work-window", variant)
         }
     }
 
-    /// A running (auto-started bookend) hold keeps the poses in the card and shows the compact ring.
-    func testRunningHoldKeepsThePosesAndShowsTheCompactRing() throws {
+    /// A running (auto-started bookend) hold keeps the poses in the card and shows the workout timer.
+    func testRunningHoldKeepsThePosesAndShowsTheTimer() throws {
         let session = workout([
             ("Warm-up", .warmup, [try prescription("mobility_deep_squat_hold")]),
             ("Strength", .strength, [try prescription("push_wall")]),
@@ -247,14 +247,15 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             host(ActiveSessionView(workout: session, user: user(sex: .male)), variant)
             assertPoseLabel("Deep Squat Hold, trainer showing start and end positions", exerciseName: "Deep Squat Hold")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
-            assertRingAboveTheFold(prefix: "Hold, ", primary: "Stop hold")
+            assertTimerAboveTheFold(prefix: "Hold, ", primary: "Stop hold")
             try capture("02-running-hold-pair", variant)
         }
     }
 
-    /// A training hold starts on its own (ADR-0010), so it opens with the poses and the compact ring;
-    /// after a deliberate Stop hold it is idle - the poses, no ring, and "Start hold" as the way back.
-    func testIdleTrainingHoldShowsThePosesAndNoRing() throws {
+    /// A training hold starts on its own (ADR-0010), so it opens with the poses and the running timer;
+    /// after a deliberate Stop hold it is idle - the poses, a still timer VoiceOver does not count down,
+    /// and "Start hold" as the way back.
+    func testIdleTrainingHoldShowsThePosesAndNoCountdown() throws {
         let session = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 2)])])
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
@@ -262,14 +263,14 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "the hold starts on its own: \(labels())")
             XCTAssertNil(element { $0.hasPrefix("Start hold") }, "no Start-hold tap is needed")
 
-            // Stopping the hold leaves the poses, drops the ring, and offers Start hold.
+            // Stopping the hold leaves the poses, stops the countdown, and offers Start hold.
             activate("Stop hold")
             XCTAssertTrue(pump(until: { !self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
             XCTAssertNotNil(element { $0.hasPrefix("Start hold") })
             try capture("03-idle-training-hold", variant)
 
-            // Starting it again keeps the poses and brings the compact ring back beside the name.
+            // Starting it again keeps the poses and brings the countdown back.
             activate("Start hold")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
@@ -277,7 +278,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
     }
 
     /// A rep-based warm-up stretch runs on the auto-advancing work window like a training set
-    /// (ADR-0010): the poses, and the compact ring beside the name with Done as the primary control.
+    /// (ADR-0010): the poses, and the workout timer below the name with Done as the primary control.
     func testRepBasedStretchShowsThePosesAndTheWorkWindow() throws {
         let session = workout([
             ("Warm-up", .warmup, [try prescription("mobility_cat_cow")]),
@@ -287,7 +288,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             host(ActiveSessionView(workout: session, user: user(sex: .male)), variant)
             assertPoseLabel("Cat-Cow Flow, trainer showing start and end positions", exerciseName: "Cat-Cow Flow")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "a rep stretch counts down on its own: \(labels())")
-            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
+            assertTimerAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("04-rep-based-stretch", variant)
         }
     }
@@ -327,7 +328,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 XCTAssertEqual(pose.midX, variant.size.width / 2, accuracy: 1, "a single pose is centered")
             }
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
-            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
+            assertTimerAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("05-single-pose", variant)
         }
     }
@@ -341,7 +342,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains("Prone Y-T-W Raises demonstration") }, timeout: 5), "\(labels())")
             XCTAssertFalse(labels().contains { $0.hasPrefix("Prone Y-T-W Raises, trainer showing") })
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
-            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
+            assertTimerAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("06-no-art-fallback", variant)
         }
     }
@@ -361,7 +362,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
     private func foldStates() throws -> [FoldState] {
         let pair = ", trainer showing start and end positions"
         return [
-            // A long name wraps beside the compact ring - the tallest rep headline.
+            // A long name wraps above its target - the tallest rep headline.
             FoldState(
                 name: "rep-work-window-wrapped-name",
                 session: workout([("Strength", .strength, [try prescription("hinge_long_lever_bridge", sets: 4)])]),
@@ -378,7 +379,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 posesLabel: "Kneeling Hip-Flexor Stretch\(pair)",
                 ready: { $0.hasPrefix("Hold, ") }
             ),
-            // A per-side training hold, running on its own (ADR-0010) with its ring and side line.
+            // A per-side training hold, running on its own (ADR-0010) with its timer and side line.
             FoldState(
                 name: "running-per-side-training-hold",
                 session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
@@ -410,11 +411,11 @@ final class TrainerPoseEvidenceTests: XCTestCase {
     }
 
     /// In every player state, the whole round tracker - its "Round N of M" / "Set N of M" label, any
-    /// side line and the row of dots - shows above the controls without scrolling, on the small phone
-    /// as on the default one (decision 24). The small phone gets there by shrinking the card, never
-    /// below `ExerciseDemoView.minHeight`, with its column at the tight rhythm in every state so the
-    /// spacing never changes between stations; the default phone keeps the full rhythm and, wherever
-    /// its column fits, the full card.
+    /// side line and the row of dots - and the workout timer below it show above the controls without
+    /// scrolling, on the small phone as on the default one (decision 24). The small phone gets there by
+    /// shrinking the card, never below `ExerciseDemoView.minHeight`, with its column at the tight rhythm
+    /// in every state so the spacing never changes between stations; the default phone keeps the full
+    /// rhythm and, wherever its column fits, the full card (two square poses across the column).
     func testRoundTrackerDotsStayAboveTheFoldInEveryState() throws {
         for state in try foldStates() {
             for variant in variants {
@@ -427,10 +428,11 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 // its height is read off those two neighbours rather than off the poses inside it (a pose
                 // pair is width-bound on a roomy phone, and the glyph fallback is smaller than its card).
                 guard let tracker = frame({ $0.hasPrefix("Round ") || $0.hasPrefix("Set ") }),
+                      let timer = frame(state.ready),
                       let block = frame({ $0.contains(", exercise ") }),
                       let title = frame({ $0.hasPrefix(state.exerciseName + ", ") && !$0.contains("trainer showing") }),
                       let visible = visibleScrollArea() else {
-                    XCTFail("\(state.name) \(variant.suffix): missing tracker, block line, title or scroll area; tree reads \(labels())")
+                    XCTFail("\(state.name) \(variant.suffix): missing tracker, timer, block line, title or scroll area; tree reads \(labels())")
                     continue
                 }
                 // The column's rhythm is the gap above the block line: full, or tight on a short screen.
@@ -440,20 +442,25 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                     tracker.maxY, visible.maxY + 0.5,
                     "\(state.name) \(variant.suffix): the round tracker's dots sit \(tracker.maxY - visible.maxY) pt below the fold"
                 )
+                XCTAssertLessThanOrEqual(
+                    timer.maxY, visible.maxY + 0.5,
+                    "\(state.name) \(variant.suffix): the timer sits \(timer.maxY - visible.maxY) pt below the fold"
+                )
                 if variant.isSmall {
                     XCTAssertGreaterThanOrEqual(card, ExerciseDemoView.minHeight - 0.5,
                                                 "\(state.name) \(variant.suffix): the card shrank below its floor")
-                    XCTAssertEqual(rhythm, Theme.Spacing.md, accuracy: 0.5,
+                    XCTAssertEqual(rhythm, Theme.Spacing.sm, accuracy: 0.5,
                                    "\(state.name) \(variant.suffix): a short screen keeps the tight column rhythm")
                 } else {
                     // A roomy phone keeps the full card unless the column cannot fit it (a Simulator
                     // runtime with a taller top inset can leave a long name short of room), and then
-                    // the card gives up only what the tracker needs: it ends exactly at the fold.
-                    let fitsFullCard = card >= ExerciseDemoView.height - 0.5
-                    let shrankOnlyToFit = abs(tracker.maxY - visible.maxY) <= 0.5 && card >= ExerciseDemoView.minHeight - 0.5
+                    // the card gives up only what the timer needs: it ends just above the fold.
+                    let full = ExerciseDemoView.naturalHeight(width: variant.size.width - 2 * Theme.Spacing.screenMargin)
+                    let fitsFullCard = card >= min(full, ExerciseDemoView.height) - 0.5
+                    let shrankOnlyToFit = visible.maxY - timer.maxY <= Theme.Spacing.sm + 0.5 && card >= ExerciseDemoView.minHeight - 0.5
                     XCTAssertTrue(fitsFullCard || shrankOnlyToFit,
-                                  "\(state.name) \(variant.suffix): a roomy phone keeps the full card (card \(card) pt, tracker bottom \(tracker.maxY), fold \(visible.maxY))")
-                    XCTAssertEqual(rhythm, Theme.Spacing.lg, accuracy: 0.5,
+                                  "\(state.name) \(variant.suffix): a roomy phone keeps the full card (card \(card) pt, timer bottom \(timer.maxY), fold \(visible.maxY))")
+                    XCTAssertEqual(rhythm, Theme.Spacing.smd, accuracy: 0.5,
                                    "\(state.name) \(variant.suffix): a roomy phone keeps the full column rhythm")
                 }
                 print("US-TP13 FOLD \(state.name) \(variant.suffix): rhythm \(rhythm) pt, card \(card) pt, tracker bottom \(tracker.maxY), fold \(visible.maxY)")
@@ -828,8 +835,8 @@ private struct SettingsTabHarness: View {
     }
 }
 
-/// The compact ring's diameter - `CountdownRing.compactDiameter` (private to the player), restated so the
-/// fit assertion can tell the compact ring from the full-size one.
-private enum CountdownRingSize {
-    static let compact: CGFloat = 80
+/// The least height of the workout timer (its label, its 108 pt numerals at the narrowest and its bar),
+/// so the fit assertion can tell the full timer from anything smaller.
+private enum TimerSize {
+    static let minimumHeight: CGFloat = 100
 }

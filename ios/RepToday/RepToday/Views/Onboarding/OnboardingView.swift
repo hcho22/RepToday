@@ -66,7 +66,7 @@ struct OnboardingView: View {
                 if let errorMessage = viewModel.errorMessage, viewModel.step != .saveYourPlan {
                     Text(errorMessage)
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.Colors.danger)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.Spacing.lg)
                 }

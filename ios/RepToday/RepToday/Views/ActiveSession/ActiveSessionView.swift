@@ -57,6 +57,17 @@ struct ActiveSessionView: View {
     @State private var scrollHeight = CGFloat.infinity
     @State private var heightAroundCard: CGFloat = 0
 
+    /// The height of the timer (and any stacked actions) at the foot of the column, measured so the
+    /// card is fitted to the room left above it.
+    @State private var heightBelowColumn: CGFloat = 0
+
+    /// Whether the running timer is in its last three seconds, as the timer reports it, so Done can
+    /// turn `sun` with it.
+    @State private var isTimerInLastSeconds = false
+
+    /// The width the completion screen is laid out in. Unmeasured, it is roomy.
+    @State private var completionWidth = CGFloat.infinity
+
     /// The height the player is laid out in, below the status bar - what tells a short screen
     /// (`isCompactColumn`). Unmeasured, the screen is tall.
     @State private var playerHeight = CGFloat.infinity
@@ -274,13 +285,26 @@ struct ActiveSessionView: View {
     }
 
     var body: some View {
+        // The width the screen offers, read off a reader whose size is what its parent proposes. A
+        // player measuring itself - or anything sized by the stack around it - could read back a row its
+        // own overflow had widened and keep laying that row out side by side, past the screen's edges.
+        GeometryReader { _ in
+            session
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { playerWidth = $0 }
+    }
+
+    private var session: some View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
 
+            // Exercise and rest swap in one cut, so the outgoing screen never lingers in VoiceOver's
+            // tree beside the incoming one; the rest screen's next movement then rises in (`RiseIn`).
             if viewModel.isComplete {
                 completionState
             } else if viewModel.isResting {
-                RestView(viewModel: viewModel) { close() }
+                RestView(viewModel: viewModel, tone: tone, width: playerWidth) { close() }
             } else {
                 player
             }
@@ -306,8 +330,10 @@ struct ActiveSessionView: View {
                 .zIndex(2)
             }
         }
-        // Every card and rest preview below reads the session's Trainer from here (US-TP06/US-TP08).
+        // Every card and rest preview below reads the session's Trainer from here (US-TP06/US-TP08), and
+        // takes the session's color.
         .environment(\.trainer, trainerSession.trainer)
+        .environment(\.dayTone, tone)
         .onAppear {
             // The first time, the explainer holds the start: the card shows over the not-yet-started
             // session and its button starts it (ADR-0010). An unresolved Trainer holds it the same way
@@ -347,20 +373,39 @@ struct ActiveSessionView: View {
         }
     }
 
+
     // MARK: - Player
 
+    /// The session's color (DESIGN "Color"): its Training Day's, `rest` for a Recovery flow, `sun` for a
+    /// session from before Training Days. Start, Done, the timer and the progress bars all use it.
+    private var tone: DayTone {
+        Self.tone(for: viewModel.workout)
+    }
+
+    /// The color a session takes: its Training Day's, or `rest` for a Recovery flow (every station a
+    /// recovery stretch), or `sun` for an older session that names no day.
+    static func tone(for workout: Workout) -> DayTone {
+        if let day = workout.trainingDay { return DayTone(day) }
+        let roles = workout.blocks.flatMap(\.exercises).compactMap(\.role)
+        return !roles.isEmpty && roles.allSatisfy { $0 == .recovery } ? .rest : .sun
+    }
+
+    /// The exercise screen (DESIGN "Session screen layout"): the top bar; the block overline; the
+    /// Trainer stage; the movement name with its target on the same baseline; the round tracker; then,
+    /// pushed to the bottom of the column, the workout timer - with Done and the quiet actions pinned
+    /// below. On a short screen or at large text the column scrolls beneath the pinned actions, the stage
+    /// first shrinking to fit; the timer is never drawn under the art or the controls.
     private var player: some View {
         VStack(spacing: 0) {
             SessionTopBar(
                 onClose: close,
+                progress: viewModel.progress,
+                segments: viewModel.currentStep?.total ?? 1,
+                tone: tone.color,
                 canPause: viewModel.canUserPause,
                 isPaused: viewModel.isUserPaused,
                 onTogglePause: togglePause
             )
-
-            ProgressView(value: viewModel.progress)
-                .tint(Theme.Colors.accent)
-                .padding(.horizontal, Theme.Spacing.lg)
 
             if let step = viewModel.currentStep {
                 let cardHeight = cardHeight
@@ -371,11 +416,9 @@ struct ActiveSessionView: View {
                         VStack(alignment: .leading, spacing: rhythm) {
                             blockContext(step)
                             // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
-                            // work window, a running or idle hold, a rep-based stretch. Any countdown sits
-                            // beside the exercise name below, so starting one never changes what the card
-                            // shows (on a short screen a name the ring wraps can cost it a few points,
-                            // `cardHeight`). The no-art glyph pulses only on an idle card, as the demo slot
-                            // always did.
+                            // work window, a running or idle hold, a rep-based stretch. The timer sits
+                            // below, so starting one never changes what the card shows. The no-art mark
+                            // pulses only on an idle card, as the demo slot always did.
                             ExerciseDemoView(
                                 prescription: step.prescription,
                                 height: cardHeight,
@@ -384,21 +427,30 @@ struct ActiveSessionView: View {
                             exerciseHeadline(step)
                             setTracker(step)
                         }
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.top, rhythm)
-                        // Measured before the bottom padding and any stacked actions: only the column's
-                        // content has to show, and the actions below it are reached by scrolling.
+                        .dynamicTypeSize(...Self.columnTypeCap)
+                        // Measured without the card, so the card can be fitted to what is left.
                         .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
                             if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
                         }
 
-                        if stacksActions {
-                            stackedSecondaryActions
-                                .padding(.horizontal, Theme.Spacing.lg)
-                                .padding(.top, rhythm)
+                        // The flexible space: it pushes the timer to the bottom of a roomy column and
+                        // shrinks to the rhythm where the column has to scroll.
+                        Color.clear.frame(height: timerGap(rhythm: rhythm))
+
+                        VStack(alignment: .leading, spacing: rhythm) {
+                            timer
+                                .dynamicTypeSize(...Self.columnTypeCap)
+                            if stacksActions {
+                                stackedSecondaryActions
+                            }
+                        }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            if Self.isMeasurementChange(height, from: heightBelowColumn) { heightBelowColumn = height }
                         }
                     }
-                    .padding(.bottom, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.screenMargin)
+                    .padding(.top, rhythm)
+                    .padding(.bottom, Self.columnBottomPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
@@ -406,10 +458,7 @@ struct ActiveSessionView: View {
 
             controls
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-            playerHeight = size.height
-            playerWidth = size.width
-        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { playerHeight = $0 }
         // A swap on a hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
         // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
@@ -420,14 +469,25 @@ struct ActiveSessionView: View {
         }
     }
 
-    /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
-    /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
-    /// compact ring takes more - so the card and its poses shrink (decision 24), as the rest preview's
-    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls. The
-    /// short screen's column also runs at its tight rhythm (`isCompactColumn`) at every station, so
-    /// its spacing never changes from one to the next.
+    /// The exercise card's height: two square poses across the column while it fits the visible scroll
+    /// area. A short screen (375x667 pt) has no room for that, so the card and its poses shrink
+    /// (decision 24), as the rest preview's do (decision 12), until the name, the round tracker and the
+    /// timer clear the controls. The short screen's column also runs at its tight rhythm
+    /// (`isCompactColumn`) at every station, so its spacing never changes from one to the next.
     private var cardHeight: CGFloat {
-        ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
+        let natural = ExerciseDemoView.naturalHeight(width: playerWidth - 2 * Theme.Spacing.screenMargin)
+        let rhythm = isCompactColumn ? Self.compactColumnRhythm : Self.columnRhythm
+        // The column above the card and the least gap above the timer each take one rhythm.
+        let room = scrollHeight - heightAroundCard - heightBelowColumn - 2 * rhythm - Self.columnBottomPadding
+        return min(natural, ExerciseDemoView.fittedHeight(room: room))
+    }
+
+    /// The space between the round tracker and the timer: whatever the column leaves over, so the timer
+    /// sits just above Done, but never less than the column's rhythm.
+    private func timerGap(rhythm: CGFloat) -> CGFloat {
+        guard scrollHeight.isFinite else { return rhythm }
+        let used = rhythm + heightAroundCard + cardHeight + heightBelowColumn + Self.columnBottomPadding
+        return max(rhythm, scrollHeight - used)
     }
 
     /// Whether the column runs at its tight rhythm (its gaps and the round tracker's gaps between its
@@ -436,9 +496,22 @@ struct ActiveSessionView: View {
         playerHeight < Self.shortScreenHeight
     }
 
+    /// The movement name and target on a short screen (DESIGN `Z1-Exercise-375`).
+    private static let compactNameFont = ThemeFont(Theme.Typography.FontName.display, size: 28, relativeTo: .largeTitle)
+    private static let compactTargetFont = ThemeFont(Theme.Typography.FontName.display, size: 24, relativeTo: .title)
+
+    /// The largest text size the column above the pinned actions - the overline, the stage's labels, the
+    /// title row, the round tracker and the timer's label - draws at (DESIGN `Z2-Exercise-AX`): past it
+    /// they stop growing and keep wrapping, so at every accessibility size the timer opens whole above
+    /// Done with no scrolling, even on a 375x667 screen.
+    static let columnTypeCap = DynamicTypeSize.xxxLarge
+
     /// The column's gap between its pieces, and above the first: full, and tight on a short screen.
-    private static let columnRhythm = Theme.Spacing.lg
-    private static let compactColumnRhythm = Theme.Spacing.md
+    private static let columnRhythm = Theme.Spacing.smd
+    private static let compactColumnRhythm = Theme.Spacing.sm
+
+    /// The room under the timer before the pinned controls.
+    private static let columnBottomPadding = Theme.Spacing.sm
 
     /// The round tracker's gap between its lines (its label, any side line and its dots): full, and
     /// tight on a short screen.
@@ -460,56 +533,39 @@ struct ActiveSessionView: View {
         abs(measured - stored) > measurementTolerance
     }
 
-    /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
+    /// The block this exercise belongs to and its position across the session ("WARM-UP · 1 OF 8"), an
+    /// overline in the session's color.
     private func blockContext(_ step: ActiveSessionViewModel.Step) -> some View {
-        Text("\(step.blockTitle) · \(step.position) of \(step.total)")
-            .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.Colors.textSecondary)
+        Text("\(step.blockTitle) · \(step.position) of \(step.total)".uppercased())
+            .overlineStyle()
+            .foregroundStyle(tone.color)
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel("\(step.blockTitle), exercise \(step.position) of \(step.total)")
     }
 
-    /// The exercise name and target, with the compact countdown ring beside them while a work window
-    /// (US-CC01) or a hold (US-O03) counts down (ADR-0008). With no countdown running (an idle
-    /// Start-hold step) there is no ring and the name keeps the full width. The ring is its own
-    /// VoiceOver element, after the name and target.
+    /// The movement name (Bricolage 34, 28 on a short screen) with its target (30, 24 on a short screen)
+    /// in the session's color on the same baseline (`MovementTitleRow`).
     private func exerciseHeadline(_ step: ActiveSessionViewModel.Step) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            exerciseTitle(step)
-            if viewModel.isHolding {
-                HoldCountdownView(viewModel: viewModel)
-            } else if viewModel.currentStepAutoAdvances {
-                WorkWindowCountdownView(viewModel: viewModel)
-            }
-        }
-    }
-
-    private func exerciseTitle(_ step: ActiveSessionViewModel.Step) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(step.prescription.exercise.displayName)
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                // A long movement name must wrap at the largest Dynamic Type sizes rather than
-                // truncate away the end of the name (US-CC14, AC3).
-                .fixedSize(horizontal: false, vertical: true)
-            // The per-side targets are the longest strings this line renders; letting it grow
-            // vertically keeps "3 × 0:30 per side" whole at the largest Dynamic Type sizes rather than
-            // truncating away the part that says how much work the set actually is.
-            Text(Self.targetText(step.prescription))
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.Colors.accent)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        // The per-side targets are the longest strings this line renders; the row wraps them rather than
+        // truncating away the part that says how much work the set actually is.
+        MovementTitleRow(
+            name: step.prescription.exercise.displayName,
+            target: Self.targetText(step.prescription),
+            nameFont: isCompactColumn ? Self.compactNameFont : Theme.Typography.largeTitle,
+            targetFont: isCompactColumn ? Self.compactTargetFont : Theme.Typography.target,
+            targetColor: tone.color,
+            width: playerWidth - 2 * Theme.Spacing.screenMargin
+        )
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
     }
 
-    /// Set tracking, with a dot per set filled as they are completed. Inside a training-block circuit
-    /// the headline reads "Round N of M" (US-CC02) - the block rotates one set of each exercise per
-    /// round, and a station's r-th set is round r, so the dots below still track this exercise's own
-    /// progress; a linear warm-up / cooldown bookend keeps "Set N of M". A per-side hold names the side
-    /// too, because its set is two legs and the Hold Timer only counts one of them at a time - without
-    /// it the user has no way to tell a finished set from a half-finished one.
+    /// Set tracking, with a pip per set: done pips filled in the session's color, the current one a ring,
+    /// the rest on `surface3`. Inside a training-block circuit the label reads "Round N of M" (US-CC02) -
+    /// the block rotates one set of each exercise per round, and a station's r-th set is round r, so the
+    /// pips still track this exercise's own progress; a linear warm-up / cooldown bookend keeps "Set N of
+    /// M". A per-side hold names the side too, because its set is two legs and the timer only counts one
+    /// of them at a time - without it the user has no way to tell a finished set from a half-finished one.
     private func setTracker(_ step: ActiveSessionViewModel.Step) -> some View {
         let sides = viewModel.holdSidesPerSet
         let showsSide = viewModel.holdSecondsPerSide != nil && sides > 1
@@ -520,16 +576,31 @@ struct ActiveSessionView: View {
             return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
         }()
         let sideText = "Side \(viewModel.holdSide) of \(sides)"
+        let label = Text(progressText)
+            .font(Theme.Typography.calloutSemiBold)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            // "Round N of M" / "Set N of M" wraps rather than truncating at the largest Dynamic Type
+            // sizes (US-CC14, AC3).
+            .fixedSize(horizontal: false, vertical: true)
+        let pips = HStack(spacing: 6) {
+            ForEach(0..<step.prescription.sets, id: \.self) { index in
+                pip(state: index < viewModel.currentSet - 1 ? .done : (index == viewModel.currentSet - 1 ? .current : .ahead))
+            }
+        }
 
         // The tracker's lines tighten with the column (`isCompactColumn`), staying evenly spaced as one
         // group on a short screen.
         return VStack(alignment: .leading, spacing: isCompactColumn ? Self.compactTrackerGap : Self.trackerGap) {
-            Text(progressText)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                // "Round N of M" / "Set N of M" wraps rather than truncating at the largest Dynamic
-                // Type sizes (US-CC14, AC3).
-                .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    label
+                    pips
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    label
+                    pips
+                }
+            }
 
             if showsSide {
                 Text(sideText)
@@ -537,18 +608,42 @@ struct ActiveSessionView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            HStack(spacing: Theme.Spacing.sm) {
-                ForEach(0..<step.prescription.sets, id: \.self) { index in
-                    Circle()
-                        .fill(index < viewModel.currentSet - 1 ? Theme.Colors.accent : Theme.Colors.surface)
-                        .frame(width: Theme.Spacing.md, height: Theme.Spacing.md)
-                }
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement()
         .accessibilityLabel(showsSide ? "\(progressText), side \(viewModel.holdSide) of \(sides)" : progressText)
+    }
+
+    private enum PipState { case done, current, ahead }
+
+    /// One 14 pt pip of the round tracker.
+    private func pip(state: PipState) -> some View {
+        Circle()
+            .fill(state == .done ? tone.color : (state == .current ? Theme.Colors.black : Theme.Colors.surface3))
+            .overlay {
+                if state == .current { Circle().strokeBorder(tone.color, lineWidth: 3) }
+            }
+            .frame(width: 14, height: 14)
+    }
+
+    /// The workout timer for the step: the work window's countdown on a rep-based set, the running
+    /// hold's on a timed one, or - before a hold leg starts, as after "Stop hold" - the hold's full time,
+    /// still. A step with neither shows no timer.
+    @ViewBuilder
+    private var timer: some View {
+        if viewModel.isHolding {
+            HoldCountdownView(viewModel: viewModel, tone: tone.color, isInLastSeconds: $isTimerInLastSeconds)
+        } else if viewModel.currentStepAutoAdvances {
+            WorkWindowCountdownView(viewModel: viewModel, tone: tone.color, isInLastSeconds: $isTimerInLastSeconds)
+        } else if let seconds = viewModel.holdSecondsPerSide {
+            // Still, so VoiceOver has nothing to count: Start hold below is what it offers.
+            WorkoutTimerView(
+                kind: .hold(target: nil), remaining: seconds, total: seconds,
+                label: "Hold", spokenName: "Hold", tone: tone.color,
+                isPaused: false, isRunning: false
+            )
+            .accessibilityHidden(true)
+        }
     }
 
     /// The primary action plus the quieter secondary row - all meeting the 60pt active-screen touch
@@ -566,26 +661,29 @@ struct ActiveSessionView: View {
     /// happens to be running: starting one dims controls in place rather than removing them, so the
     /// row never reflows under the user's thumb mid-tap.
     private var controls: some View {
-        VStack(spacing: Theme.Spacing.sm) {
+        VStack(spacing: Theme.Spacing.xs) {
             if viewModel.noSwapAlternative, !stacksSecondaryActions {
                 noAlternativeNotice
+                    .padding(.bottom, Theme.Spacing.xs)
             }
 
             primaryAction
 
             if !stacksSecondaryActions {
-                HStack(spacing: Theme.Spacing.md) {
+                HStack(spacing: Theme.Spacing.xs) {
                     secondaryActions
                 }
             }
         }
-        .padding(Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, Theme.Spacing.xs)
+        .padding(.bottom, Theme.Spacing.sm)
         .background(Theme.Colors.background)
     }
 
-    /// The secondary row's controls stacked as full-width rows in the scrolling column, below the round
-    /// tracker, for when they no longer fit side by side (`stacksSecondaryActions`). The "no alternative"
-    /// notice travels with them, since it answers the Swap among them.
+    /// The secondary row's controls stacked as full-width rows in the scrolling column, below the timer,
+    /// for when they no longer fit side by side (`stacksSecondaryActions`). The "no alternative" notice
+    /// travels with them, since it answers the Swap among them.
     private var stackedSecondaryActions: some View {
         VStack(spacing: Theme.Spacing.sm) {
             if viewModel.noSwapAlternative {
@@ -598,11 +696,13 @@ struct ActiveSessionView: View {
     /// Whether the secondary row gives up its side-by-side columns: when the columns cannot each hold the
     /// longest word of their title, the row would break words in two at large Dynamic Type sizes and grow
     /// past the screen, so its controls move into the scrolling column as full-width rows instead and only
-    /// the primary action stays pinned. A roomy screen at the default sizes keeps the row.
+    /// the primary action stays pinned. At accessibility sizes the pinned area holds only the primary
+    /// action, so the timer keeps its room above it (DESIGN `Z2-Exercise-AX`). A roomy screen at the
+    /// default sizes keeps the row.
     private var stacksSecondaryActions: Bool {
-        !Self.secondaryRowFits(
+        dynamicTypeSize.isAccessibilitySize || !Self.secondaryRowFits(
             titles: secondaryTitles,
-            width: playerWidth - 2 * Theme.Spacing.lg,
+            width: playerWidth - 2 * Theme.Spacing.screenMargin,
             size: dynamicTypeSize,
             weight: legibilityWeight
         )
@@ -612,44 +712,56 @@ struct ActiveSessionView: View {
     /// whether or not the step's countdown runs right now, and a swap in flight by its resting "Swap",
     /// so starting or stopping a hold or a swap never moves the controls between the row and the column.
     private var secondaryTitles: [String] {
-        var titles = ["+ More time"]
+        var titles = [Self.moreTimeTitle]
         if viewModel.canSwap { titles.append("Swap") }
         if viewModel.holdSecondsPerSide != nil { titles.append(completeButtonTitle) }
         titles.append("Skip")
         return titles
     }
 
+    /// "+ More time"'s visible title, a no-break space holding the "+" to "More" so a narrow column wraps
+    /// it "+ More" / "time" rather than orphaning the "+"; `longestWordWidth` splits only at a breaking
+    /// space, so it measures "+ More" as the one word it draws. VoiceOver reads "More time".
+    static let moreTimeTitle = "+\u{00A0}More time"
+
+    /// The gap between two quiet actions in the row.
+    static let secondaryRowSpacing = Theme.Spacing.xs
+
     /// Whether `titles` fit side by side in `width`: each column at least as wide as the longest word of
-    /// its title (`longestWordWidth`), set in the row's type at `size` and `weight`.
+    /// its title (`longestWordWidth`), set in the quiet actions' type at `size` and `weight`.
     static func secondaryRowFits(titles: [String], width: CGFloat, size: DynamicTypeSize, weight: LegibilityWeight?) -> Bool {
         guard width.isFinite, !titles.isEmpty else { return true }
         let words = titles.reduce(0) { $0 + longestWordWidth($1, size: size, weight: weight) }
-        return words + CGFloat(titles.count - 1) * Theme.Spacing.md <= width
+        return words + CGFloat(titles.count - 1) * secondaryRowSpacing <= width
     }
 
     /// The width of the longest word of a secondary control's `title` at `size` and `weight`: the
     /// narrowest its column may be, so the word is never broken across lines.
     static func longestWordWidth(_ title: String, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
-        title.split(separator: " ").map { textWidth(String($0), style: .body, size: size, weight: weight) }.max() ?? 0
+        title.split(separator: " ").map { textWidth(String($0), style: .quietAction, size: size, weight: weight) }.max() ?? 0
     }
 
-    /// The width `text` takes on one line in Theme's rounded type for `style` at `size`, drawn heavier
-    /// when `weight` is Bold Text - the measurement behind the player's and the rest overlay's choice
-    /// between side-by-side and stacked controls.
-    ///
-    /// Bold Text steps a style's weight the way the system draws it: a regular style (body) to
-    /// semibold, a semibold one (headline, Theme's button type) to heavy.
-    static func textWidth(_ text: String, style: UIFont.TextStyle, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
-        let base = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits)
-        let styleTraits = base.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
-        var fontWeight = UIFont.Weight((styleTraits?[.weight] as? CGFloat) ?? 0)
-        if weight == .bold {
-            fontWeight = fontWeight.rawValue < UIFont.Weight.semibold.rawValue ? .semibold : .heavy
+    /// The session's text styles whose drawn width decides between side-by-side and stacked controls.
+    enum MeasuredStyle {
+        /// The quiet actions' labels (+ More time, Swap, Skip): Inter SemiBold 13.
+        case quietAction
+        /// The rest screen's buttons (+15s, Skip rest): Inter Bold 20.
+        case sessionSecondaryButton
+
+        /// The type token the style draws in.
+        var font: ThemeFont {
+            switch self {
+            case .quietAction: return Theme.Typography.quietAction
+            case .sessionSecondaryButton: return Theme.Typography.sessionSecondaryButton
+            }
         }
-        let system = UIFont.systemFont(ofSize: base.pointSize, weight: fontWeight)
-        let font = system.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: base.pointSize) } ?? system
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// The width `text` takes on one line in Theme's type for `style` at `size`, in the heavier cut when
+    /// `weight` is Bold Text (`ThemeFont.width(of:size:weight:)`) - the measurement behind the player's
+    /// and the rest screen's choice between side-by-side and stacked controls.
+    static func textWidth(_ text: String, style: MeasuredStyle, size: DynamicTypeSize, weight: LegibilityWeight?) -> CGFloat {
+        style.font.width(of: text, size: size, weight: weight)
     }
 
     /// The secondary row's controls, laid side by side in the pinned controls or stacked in the column.
@@ -659,16 +771,26 @@ struct ActiveSessionView: View {
         // window or hold - the "never rush anyone" hatch. It adds the same +15s the rest's
         // "+ More time" uses, purely to the on-screen countdown; it changes nothing logged
         // (US-CC09) and never touches the plan. Shown only while a window or hold is counting
-        // down (the rest overlay carries its own "+15s"), so the two never double up.
+        // down (the rest screen carries its own "+15s"), so the two never double up.
         if viewModel.canExtendActiveCountdown {
             secondaryAction(
-                title: "+ More time",
+                title: Self.moreTimeTitle,
+                icon: .moretime,
                 accessibilityLabel: "More time",
                 accessibilityHint: "Adds \(ActiveSessionViewModel.restExtension) seconds to the current timer",
                 isEnabled: true
             ) {
                 viewModel.extendActiveCountdown()
             }
+        } else if viewModel.holdSecondsPerSide != nil {
+            // A stopped hold keeps the slot, unseen and silent, so the row's columns - and how their
+            // labels wrap - stay exactly as they were while the hold ran, and nothing moves.
+            secondaryAction(
+                title: Self.moreTimeTitle, icon: .moretime, accessibilityLabel: "More time",
+                accessibilityHint: nil, isEnabled: false
+            ) {}
+            .hidden()
+            .accessibilityHidden(true)
         }
 
         // A swap reshapes the slot the countdown is timing, so it is offered between holds
@@ -676,6 +798,7 @@ struct ActiveSessionView: View {
         if viewModel.canSwap {
             secondaryAction(
                 title: viewModel.isSwapping ? "Swapping…" : "Swap",
+                icon: .swap,
                 measuredTitle: "Swap",
                 accessibilityLabel: "Swap this exercise",
                 accessibilityHint: "Replaces it with a similar movement",
@@ -696,6 +819,7 @@ struct ActiveSessionView: View {
         if viewModel.holdSecondsPerSide != nil {
             secondaryAction(
                 title: completeButtonTitle,
+                icon: .check,
                 accessibilityLabel: completeButtonTitle,
                 accessibilityHint: "Records this set without the timer",
                 isEnabled: true
@@ -706,6 +830,7 @@ struct ActiveSessionView: View {
 
         secondaryAction(
             title: "Skip",
+            icon: .skip,
             accessibilityLabel: "Skip this exercise",
             accessibilityHint: nil,
             isEnabled: true
@@ -714,9 +839,10 @@ struct ActiveSessionView: View {
         }
     }
 
-    /// One quiet control in the secondary row. Every slot is built here so they share their styling,
-    /// their 60pt active-screen touch target, and their column width - and so a control that is
-    /// unavailable right now still holds its place in the row rather than letting the others slide.
+    /// One quiet control in the secondary row: its icon over a 13 pt `text2` label. Every slot is built
+    /// here so they share their styling, their 60pt active-screen touch target, and their column width -
+    /// and so a control that is unavailable right now still holds its place in the row rather than
+    /// letting the others slide.
     ///
     /// The columns are narrow - four of them on a running timed movement - and the longest title in the
     /// row ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
@@ -726,6 +852,7 @@ struct ActiveSessionView: View {
     /// active-screen touch target is the floor, never the ceiling.
     private func secondaryAction(
         title: String,
+        icon: AppIcon,
         measuredTitle: String? = nil,
         accessibilityLabel: String,
         accessibilityHint: String?,
@@ -733,57 +860,59 @@ struct ActiveSessionView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(Theme.Typography.body)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .opacity(isEnabled ? 1 : 0.4)
-                .frame(minWidth: Self.longestWordWidth(measuredTitle ?? title, size: dynamicTypeSize, weight: legibilityWeight), maxWidth: .infinity)
-                .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+            VStack(spacing: Theme.Spacing.xs) {
+                IconView(icon: icon, size: 22)
+                Text(title)
+                    .font(Theme.Typography.quietAction)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .opacity(isEnabled ? 1 : 0.4)
+            .frame(minWidth: Self.longestWordWidth(measuredTitle ?? title, size: dynamicTypeSize, weight: legibilityWeight), maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(!isEnabled)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint ?? "")
     }
 
-    /// The one big action at the bottom of the player. Running a hold has no "do it now" action - the
-    /// user is holding - so the slot is given to the quiet way out (`Stop hold`, bordered rather than
-    /// prominent) instead of a prominent button competing with the countdown for attention.
+    /// The color Done fills with: the session's, cut to `sun` in a countdown's last three seconds.
+    private var primaryFill: Color {
+        isInLastSeconds ? Theme.Colors.sun : tone.color
+    }
+
+    /// Whether the live countdown is in its last three seconds (DESIGN "Workout timer"), as the ticking
+    /// timer last reported it.
+    private var isInLastSeconds: Bool {
+        isTimerInLastSeconds && !viewModel.isUserPaused
+    }
+
+    /// The one big action at the bottom of the player, 64 pt and fully round in the session's color.
+    /// Running a hold has no "do it now" action - the user is holding - so the slot is given to the quiet
+    /// way out (`Stop hold`, a secondary button) instead of a prominent button competing with the timer.
     @ViewBuilder
     private var primaryAction: some View {
         if viewModel.isHolding {
             Button {
                 viewModel.cancelHold()
             } label: {
-                Text("Stop hold")
-                    .font(Theme.Typography.button)
-                    // The bordered style would draw the label in the accent, which in dark mode reads at
-                    // 4.47:1 on the button's fill - under the 4.5:1 a 17 pt label needs. The primary text
-                    // color keeps it legible while the gray fill keeps it visibly secondary.
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                primaryLabel("Stop hold", icon: nil)
             }
-            .buttonStyle(.bordered)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .secondaryButtonStyle()
             .accessibilityLabel("Stop hold")
             .accessibilityHint("Ends the countdown without recording the set")
         } else if viewModel.holdSecondsPerSide != nil {
             Button {
                 viewModel.startHold()
             } label: {
-                Text(startHoldTitle)
-                    .font(Theme.Typography.button)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                // No icon, like "Stop hold" in the same slot, so stopping or starting a hold never
+                // changes the button's height and moves the controls.
+                primaryLabel(startHoldTitle, icon: nil)
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .primaryButtonStyle(tone.color)
             // A timed movement always shows its timer as the primary action; a swap in flight makes it
             // momentarily unstartable (US-O03) without letting the button morph into a different one.
             .disabled(!viewModel.canStartHold)
@@ -795,36 +924,39 @@ struct ActiveSessionView: View {
             // current window early and move on. Being caught mid-rep at zero carries no penalty, so Done
             // is an escape hatch, not an obligation. It stays labelled "Done" even on the last set (the
             // completion celebration says what finished), so the hands-free flow never asks "did you
-            // finish?".
+            // finish?". It turns `sun` with the timer in the last three seconds.
             Button {
                 viewModel.finishWorkWindowEarly()
             } label: {
-                Text("Done")
-                    .font(Theme.Typography.button)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                primaryLabel("Done", icon: .check)
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .primaryButtonStyle(primaryFill)
             .accessibilityLabel("Done")
             .accessibilityHint("Ends this set early and moves on")
         } else {
             Button {
                 viewModel.completeSet()
             } label: {
-                Text(completeButtonTitle)
-                    .font(Theme.Typography.button)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                primaryLabel(completeButtonTitle, icon: .check)
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .primaryButtonStyle(tone.color)
             .accessibilityLabel(completeButtonTitle)
         }
+    }
+
+    /// The primary button's label: an optional icon and the title in the session's 22 pt button type,
+    /// at least 64 pt tall, wrapping rather than truncating at large text.
+    private func primaryLabel(_ title: String, icon: AppIcon?) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            if let icon { ScaledIcon(icon: icon, size: 22, relativeTo: .headline) }
+            Text(title)
+                .font(Theme.Typography.sessionButton)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.sm)
+        .frame(minHeight: Theme.Spacing.doneButtonHeight)
     }
 
     /// "Start hold", or "Start hold (side 2 of 2)" on a per-side movement, so the button never implies
@@ -866,28 +998,42 @@ struct ActiveSessionView: View {
     // MARK: - Completion (US-L01)
 
     /// The post-session celebration and template summary. The win is framed by identity, never by a
-    /// score or streak: it leads with the show-up, then names the muscle/mobility coverage and the
-    /// session's effort (duration, sets). The `WorkoutLog` is written by the view model the moment the
-    /// session finished (US-L01); this screen just reflects it. It then collects the optional
-    /// perceived-difficulty rating (US-L02), which feeds tomorrow's session. Every token comes from
-    /// `Theme`; there is no XP/levels/badges.
+    /// score or streak: it leads with the show-up - the day's mark with a check, "You showed up." - then
+    /// names the session's effort (minutes, sets) and the coverage it trained. The `WorkoutLog` is
+    /// written by the view model the moment the session finished (US-L01); this screen just reflects it.
+    /// It then collects the optional perceived-difficulty rating (US-L02), which feeds tomorrow's
+    /// session. Done is pinned below the scrolling body. There is no XP/levels/badges.
+    ///
+    /// Motion (DESIGN "Motion"): the mark scales in from 60%, its check draws on, the headline rises and
+    /// fades in, and the numbers count up. Under Reduce Motion the mark fades in at full size and the
+    /// numbers show their final values.
     private var completionState: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 72, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.accent)
-                    .accessibilityHidden(true)
+                CompletionMark(tone: tone, size: isNarrowCompletion ? 96 : 132)
+                    .padding(.top, Theme.Spacing.lg)
 
-                VStack(spacing: Theme.Spacing.xs) {
-                    Text("You showed up.")
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                VStack(spacing: Theme.Spacing.sm) {
+                    // Display L on one line where it fits, a step smaller where it does not (42 at
+                    // 375 pt), and wrapped only at accessibility text sizes - never "up." alone.
+                    ViewThatFits(in: .horizontal) {
+                        ForEach([56, 46, 42] as [CGFloat], id: \.self) { size in
+                            Text("You showed up.")
+                                .cappedDisplayFont(size: size)
+                                .fixedSize()
+                        }
+                        Text("You showed up.")
+                            .cappedDisplayFont(size: 56)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     Text("That's the whole game.")
-                        .font(Theme.Typography.body)
+                        .font(Self.completionSubtitleFont)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .multilineTextAlignment(.center)
+                .modifier(RiseIn(distance: 12, duration: 0.28, delay: 0.15))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("You showed up. That's the whole game.")
 
@@ -900,40 +1046,55 @@ struct ActiveSessionView: View {
                 if viewModel.asksWhichMovesWereNotFinished {
                     finishCheckControl
                 }
-
-                Button {
-                    close()
-                } label: {
-                    Text("Done")
-                        .font(Theme.Typography.button)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.workoutTouchTarget)
-                }
-                .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                .accessibilityLabel("Done")
             }
-            .padding(Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.bottom, Theme.Spacing.lg)
             .frame(maxWidth: .infinity)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { completionWidth = $0 }
+        // Done stays reachable however long the body runs at large text.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button {
+                close()
+            } label: {
+                Text("Done")
+                    .font(Theme.Typography.sessionButton)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .frame(minHeight: Theme.Spacing.doneButtonHeight)
+            }
+            .primaryButtonStyle(tone.color)
+            .accessibilityLabel("Done")
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.sm)
+            .background(Theme.Colors.background)
         }
         // At large text the summary runs past the screen; scrolled, it slides under a solid band
         // rather than beneath the status bar's clock.
         .statusBarBacking()
     }
 
-    /// The optional, non-blocking perceived-difficulty rating (US-L02): three pills from easy to hard.
-    /// Tapping one records it (and persists it onto the just-written log so the next session adjusts via
-    /// the Asymmetric Ramp); the user can re-tap to change it or simply hit Done without rating, in which
-    /// case the session stays unrated. Nothing here gates the Done action. Every control meets the 60pt
-    /// active-screen touch target and every token comes from `Theme`.
+    /// The optional, non-blocking perceived-difficulty rating (US-L02): three 52 pt chips from easy to
+    /// hard. Tapping one records it (and persists it onto the just-written log so the next session
+    /// adjusts via the Asymmetric Ramp); the user can re-tap to change it or simply hit Done without
+    /// rating, in which case the session stays unrated. Nothing here gates the Done action. At
+    /// accessibility text sizes the chips stack.
     private var ratingControl: some View {
-        VStack(spacing: Theme.Spacing.sm) {
+        VStack(spacing: Theme.Spacing.smd) {
             Text("How did that feel?")
-                .font(Theme.Typography.headline)
+                .font(Self.completionHeaderFont)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
-            HStack(spacing: Theme.Spacing.sm) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            layout {
                 ForEach(PerceivedDifficulty.allCases) { difficulty in
                     ratingPill(difficulty)
                 }
@@ -942,24 +1103,18 @@ struct ActiveSessionView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// One selectable rating pill. The selected pill fills with the accent; the rest sit on the surface.
+    /// One selectable rating chip. The selected chip fills with `sun` and a black label; the rest sit on
+    /// `surface2`.
     private func ratingPill(_ difficulty: PerceivedDifficulty) -> some View {
         let isSelected = viewModel.perceivedDifficulty == difficulty
         return Button {
             viewModel.rate(difficulty)
         } label: {
             Text(Self.ratingLabel(difficulty))
-                .font(Theme.Typography.body)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: Theme.Spacing.workoutTouchTarget)
-                .padding(.horizontal, Theme.Spacing.xs)
-                .background(
-                    isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
-                    in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                )
+                .frame(minHeight: Theme.Spacing.workoutTouchTarget - 2 * Theme.Spacing.xs)
         }
+        .buttonStyle(ChipButtonStyle(isSelected: isSelected, height: Theme.Spacing.completeChipHeight, horizontalPadding: Theme.Spacing.smd))
         .accessibilityLabel(Self.ratingLabel(difficulty))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -967,17 +1122,17 @@ struct ActiveSessionView: View {
     /// The "too hard" follow-up (ADR-0011): the session's worked training moves, for the user to tap
     /// any they could not finish. A tapped move steps back next time and never counts toward moving up;
     /// with none tapped, every move eases off as "too hard" always has. Optional and non-blocking like
-    /// the rating itself - nothing here gates Done. Each move is a toggle carrying the selected trait,
-    /// at the 60pt active-screen touch target, styled like the rating pills.
+    /// the rating itself - nothing here gates Done. Each move is an option card carrying the selected
+    /// trait, at the 60pt active-screen touch target.
     private var finishCheckControl: some View {
-        VStack(spacing: Theme.Spacing.sm) {
+        VStack(spacing: Theme.Spacing.smd) {
             VStack(spacing: Theme.Spacing.xs) {
                 Text("Any you couldn't finish?")
-                    .font(Theme.Typography.headline)
+                    .font(Self.completionHeaderFont)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .accessibilityAddTraits(.isHeader)
                 Text("Tap them and only those ease off next time. Tap none and everything eases off a little.")
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
             .multilineTextAlignment(.center)
@@ -990,34 +1145,30 @@ struct ActiveSessionView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// One move in the "too hard" follow-up: marked moves fill with the accent, like a selected pill.
+    /// One move in the "too hard" follow-up: a marked move takes the selected option card's tint, outline
+    /// and check.
     private func finishCheckRow(_ move: ActiveSessionViewModel.FinishCheckMove) -> some View {
         let isMarked = viewModel.couldNotFinishExerciseIds.contains(move.id)
         return Button {
             viewModel.toggleCouldNotFinish(move.id)
         } label: {
-            HStack(spacing: Theme.Spacing.sm) {
-                Text(move.displayName)
-                    .font(Theme.Typography.body)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: isMarked ? "checkmark.circle.fill" : "circle")
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(isMarked ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
-            .padding(.horizontal, Theme.Spacing.md)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: Theme.Spacing.workoutTouchTarget)
-            .background(
-                isMarked ? Theme.Colors.accentFill : Theme.Colors.surface,
-                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-            )
+            OptionCard(title: move.displayName, isSelected: isMarked, minHeight: Theme.Spacing.workoutTouchTarget)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(move.displayName)
         .accessibilityHint(isMarked ? "Clears the mark" : "Marks this move as not finished")
         .accessibilityAddTraits(isMarked ? [.isSelected] : [])
     }
+
+    /// The completion screen's type (DESIGN `X20-Complete`, `Z1-Complete-375`).
+    private static let completionSubtitleFont = ThemeFont(Theme.Typography.FontName.textMedium, size: 19, relativeTo: .body)
+    private static let completionHeaderFont = ThemeFont(Theme.Typography.FontName.textBold, size: 18, relativeTo: .headline)
+    private static let statFont = ThemeFont(Theme.Typography.FontName.displayLarge, size: 64, relativeTo: .largeTitle)
+    private static let narrowStatFont = ThemeFont(Theme.Typography.FontName.display, size: 48, relativeTo: .largeTitle)
+    private static let statUnitFont = ThemeFont(Theme.Typography.FontName.textSemiBold, size: 14, relativeTo: .footnote)
+
+    /// Whether the completion screen is laid out on a narrow phone (375 pt), where its numbers step down.
+    private var isNarrowCompletion: Bool { completionWidth < 390 }
 
     /// The user-facing label for a perceived-difficulty rating.
     private static func ratingLabel(_ difficulty: PerceivedDifficulty) -> String {
@@ -1028,33 +1179,39 @@ struct ActiveSessionView: View {
         }
     }
 
-    /// The template summary card: the effort (duration + sets) and the muscle/mobility coverage the
-    /// session produced, derived entirely from what the user actually did (US-L01).
+    /// The template summary card: the effort (minutes and sets, counting up in the session's color) and
+    /// the coverage the session produced, derived entirely from what the user actually did (US-L01). At
+    /// accessibility text sizes the coverage stacks under the numbers.
     private func summaryCard(_ summary: SessionSummary) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(spacing: Theme.Spacing.lg) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.md))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
+        return layout {
+            HStack(alignment: .top, spacing: Theme.Spacing.md) {
                 statTile(
-                    value: "\(summary.durationMinutes)",
+                    value: summary.durationMinutes,
                     unit: CountWording.noun(for: summary.durationMinutes, singular: "minute", plural: "minutes")
                 )
                 statTile(
-                    value: "\(summary.completedSetCount)",
+                    value: summary.completedSetCount,
                     unit: CountWording.noun(for: summary.completedSetCount, singular: "set", plural: "sets")
                 )
             }
 
             if !summary.coverageText.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("You trained")
-                        .font(Theme.Typography.caption)
+                    Text("You trained".uppercased())
+                        .overlineStyle()
                         .foregroundStyle(Theme.Colors.textSecondary)
                     Text(summary.coverageText)
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if !summary.focusText.isEmpty {
                         Text(summary.focusText)
-                            .font(Theme.Typography.caption)
+                            .font(Theme.Typography.footnote)
                             .foregroundStyle(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1062,23 +1219,23 @@ struct ActiveSessionView: View {
                 .accessibilityLabel("You trained \(summary.coverageText).")
             }
         }
-        .padding(Theme.Spacing.md)
+        .padding(Theme.Spacing.mlg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface()
     }
 
-    /// One labelled metric (a value over its unit) in the summary card.
-    private func statTile(value: String, unit: String) -> some View {
-        VStack(spacing: 0) {
-            Text(value)
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.accent)
-                .monospacedDigit()
+    /// One labelled metric (a value over its unit) in the summary card, its number counting up.
+    private func statTile(value: Int, unit: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CountUpText(value: value)
+                .font(isNarrowCompletion ? Self.narrowStatFont : Self.statFont)
+                .tracking(Theme.Typography.timerTracking * (isNarrowCompletion ? 48 : 64))
+                .foregroundStyle(tone.color)
             Text(unit)
-                .font(Theme.Typography.caption)
+                .font(Self.statUnitFont)
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(value) \(unit)")
     }
 
@@ -1149,206 +1306,139 @@ struct ActiveSessionView: View {
     }
 }
 
+
 // MARK: - Shared session chrome
 
-/// The player's top bar, shared by the exercise screen and the rest overlay.
+/// The player's top bar, shared by the exercise screen and the rest screen: the End control, the
+/// segmented session progress, and the Pause control, each control a 60 pt `surface1` circle.
 ///
 /// It carries the close control and, since US-CC06, a quiet **Pause/Resume** toggle - one of the
 /// in-flow escape hatches. Placing Pause here (rather than in the crowded secondary action row) means a
 /// single control covers whichever countdown is running - the work window, a hold, or a rest - since
-/// both the player and the rest overlay host this same bar, and it stays visually secondary to the
-/// movement and countdown below it. It used to carry an always-on elapsed clock, which US-O03 removed:
+/// both the player and the rest screen host this same bar, and it stays visually secondary to the
+/// movement and timer below it. It used to carry an always-on elapsed clock, which US-O03 removed:
 /// no running session clock is visible anywhere during the session, so the total lands once, on the
 /// completion summary, instead of counting at the user the whole way through.
 private struct SessionTopBar: View {
     let onClose: () -> Void
+    /// Session progress in `0...1`, drawn as `segments` capsules in `tone`.
+    var progress: Double = 0
+    var segments: Int = 1
+    var tone: Color = Theme.Colors.sun
     /// The Pause/Resume state. `canPause` is true while a countdown is live to freeze; `isPaused` is
     /// true while the user is holding an explicit pause. The toggle shows only when one of them holds -
-    /// an idle Start-hold step or the moment before a countdown starts has nothing to pause. `nil`
-    /// `onTogglePause` (the default) omits the control entirely for any host that has no timer to pause.
+    /// an idle Start-hold step or the moment before a countdown starts has nothing to pause, and its
+    /// place stays held so the bar never shifts. `nil` `onTogglePause` (the default) omits the control
+    /// for any host that has no timer to pause.
     var canPause: Bool = false
     var isPaused: Bool = false
     var onTogglePause: (() -> Void)? = nil
 
+    /// A long session is drawn as one continuous bar rather than slivers.
+    private static let maxSegments = 12
+
     var body: some View {
-        HStack {
+        HStack(spacing: Theme.Spacing.smd) {
             Button {
                 onClose()
             } label: {
-                Image(systemName: "xmark")
-                    .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                circle(.close)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("End session")
 
-            Spacer()
+            ProgressView(value: min(1, max(0, progress)))
+                .progressViewStyle(SegmentedProgressViewStyle(
+                    segments: segments <= Self.maxSegments ? segments : 1,
+                    tone: tone
+                ))
+                .frame(maxWidth: .infinity)
 
             if let onTogglePause, canPause || isPaused {
                 Button {
                     onTogglePause()
                 } label: {
-                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                    circle(isPaused ? .play : .pause)
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(isPaused ? "Resume session" : "Pause session")
                 .accessibilityHint(
                     isPaused
                         ? "Continues the countdown from where it stopped"
                         : "Freezes the countdown without ending the session"
                 )
+            } else {
+                Color.clear
+                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                    .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
         .padding(.top, Theme.Spacing.sm)
     }
-}
 
-/// The countdown ring shared by the rest overlay (US-K02), the Hold Timer (US-O03), and the work window
-/// (US-CC01): a track plus an accent arc that empties as the countdown runs out, with the remaining
-/// time in its centre. One implementation, so the three timers the user meets in a session read as the
-/// same object - and one place the US-CC14 accessibility contract lands. The work window and the hold
-/// show it compact, beside the exercise name (ADR-0008); the rest overlay shows it larger, shrinking to
-/// share a small phone's height with the next movement's poses (US-TP08).
-///
-/// **VoiceOver (US-CC14, AC2):** the ring is a single element carrying `.updatesFrequently`, so VoiceOver
-/// does *not* announce every per-second change or pull focus onto the drawing as it ticks; the remaining
-/// time stays in the label and is read **on demand** when the user focuses the element. The ring builds
-/// that label itself in the "<name>, N seconds remaining" shape the rest of the flow (and its evidence
-/// suites) already speak, with the noun agreeing with the count ("Rest, 1 second remaining").
-///
-/// **Reduce Motion (US-CC14, AC4):** the sweeping arc animation is dropped when Reduce Motion is on - the
-/// arc still redraws to the current fraction each tick, but as a discrete step rather than a smooth
-/// sweep, so the ring never animates against the preference. The centre time is what the user reads.
-struct CountdownRing: View {
-    let remaining: Int
-    let fraction: Double
-    /// What is counting down ("Hold", "Work window", "Rest", "Switch sides"), spoken before the time.
-    let name: String
-
-    /// The ring's size and typography. A fixed `diameter` draws it at exactly that size (the compact
-    /// headline ring); `nil` lets it take the largest square its container offers, between
-    /// `Self.flexibleDiameterRange`'s bounds (the rest overlay, US-TP08).
-    var diameter: CGFloat? = 200
-    var lineWidth: CGFloat = 12
-    var font: Font = Theme.Typography.largeTitle
-
-    /// The flexible ring's smallest and largest diameter.
-    static let flexibleDiameterRange: ClosedRange<CGFloat> = 96...200
-
-    /// The compact ring beside the exercise name (ADR-0008): small enough to sit next to the name and
-    /// target without growing the headline row, large enough to read from the floor.
-    static let compactDiameter: CGFloat = 80
-    static let compactLineWidth: CGFloat = 8
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        ZStack {
-            // Inset by half the line so the stroke sits inside the ring's frame: the ring is exactly
-            // `diameter` across, so the compact one never overhangs the headline it sits in.
-            Circle()
-                .inset(by: lineWidth / 2)
-                .stroke(Theme.Colors.surface, lineWidth: lineWidth)
-
-            Circle()
-                .inset(by: lineWidth / 2)
-                .trim(from: 0, to: fraction)
-                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                // US-CC14: the sweep animates only when Reduce Motion is off; on, the arc steps to the
-                // new fraction with no animation so the ring never sweeps against the preference.
-                .animation(reduceMotion ? nil : .linear(duration: 0.5), value: fraction)
-
-            Text(ActiveSessionView.clockText(remaining))
-                .font(font)
-                .monospacedDigit()
-                // At the largest Dynamic Type sizes a longer clock ("10:00") must shrink to stay inside
-                // the fixed-diameter ring rather than clip or overflow it (US-CC14, AC3).
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .padding(lineWidth)
-        }
-        .modifier(RingSize(diameter: diameter))
-        .accessibilityElement()
-        .accessibilityLabel("\(name), \(CountWording.phrase(remaining, singular: "second", plural: "seconds")) remaining")
-        // US-CC14 (AC2): mark the ring as frequently self-updating so VoiceOver polls it on demand
-        // instead of announcing every tick or stealing focus as the countdown runs down. The remaining
-        // time stays queryable in the label; it is simply not spoken continuously.
-        .accessibilityAddTraits(.updatesFrequently)
-    }
-}
-
-/// Fixes the ring to its diameter, or lets a flexible ring fill the largest square on offer within
-/// `CountdownRing.flexibleDiameterRange`.
-private struct RingSize: ViewModifier {
-    let diameter: CGFloat?
-
-    func body(content: Content) -> some View {
-        if let diameter {
-            content.frame(width: diameter, height: diameter)
-        } else {
-            let range = CountdownRing.flexibleDiameterRange
-            // Ideally the smallest: asked how tall it would like to be, with no height on offer (the rest
-            // overlay's fit check, a scrolling parent), it answers its minimum rather than its width.
-            content
-                .aspectRatio(1, contentMode: .fit)
-                .frame(
-                    minWidth: range.lowerBound, idealWidth: range.lowerBound, maxWidth: range.upperBound,
-                    minHeight: range.lowerBound, idealHeight: range.lowerBound, maxHeight: range.upperBound
-                )
-        }
+    private func circle(_ icon: AppIcon) -> some View {
+        IconView(icon: icon, size: 24)
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+            .background(Theme.Colors.surface1, in: Circle())
+            .contentShape(Circle())
     }
 }
 
 // MARK: - Hold timer
 
-/// The per-exercise Hold Timer for a timed movement (US-O03).
-///
-/// A compact ring beside the exercise name while a hold runs (ADR-0008: the card keeps the Trainer's
-/// poses rather than giving way to a full-size ring), counting one side of the prescribed hold down. At
-/// zero the view model fires the same accessible haptic/audio cue the rest timer uses - exactly once -
-/// and either opens the brief "Switch sides" beat, after which the next side starts on its own (a
-/// per-side movement is two legs per set), or records the set and opens the rest. The ticker lives here rather than in the player, so it exists only while a hold is
-/// actually running, and it drives a *pure* check (`completeHoldIfElapsed`) that is a no-op until the
-/// deadline passes, so the cue can never fire early or per tick.
+/// The per-exercise Hold Timer for a timed movement (US-O03): the workout timer labelled HOLD below
+/// the exercise name, counting one side of the prescribed hold down. At zero the view model fires the
+/// same accessible haptic/audio cue the rest timer uses - exactly once - and either opens the brief
+/// "Switch sides" beat, after which the next side starts on its own (a per-side movement is two legs
+/// per set), or records the set and opens the rest. The ticker lives here rather than in the player, so
+/// it exists only while a hold is actually running, and it drives a *pure* check
+/// (`completeHoldIfElapsed`) that is a no-op until the deadline passes, so the cue can never fire early
+/// or per tick.
 private struct HoldCountdownView: View {
     let viewModel: ActiveSessionViewModel
+    let tone: Color
+    /// Reports the last-seconds state up, so Done can turn `sun` with the timer.
+    @Binding var isInLastSeconds: Bool
 
     /// Drives the countdown display and the completion check. Kept off the view body so the mutation
     /// happens in an action closure, never during a render pass.
     @State private var currentDate = Date()
+    @State private var announcer = WorkoutTimerAnnouncer()
     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         let remaining = viewModel.holdRemaining(asOf: currentDate)
         let total = max(viewModel.holdTotalSeconds, 1)
 
-        CountdownRing(
+        WorkoutTimerView(
+            kind: .hold(target: nil),
             remaining: remaining,
-            fraction: min(1, max(0, Double(remaining) / Double(total))),
-            name: "Hold",
-            diameter: CountdownRing.compactDiameter,
-            lineWidth: CountdownRing.compactLineWidth,
-            font: Theme.Typography.title
+            total: total,
+            label: "Hold",
+            spokenName: "Hold",
+            tone: tone,
+            isPaused: viewModel.isUserPaused
         )
         .onReceive(ticker) { date in
             currentDate = date
+            let remaining = viewModel.holdRemaining(asOf: date)
+            isInLastSeconds = remaining > 0 && remaining <= WorkoutTimerView.lastSecondsThreshold
+            announcer.tick(remaining: remaining, total: viewModel.holdTotalSeconds, isLive: !viewModel.isUserPaused)
             viewModel.completeHoldIfElapsed(asOf: date)
         }
+        .onDisappear { isInLastSeconds = false }
     }
 }
 
 // MARK: - Work window (US-CC01)
 
-/// The auto-advancing work window for a rep-based training set (US-CC01): a compact countdown ring
-/// beside the exercise name (ADR-0008) that counts the set's planned per-set seconds down - the same
-/// number the engine budgeted (`SessionAssembly.workSecondsPerSet`, US-CC08), so the screen window can
-/// never drift from the plan. The card above keeps the Trainer's poses, so the window stays
-/// visual-primary (US-CC11): the user follows the movement by eye while the ring times it.
+/// The auto-advancing work window for a rep-based training set (US-CC01): the workout timer below the
+/// exercise name, counting the set's planned per-set seconds down - the same number the engine budgeted
+/// (`SessionAssembly.workSecondsPerSet`, US-CC08), so the screen window can never drift from the plan.
+/// The stage above keeps the Trainer's poses, so the window stays visual-primary (US-CC11): the user
+/// follows the movement by eye while the timer times it.
 ///
 /// Unlike the Hold Timer it *auto-starts*: appearing is enough to begin the countdown, so a rep-based
 /// set is hands-free with no Start tap. At zero the view model records the set completed (identical to a
@@ -1359,26 +1449,33 @@ private struct HoldCountdownView: View {
 /// now occupies the position.
 private struct WorkWindowCountdownView: View {
     let viewModel: ActiveSessionViewModel
+    let tone: Color
+    /// Reports the last-seconds state up, so Done can turn `sun` with the timer.
+    @Binding var isInLastSeconds: Bool
 
     /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
     /// mutation happens in an action closure, never during a render pass.
     @State private var currentDate = Date()
+    @State private var announcer = WorkoutTimerAnnouncer()
     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         // The full window is the planned per-set seconds; before the window has started (the brief
-        // moment between appearing and `startWorkWindow()`) the ring shows that full value rather than
+        // moment between appearing and `startWorkWindow()`) the timer shows that full value rather than
         // an empty zero, so it never flashes drained.
         let total = max(viewModel.workWindowSecondsPerSet ?? viewModel.workWindowTotalSeconds, 1)
-        let remaining = viewModel.isRunningWorkWindow ? viewModel.workWindowRemaining(asOf: currentDate) : total
+        let running = viewModel.isRunningWorkWindow
+        let remaining = running ? viewModel.workWindowRemaining(asOf: currentDate) : total
 
-        CountdownRing(
+        WorkoutTimerView(
+            kind: .work,
             remaining: remaining,
-            fraction: min(1, max(0, Double(remaining) / Double(total))),
-            name: "Work window",
-            diameter: CountdownRing.compactDiameter,
-            lineWidth: CountdownRing.compactLineWidth,
-            font: Theme.Typography.title
+            total: running ? max(viewModel.workWindowTotalSeconds, 1) : total,
+            label: "Time left",
+            spokenName: "Work window",
+            tone: tone,
+            isPaused: viewModel.isUserPaused,
+            isRunning: running
         )
         // Auto-start on appear (hands-free) - and after a swap settles, where the view stays mounted so
         // no fresh `onAppear` fires (keyed on the settled-swap counter, which a fast swap cannot hide the
@@ -1389,48 +1486,64 @@ private struct WorkWindowCountdownView: View {
         }
         .onReceive(ticker) { date in
             currentDate = date
+            if viewModel.isRunningWorkWindow {
+                let remaining = viewModel.workWindowRemaining(asOf: date)
+                isInLastSeconds = remaining > 0 && remaining <= WorkoutTimerView.lastSecondsThreshold
+                announcer.tick(remaining: remaining, total: viewModel.workWindowTotalSeconds, isLive: !viewModel.isUserPaused)
+            }
             // US-CC10: the optional midpoint tone, then the completion check. Both are pure no-ops until
             // their instant, so ordering them here fires the halfway cue before the window can elapse.
             viewModel.fireWorkWindowHalfwayIfReached(asOf: date)
             viewModel.completeWorkWindowIfElapsed(asOf: date)
         }
+        .onDisappear { isInLastSeconds = false }
     }
 }
 
 // MARK: - Rest timer
 
-/// The rest overlay between sets (US-K02).
+/// The rest screen between sets (US-K02; DESIGN `X19-Rest`).
 ///
 /// After a set, the player advances to the next effort but shows this focused countdown first so the
-/// user paces the work without watching the clock. A ring counts `restSeconds` down; when it reaches
-/// zero the session auto-advances (the overlay dismisses to reveal the already-current next set) and
-/// an accessible haptic/audio cue fires. The user can skip the rest or extend it by 15s; the parent
-/// pauses the countdown on backgrounding. Every color, font, and dimension comes from `Theme`, and
-/// every control meets the 60pt active-screen touch target.
+/// user paces the work without watching the clock. The workout timer is the hero at the top, in
+/// `rest`; below it, "NEXT UP · ROUND 2 OF 4" names the movement the rest paces toward, with its target
+/// and poses. When the timer reaches zero the session auto-advances (the rest screen dismisses to reveal
+/// the already-current next set) and an accessible haptic/audio cue fires. The user can skip the rest
+/// or extend it by 15s; the parent pauses the countdown on backgrounding. Every control meets the 60pt
+/// active-screen touch target.
 private struct RestView: View {
     let viewModel: ActiveSessionViewModel
+    let tone: DayTone
+    /// The width the screen offers, measured by the player's background - what tells whether the two
+    /// controls fit side by side (`stacksControls`) and how wide the poses are. Unmeasured, they fit.
+    let width: CGFloat
     let onClose: () -> Void
 
     /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
     /// mutation happens in an action closure, never during a render pass.
     @State private var currentDate = Date()
+    @State private var announcer = WorkoutTimerAnnouncer()
     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.legibilityWeight) private var legibilityWeight
 
-    /// The width the overlay is laid out in - what tells whether the two controls fit side by side
-    /// (`stacksControls`). Unmeasured, they fit.
-    @State private var width = CGFloat.infinity
+    /// The body's visible height and the heights of its timer and next-up text, measured so the next
+    /// movement's poses can fit what is left (`posesHeight`). Unmeasured, there is room.
+    @State private var scrollHeight = CGFloat.infinity
+    @State private var timerHeight: CGFloat = 0
+    @State private var nextUpHeight: CGFloat = 0
 
     var body: some View {
         let remaining = viewModel.restRemaining(asOf: currentDate)
         let total = max(viewModel.restTotalSeconds, 1)
-        let fraction = min(1, max(0, Double(remaining) / Double(total)))
 
         VStack(spacing: 0) {
             SessionTopBar(
                 onClose: onClose,
+                progress: viewModel.progress,
+                segments: viewModel.currentStep?.total ?? 1,
+                tone: tone.color,
                 canPause: viewModel.canUserPause,
                 isPaused: viewModel.isUserPaused,
                 onTogglePause: {
@@ -1442,78 +1555,102 @@ private struct RestView: View {
                 }
             )
 
-            Spacer(minLength: Theme.Spacing.sm)
-
-            // The middle fits the screen by shrinking its ring and poses (below). When even their
-            // smallest sizes leave too little room - large Dynamic Type on a short phone - it scrolls
-            // between the pinned top bar and controls rather than pushing them off the screen.
-            ViewThatFits(in: .vertical) {
-                middle(remaining: remaining, fraction: fraction, ringDiameter: nil)
-                // Scrolling, the ring keeps its full size so its clock is never shrunk to fit.
-                ScrollView {
-                    middle(
-                        remaining: remaining,
-                        fraction: fraction,
-                        ringDiameter: CountdownRing.flexibleDiameterRange.upperBound
-                    )
-                }
+            // The body fits the screen by shrinking the next movement's poses (below). When even their
+            // smallest size leaves too little room - large Dynamic Type on a short phone - it scrolls
+            // between the pinned top bar and controls rather than pushing them off the screen. One
+            // measured layout rather than alternatives to choose from, so only one copy of the poses is
+            // ever in VoiceOver's tree.
+            ScrollView {
+                middle(remaining: remaining, total: total)
             }
-            // The middle claims the height first; the spacers above and below only take what is left,
-            // so the ring and the poses grow before empty space does.
-            .layoutPriority(1)
-
-            Spacer(minLength: Theme.Spacing.sm)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
 
             controls
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onReceive(ticker) { date in
             currentDate = date
+            announcer.tick(
+                remaining: viewModel.restRemaining(asOf: date), total: viewModel.restTotalSeconds,
+                isLive: !viewModel.isUserPaused
+            )
             viewModel.completeRestIfElapsed(asOf: date)
         }
     }
 
-    /// The heading, ring, next-up text and the next movement's poses. A `nil` ring diameter lets the
-    /// ring shrink with the screen.
-    private func middle(remaining: Int, fraction: Double, ringDiameter: CGFloat?) -> some View {
-        VStack(spacing: Theme.Spacing.md) {
+    /// The timer, then - pushed to the bottom when there is room - the next-up text and the next
+    /// movement's poses, which shrink with the screen down to their floor.
+    private func middle(remaining: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
             // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
-            // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
-            // change position rather than read it as a plain between-set rest. Every other gap - a
+            // (US-CC05); the beat reuses this rest screen but names itself so the user knows to change
+            // position rather than read it as a plain between-set rest. Every other gap - a
             // between-station transition (US-CC04) and a between-round rest - stays a "Rest" here; the
-            // transition beat earns its distinctness below, in `nextUp`'s prominent "Next: <exercise>"
-            // (US-CC11), rather than by renaming this shared header.
+            // transition beat earns its distinctness below, in `nextUp`'s prominent "Next" and movement
+            // name (US-CC11), rather than by renaming this shared label.
             let heading = viewModel.isSwitchingSides ? "Switch sides" : "Rest"
-            Text(heading)
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.Colors.textSecondary)
-
-            // The ring and the poses below are the two flexible pieces: each takes up to its full size
-            // on a roomy phone and both shrink, evenly, until heading, ring, next-up text, poses and
-            // both controls fit a 375x667 pt screen (US-TP08, decision 12).
-            CountdownRing(
+            WorkoutTimerView(
+                kind: .rest,
                 remaining: remaining,
-                fraction: fraction,
-                name: heading,
-                diameter: ringDiameter
+                total: total,
+                label: heading,
+                spokenName: heading,
+                tone: Theme.Colors.rest,
+                isPaused: viewModel.isUserPaused,
+                isHero: true
             )
-            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.top, Theme.Spacing.smd)
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if ActiveSessionView.isMeasurementChange(height, from: timerHeight) { timerHeight = height }
+            }
 
-            nextUp
+            // The flexible space between the timer and what comes next.
+            Color.clear.frame(height: gap)
 
-            nextUpPoses
+            VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+                nextUp
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        if ActiveSessionView.isMeasurementChange(height, from: nextUpHeight) { nextUpHeight = height }
+                    }
+                nextUpPoses
+            }
+            .modifier(RiseIn(distance: 24, duration: 0.32, delay: 0.06))
         }
-        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.bottom, Self.bottomPadding)
     }
 
-    /// A preview of the effort the rest is pacing toward, so the user knows what is next. Inside a
-    /// training-block circuit the rest paces toward a round ("Round N of M", US-CC02); a linear bookend
-    /// paces toward the exercise's next set.
+    /// The room under the body before the pinned controls, and the least gap above the next-up text.
+    private static let bottomPadding = Theme.Spacing.smd
+    private static let minimumGap = Theme.Spacing.md
+
+    /// The next movement's poses at the height the screen leaves them: their full height (two square
+    /// poses across the column) when it fits, else what is left, never below the card's floor - past
+    /// which the body scrolls.
+    private var posesHeight: CGFloat {
+        let natural = ExerciseDemoView.naturalHeight(width: width - 2 * Theme.Spacing.screenMargin)
+        let upper = min(ExerciseDemoView.height, natural.isFinite ? natural : ExerciseDemoView.height)
+        guard scrollHeight.isFinite else { return upper }
+        let room = scrollHeight - timerHeight - Self.minimumGap - nextUpHeight - Theme.Spacing.smd - Self.bottomPadding
+        return min(upper, max(room, Self.posesHeightRange.lowerBound))
+    }
+
+    /// The space between the timer and the next-up text: whatever the screen leaves over.
+    private var gap: CGFloat {
+        guard scrollHeight.isFinite else { return Self.minimumGap }
+        let used = timerHeight + nextUpHeight + Theme.Spacing.smd + posesHeight + Self.bottomPadding
+        return max(Self.minimumGap, scrollHeight - used)
+    }
+
+    /// A preview of the effort the rest is pacing toward, so the user knows what is next: an overline
+    /// in the session's color ("NEXT UP · ROUND 2 OF 4"), then the movement's name with its target.
+    /// Inside a training-block circuit the rest paces toward a round ("Round N of M", US-CC02); a linear
+    /// bookend paces toward the exercise's next set.
     ///
-    /// A between-station **transition beat** (US-CC04) gets its own prominent treatment (US-CC11): since
-    /// there is no spoken "next up", the movement name leads as a large "Next: <exercise>" so the visual
-    /// cue reads at a glance rather than as a quiet caption. A between-round rest and a plain bookend
-    /// rest keep the quieter "Next up" heading; a switch-sides beat names the owed side instead.
+    /// A between-station **transition beat** (US-CC04) keeps its own cue (US-CC11): its overline reads
+    /// "NEXT" where a between-round rest and a plain bookend rest read "NEXT UP", and VoiceOver announces
+    /// it as "Next: <exercise>"; a switch-sides beat names the owed side instead.
     @ViewBuilder
     private var nextUp: some View {
         if let step = viewModel.currentStep {
@@ -1532,23 +1669,23 @@ private struct RestView: View {
                 }
                 return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
             }()
-            VStack(spacing: Theme.Spacing.xs) {
-                Text(transition ? "Next" : (switching ? "Same stretch" : "Next up"))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                Text(name)
-                    // The transition beat is the visual substitute for a spoken "next up", so the
-                    // movement name is prominent (largeTitle) rather than the quieter headline a plain
-                    // rest uses.
-                    .font(transition ? Theme.Typography.largeTitle : Theme.Typography.headline)
-                    .foregroundStyle(transition ? Theme.Colors.accent : Theme.Colors.textPrimary)
-                    .multilineTextAlignment(.center)
+            let heading = transition ? "Next" : (switching ? "Same stretch" : "Next up")
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("\(heading) · \(progressText)".uppercased())
+                    .overlineStyle()
+                    .foregroundStyle(tone.color)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(progressText)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                MovementTitleRow(
+                    name: name,
+                    target: ActiveSessionView.targetText(step.prescription),
+                    nameFont: Theme.Typography.largeTitle,
+                    targetFont: Theme.Typography.target,
+                    targetColor: tone.color,
+                    width: width - 2 * Theme.Spacing.screenMargin
+                )
             }
-            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .ignore)
             // The transition beat announces the prominent visual cue verbatim ("Next: <exercise>"); the
             // quieter rests keep their existing "<heading>, <name>, <progress>" phrasing.
             .accessibilityLabel(
@@ -1562,76 +1699,196 @@ private struct RestView: View {
     /// The upcoming movement's Trainer poses under the next-up text (US-TP08): the next station on a
     /// transition beat, the next round's movement on a between-round rest, and the same stretch on the
     /// switch-sides beat (decision 11) - `currentStep` is already the effort the rest paces toward. Same
-    /// illustration, Trainer, pair/single/glyph rules and card color as the exercise card, at a height
-    /// that shrinks to fit (a still glyph: this is a preview, not the live demo).
+    /// illustration, Trainer, pair/single/glyph rules and stage as the exercise card, at a height that
+    /// shrinks to fit (a still mark: this is a preview, not the live demo).
     @ViewBuilder
     private var nextUpPoses: some View {
         if let step = viewModel.currentStep {
-            ExerciseDemoView(prescription: step.prescription, height: nil, animatesGlyph: false)
-                .frame(
-                    minHeight: Self.posesHeightRange.lowerBound,
-                    idealHeight: Self.posesHeightRange.lowerBound,
-                    maxHeight: Self.posesHeightRange.upperBound
-                )
+            ExerciseDemoView(prescription: step.prescription, height: posesHeight, animatesGlyph: false)
         }
     }
 
     /// The rest preview card's smallest and largest height.
     static let posesHeightRange: ClosedRange<CGFloat> = ExerciseDemoView.minHeight...ExerciseDemoView.height
 
-    /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target. Side by side while both
-    /// titles fit their half on one line; stacked full width once either would wrap (`stacksControls`).
+    /// Extend (+15s, a secondary button) and Skip rest (filled in `rest`) - both meeting the 60pt
+    /// active-screen touch target. Side by side while both titles fit their share of the row on one
+    /// line; stacked full width once either would wrap (`stacksControls`).
     private var controls: some View {
         let layout = stacksControls
             ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
-            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
         return layout {
             Button {
                 viewModel.extendRest()
             } label: {
                 Text("+\(ActiveSessionViewModel.restExtension)s")
-                    .font(Theme.Typography.button)
-                    // Primary text rather than the bordered style's accent, which reads at 4.47:1 on this
-                    // fill in dark mode (see "Stop hold").
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(Theme.Typography.sessionSecondaryButton)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .frame(minHeight: Theme.Spacing.doneButtonHeight)
             }
-            .buttonStyle(.bordered)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .secondaryButtonStyle()
+            .frame(maxWidth: stacksControls ? .infinity : Self.extendShare * width)
             .accessibilityLabel("Extend rest by \(ActiveSessionViewModel.restExtension) seconds")
 
             Button {
                 viewModel.skipRest()
             } label: {
-                Text("Skip rest")
-                    .font(Theme.Typography.button)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                HStack(spacing: Theme.Spacing.sm) {
+                    ScaledIcon(icon: .skip, size: 22, relativeTo: .headline)
+                    Text("Skip rest")
+                        .font(Theme.Typography.sessionSecondaryButton)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.sm)
+                .frame(minHeight: Theme.Spacing.doneButtonHeight)
             }
-            .accentFilledButtonStyle()
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .primaryButtonStyle(Theme.Colors.rest)
             .accessibilityLabel("Skip rest")
         }
-        .padding(Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.screenMargin)
+        .padding(.top, Theme.Spacing.xs)
+        .padding(.bottom, Theme.Spacing.sm)
     }
 
-    /// Whether the two controls stack: once either title no longer fits on one line inside its half of
+    /// The share of the row "+15s" takes beside "Skip rest".
+    private static let extendShare: CGFloat = 0.38
+
+    /// Whether the two controls stack: once either title no longer fits on one line inside its share of
     /// the row (less the button's own inset), so a label is never cut by the button's edge.
     private var stacksControls: Bool {
         guard width.isFinite else { return false }
-        let half = (width - 2 * Theme.Spacing.lg - Theme.Spacing.md) / 2 - Self.buttonLabelInset
-        return ["+\(ActiveSessionViewModel.restExtension)s", "Skip rest"].contains {
-            ActiveSessionView.textWidth($0, style: .headline, size: dynamicTypeSize, weight: legibilityWeight) > half
+        let row = width - 2 * Theme.Spacing.screenMargin - Theme.Spacing.sm
+        let extend = Self.extendShare * width - Self.buttonLabelInset
+        let skip = row - Self.extendShare * width - Self.buttonLabelInset - Self.skipIconWidth
+        func needs(_ title: String) -> CGFloat {
+            ActiveSessionView.textWidth(title, style: .sessionSecondaryButton, size: dynamicTypeSize, weight: legibilityWeight)
+        }
+        return needs("+\(ActiveSessionViewModel.restExtension)s") > extend || needs("Skip rest") > skip
+    }
+
+    /// The room a button keeps around its label, on both sides together.
+    private static let buttonLabelInset = 2 * Theme.Spacing.md
+    /// The skip icon and its gap beside "Skip rest".
+    private static let skipIconWidth: CGFloat = 22 + Theme.Spacing.sm
+}
+
+// MARK: - Motion helpers
+
+/// Rises `distance` points and fades in once, on appear; under Reduce Motion it only fades, over 200 ms.
+private struct RiseIn: ViewModifier {
+    let distance: CGFloat
+    let duration: Double
+    let delay: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : distance)
+            .onAppear {
+                withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .easeOut(duration: duration).delay(delay)) {
+                    shown = true
+                }
+            }
+    }
+}
+
+/// The completion mark: the session's day mark, filled, with a black check drawn on it. It scales in
+/// from 60% on a spring and the check draws over 300 ms; under Reduce Motion it fades in at full size.
+private struct CompletionMark: View {
+    let tone: DayTone
+    /// The mark's size: 132 pt, 96 on a narrow phone.
+    var size: CGFloat = 132
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    private var mark: DayMark {
+        switch tone {
+        case .push: return .push
+        case .pull: return .pull
+        case .legs: return .legs
+        case .rest: return .rest
+        case .sun: return .sun
         }
     }
 
-    /// The room a bordered button keeps around its label, on both sides together.
-    private static let buttonLabelInset = 2 * Theme.Spacing.md
+    var body: some View {
+        ZStack {
+            DayMarkView(mark: mark, filled: true, color: tone.color, size: size)
+            CheckStroke()
+                .trim(from: 0, to: shown || reduceMotion ? 1 : 0)
+                .stroke(Theme.Colors.black, style: StrokeStyle(lineWidth: size / 16.5, lineCap: .round, lineJoin: .round))
+                .frame(width: size / 3, height: size / 3)
+                .offset(y: mark == .push || mark == .pull ? size / 11 : 0)
+        }
+        .frame(width: size, height: size)
+        .scaleEffect(shown || reduceMotion ? 1 : 0.6)
+        .opacity(shown ? 1 : 0)
+        .accessibilityHidden(true)
+        .onAppear {
+            if reduceMotion {
+                withAnimation(.easeInOut(duration: 0.2)) { shown = true }
+            } else {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { shown = true }
+            }
+        }
+    }
+}
+
+/// The check glyph's path on a 24 pt grid, as the `check` icon draws it.
+private struct CheckStroke: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 24
+        var path = Path()
+        path.move(to: CGPoint(x: 5 * scale, y: 12.5 * scale))
+        path.addLine(to: CGPoint(x: 9.5 * scale, y: 17 * scale))
+        path.addLine(to: CGPoint(x: 19 * scale, y: 7.5 * scale))
+        return path
+    }
+}
+
+/// A whole number that counts up from zero to `value` over 600 ms on appear; under Reduce Motion it
+/// shows the final value at once.
+private struct CountUpText: View {
+    let value: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown: Double = 0
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .modifier(CountingNumber(value: reduceMotion ? Double(value) : shown))
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeOut(duration: 0.6)) { shown = Double(value) }
+            }
+            .onChange(of: value) { _, newValue in shown = Double(newValue) }
+    }
+}
+
+/// Draws an animatable number as text, so `CountUpText` can tween it.
+private struct CountingNumber: ViewModifier, Animatable {
+    var value: Double
+
+    var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        Text("\(Int(value.rounded()))")
+            .monospacedDigit()
+    }
 }
 
 #Preview {

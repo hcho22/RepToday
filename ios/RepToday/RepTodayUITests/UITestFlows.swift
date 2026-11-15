@@ -135,11 +135,8 @@ extension XCTestCase {
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         app.textFields.firstMatch.tap()
         app.textFields.firstMatch.typeText("Riley\n")
-        let startMoving = app.buttons["Start moving"]
-        for _ in 0..<8 where !startMoving.exists {
-            app.buttons["Continue"].tap()
-        }
-        startMoving.tap()
+        // Onboarding finishes by signing in on "Save your plan" (M3); there is no last "Start moving".
+        finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
     }
 

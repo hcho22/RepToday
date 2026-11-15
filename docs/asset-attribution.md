@@ -16,6 +16,22 @@ They ship in `ios/RepToday/RepToday/Resources/Assets.xcassets/Trainer/`, one ima
 
 The generation logs, prompts, manifests and verification files stay with the art outside this repository; none is committed here.
 
+## Typefaces (visual direction)
+
+The two typefaces of the visual direction: Bricolage Grotesque for headlines and every number, Inter for reading text.
+They ship as static cuts in `ios/RepToday/RepToday/Resources/Fonts/`, each family's license beside it, cut from the official variable fonts by `tools/fonts/make-static-fonts.py` (see `tools/fonts/README.md`).
+
+| File | Embedded name | Source | License | Cleared to ship |
+| --- | --- | --- | --- | --- |
+| `Resources/Fonts/BricolageGrotesque-*.ttf` | `BricolageGrotesque-96ptExtraBold`, `-48ptExtraBold`, `-24ptExtraBold`, `-24ptBold` | Bricolage Grotesque by the Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage), from google/fonts `ofl/bricolagegrotesque` at commit `6ce172f74aa355ea43eb964fa4a91570a4d3064d`. | SIL Open Font License 1.1, `Resources/Fonts/BricolageGrotesque-OFL.txt` (bundled with the app). The cuts keep the original family name with an optical-size suffix, as the project's own static builds do; OFL allows modified versions under it and bundling in commercial software. | Yes (2026-11-14) |
+| `Resources/Fonts/Inter-*.ttf` | `Inter-Regular`, `-Medium`, `-SemiBold`, `-Bold`, `-ExtraBold` | Inter by the Inter Project Authors (https://github.com/rsms/inter), from google/fonts `ofl/inter` at commit `0b58fb370093f9a9f4ff785d94405710b79de67c`. | SIL Open Font License 1.1, `Resources/Fonts/Inter-OFL.txt` (bundled with the app). | Yes (2026-11-14) |
+
+## Icons and day marks (visual direction)
+
+| File | Embedded name | Source | License | Cleared to ship |
+| --- | --- | --- | --- | --- |
+| `Assets.xcassets/Icons/*.imageset/*.svg`, `Assets.xcassets/Marks/*.imageset/*.svg` | `Icons/<name>`, `Marks/<mark>-<fill\|line>` | Drawn for Rep Today in the approved design handoff (the owner's own design work); converted to template vector images with their colors set to black so they tint. No third-party artwork. | Owned by the Rep Today project. | Yes (2026-11-14) |
+
 ## Removed assets
 
 ### `push_standard.json` (removed)

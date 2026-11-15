@@ -325,15 +325,8 @@ US-T04 added the behavioural boundary suite (`convex/http.test.ts`), and the US-
 ## Design System
 
 Rep Today uses a consistent design token system via `Theme.*` (`Theme.Colors`, `Theme.Typography`, `Theme.Spacing`) - always use these, never hardcode colors, fonts, or spacing.
-
-| Token | Value |
-|-------|-------|
-| **Button Height** | 56pt |
-| **Card Corner Radius** | 16pt |
-| **Min Touch Target** | 44pt (60pt on active workout screens) |
-| **Typography** | SF Pro (system, rounded) with a semantic scale; Dynamic Type out of the box |
-
-Colors resolve from the asset catalog where a named color exists and fall back to a sensible system color otherwise, so the app always renders.
+The app is dark only: a true black background, five vivid colors with one job each (sun and the push, pull, legs and rest day colors), Bricolage Grotesque for headlines and every number, Inter for reading text, all scaling with Dynamic Type.
+`ios/RepToday/RepToday/DesignSystem/Theme.swift` owns every value (sizes, radii, colors, type), and `tools/fonts/README.md` owns the bundled fonts.
 
 ---
 

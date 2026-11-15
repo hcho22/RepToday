@@ -124,10 +124,9 @@ struct CycleStripView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(WelcomeCopy.stripTitle)
-                .font(Theme.Typography.caption.weight(.semibold))
+            Text(WelcomeCopy.stripTitle.uppercased())
+                .overlineStyle()
                 .foregroundStyle(Theme.Colors.textSecondary)
-                .textCase(.uppercase)
 
             ViewThatFits(in: .horizontal) {
                 EqualColumnsLayout(spacing: Theme.Spacing.sm) {
@@ -177,7 +176,9 @@ private struct EqualColumnsLayout: Layout {
     }
 }
 
-/// One step of the strip: a marker (done, today, coming up) and the step's name.
+/// One step of the strip: its day mark (filled for done and today, outlined for what is to come) and
+/// the step's name - in the day's color for today, `text2` for what is still to come. A done step's
+/// mark carries a check.
 private struct CycleStepView: View {
     let step: CycleStep
     /// A column in the row (ordinary sizes) rather than a line in the list (accessibility sizes).
@@ -187,50 +188,56 @@ private struct CycleStepView: View {
 
     var body: some View {
         let layout = isCompact
-            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.xs))
-            : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.smd))
         layout {
             marker
             Text(step.title)
-                .font(step.status == .today ? Theme.Typography.headline : Theme.Typography.body)
-                .foregroundStyle(step.status == .upcoming ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                .font(step.status == .today ? Theme.Typography.headline : Theme.Typography.callout)
+                .foregroundStyle(titleColor)
                 .lineLimit(1)
         }
         .frame(maxWidth: isCompact ? .infinity : nil, alignment: isCompact ? .center : .leading)
     }
 
-    @ViewBuilder
-    private var marker: some View {
+    private var titleColor: Color {
         switch step.status {
-        case .done:
-            Image(systemName: "checkmark")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.onAccent)
-                .frame(width: markerSize, height: markerSize)
-                .background(Theme.Colors.accentFill, in: Circle())
-        case .today:
-            Image(systemName: symbol)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.accent)
-                .frame(width: markerSize, height: markerSize)
-                .background(Theme.Colors.accentBadgeFill, in: Circle())
-                .overlay(Circle().stroke(Theme.Colors.accent, lineWidth: 2))
-        case .upcoming:
-            Image(systemName: symbol)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .frame(width: markerSize, height: markerSize)
-                .overlay(Circle().stroke(Theme.Colors.textSecondary.opacity(0.5), lineWidth: 1.5))
+        case .today: return tone.color
+        case .done: return Theme.Colors.textPrimary
+        case .upcoming: return Theme.Colors.textSecondary
         }
     }
 
-    private var symbol: String {
+    private var marker: some View {
+        ZStack {
+            DayMarkView(
+                mark: mark,
+                filled: step.status != .upcoming,
+                color: step.status == .upcoming ? Theme.Colors.textSecondary : tone.color,
+                size: markerSize
+            )
+            if step.status == .done {
+                IconView(icon: .check, size: markerSize * 0.5)
+                    .foregroundStyle(Theme.Colors.onAccent)
+                    .offset(y: mark == .push || mark == .pull ? markerSize * 0.1 : 0)
+            }
+        }
+        .frame(width: markerSize, height: markerSize)
+    }
+
+    private var mark: DayMark {
         switch step.kind {
-        case .day(.push): return "figure.strengthtraining.functional"
-        case .day(.pull): return "figure.rower"
-        case .day(.legs): return "figure.step.training"
-        case .rest: return "moon.zzz"
-        case .dayOff: return "sun.max"
+        case .day(let day): return DayMark(day)
+        case .rest: return .rest
+        case .dayOff: return .sun
+        }
+    }
+
+    private var tone: DayTone {
+        switch step.kind {
+        case .day(let day): return DayTone(day)
+        case .rest: return .rest
+        case .dayOff: return .sun
         }
     }
 }

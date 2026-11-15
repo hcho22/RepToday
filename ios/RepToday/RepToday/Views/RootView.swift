@@ -233,6 +233,13 @@ private struct MainTabsView: View {
     /// they reach Today.
     let isRevealed: Bool
 
+    init(selectedTab: Binding<AppTab>, isRevealed: Bool) {
+        _selectedTab = selectedTab
+        self.isRevealed = isRevealed
+        // Inactive tabs in `text3` (DESIGN "Tab bar"); the active one takes the `sun` tint below.
+        UITabBar.appearance().unselectedItemTintColor = UIColor(Theme.Colors.text3)
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             // The Ready Screen the app opens to (US-I01), with today's session already generated.
@@ -240,7 +247,7 @@ private struct MainTabsView: View {
             ReadyView(services: services)
                 .tag(AppTab.home)
                 .tabItem {
-                    Label("Today", systemImage: "house.fill")
+                    Label { Text("Today") } icon: { AppIcon.today.fixedImage }
                 }
 
             // The Coach (M4, US-CA06, decision 28): the premium agent, full screen, with its persistent
@@ -249,7 +256,7 @@ private struct MainTabsView: View {
             CoachTabView(services: services)
                 .tag(AppTab.coach)
                 .tabItem {
-                    Label("Coach", systemImage: "bubble.left.and.bubble.right.fill")
+                    Label { Text("Coach") } icon: { AppIcon.coach.fixedImage }
                 }
 
             // The reflection surface (US-M01): the calendar, the Consistency Score trend, and the
@@ -257,7 +264,7 @@ private struct MainTabsView: View {
             ProgressTabView(services: services)
                 .tag(AppTab.progress)
                 .tabItem {
-                    Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
+                    Label { Text("Progress") } icon: { AppIcon.progress.fixedImage }
                 }
 
             // Still the placeholder it has always been (US-A05), with one real destination hung off
@@ -266,9 +273,12 @@ private struct MainTabsView: View {
             ProfileTabView()
                 .tag(AppTab.profile)
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle.fill")
+                    Label { Text("Profile") } icon: { AppIcon.profile.fixedImage }
                 }
         }
+        // The tab bar (DESIGN "Tab bar"): the custom icons, `sun` for the active tab, `text3` for the rest,
+        // on `surface1`. The system bar keeps its own accessibility and large content viewer.
+        .tint(Theme.Colors.sun)
         // Request HealthKit share access once, up front (US-N03), at a calm moment rather than mid-loop.
         // Best-effort and non-blocking: the prompt only appears the first time (the request is idempotent
         // once answered), and the core loop never waits on it. `saveWorkoutLog` then writes each completed
@@ -309,7 +319,7 @@ struct ProfileTabView: View {
     private var content: some View {
         VStack(spacing: Theme.Spacing.lg) {
             PlaceholderTabView(
-                icon: "person.crop.circle.fill",
+                icon: .profile,
                 title: "Profile",
                 subtitle: "Keep your movement basics current."
             )
@@ -340,13 +350,24 @@ struct ProfileTabView: View {
 /// The leading glyph of each Profile row. Enumerated so the shared icon column can be sized to - and
 /// tested against - the widest glyph any row uses.
 enum ProfileRowIcon: String, CaseIterable {
-    case account = "person.crop.circle"
-    case settings = "gearshape.fill"
+    case account
+    case settings
+
+    /// The custom icon the row draws.
+    var icon: AppIcon {
+        switch self {
+        case .account: return .profile
+        case .settings: return .settings
+        }
+    }
 
     /// The icon column's width at the default text size, scaled with Dynamic Type relative to `.body`
     /// (the glyph's own text style). Wide enough for the widest glyph, so every row's title starts at
     /// the same x.
     static let columnWidth: CGFloat = 30
+
+    /// The glyph's size at the default text size, scaled with Dynamic Type the same way as the column.
+    static let glyphSize: CGFloat = 22
 
     /// The largest text size the icon (and its column) grows to. Beyond it the glyph alone would take a
     /// third of the row and squeeze the title it decorates down to an ellipsis.
@@ -400,8 +421,8 @@ struct ProfileRowLabel: View {
             if dynamicTypeSize.isAccessibilitySize {
                 Spacer(minLength: 0)
             }
-            Image(systemName: "chevron.right")
-                .foregroundStyle(Theme.Colors.textSecondary)
+            ScaledIcon(icon: .chevr, size: 18, isDecorative: false)
+                .foregroundStyle(Theme.Colors.textTertiary)
                 .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -434,21 +455,20 @@ private struct ProfileRowIconView: View {
     @ScaledMetric(relativeTo: .body) private var columnWidth = ProfileRowIcon.columnWidth
 
     var body: some View {
-        Image(systemName: icon.rawValue)
+        ScaledIcon(icon: icon.icon, size: ProfileRowIcon.glyphSize, isDecorative: false)
             .foregroundStyle(Theme.Colors.accent)
             .frame(width: columnWidth)
     }
 }
 
 private struct PlaceholderTabView: View {
-    let icon: String
+    let icon: AppIcon
     let title: String
     let subtitle: String
 
     var body: some View {
         VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 36, weight: .semibold))
+            IconView(icon: icon, size: 40)
                 .foregroundStyle(Theme.Colors.accent)
                 .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
 

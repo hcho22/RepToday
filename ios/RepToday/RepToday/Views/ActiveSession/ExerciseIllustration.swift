@@ -18,30 +18,35 @@ extension EnvironmentValues {
 
 // MARK: - Exercise card
 
-/// The exercise card (US-K01): the movement's Trainer start/end poses on the app's card color, in every
-/// player state - the rep work window, a running or idle hold, a rep-based stretch - and, at a
-/// flexible height, under the rest overlay's next-up preview (US-TP06/US-TP08).
+/// The exercise card (US-K01), drawn as the Trainer stage: the movement's Trainer start/end poses on a
+/// lit stage in the session's color, in every player state - the rep work window, a running or idle
+/// hold, a rep-based stretch - and, at a flexible height, under the rest screen's next-up preview
+/// (US-TP06/US-TP08).
 ///
-/// The card belongs to the poses (ADR-0008): the countdown ring sits beside the exercise name instead,
-/// so starting a window or a hold never changes what the card shows. Only on a short screen, where the
-/// arriving ring can wrap the name, does the player's card give up height (`fittedHeight`).
+/// The stage has a 28 pt radius and a radial glow, an ellipse 95% x 75% anchored at the bottom centre,
+/// from the day's tint to `stageBase` at 78%. The card belongs to the poses (ADR-0008): the timer sits
+/// below the movement name instead, so starting a window or a hold never changes what the card shows.
+/// Only on a short screen does the player's card give up height (`fittedHeight`).
 struct ExerciseDemoView: View {
     let prescription: PrescribedExercise
 
     /// The card's height, or `nil` for a card that takes the height its container offers (the rest
-    /// overlay shrinks it to fit a small phone, US-TP08).
+    /// screen shrinks it to fit a small phone, US-TP08).
     var height: CGFloat? = ExerciseDemoView.height
 
-    /// Whether the no-art glyph fallback pulses - see `ExerciseIllustration.animatesGlyph`.
+    /// Whether the no-art fallback mark pulses - see `ExerciseIllustration.animatesGlyph`.
     var animatesGlyph: Bool = true
 
-    /// The full height of the exercise card in the player. One value for every state, so moving between
-    /// them shifts nothing below the card wherever the column fits; a short screen fits it down
-    /// (`fittedHeight`).
+    @Environment(\.dayTone) private var tone
+
+    /// The tallest the exercise card grows in the player: two square poses side by side across the
+    /// widest phone's column, under their label band. One value for every state, so moving between them
+    /// shifts nothing below the card wherever the column fits; a narrower column or a short screen fits
+    /// it down.
     static let height: CGFloat = 220
 
     /// The smallest a card shrinks to on a short screen, in the player and the rest preview alike.
-    static let minHeight: CGFloat = 110
+    static let minHeight: CGFloat = 100
 
     /// The player card's height with `room` points free for it: the full `height` when it fits,
     /// otherwise `room`, shrinking the poses with it - but never below `minHeight`, past which the
@@ -50,15 +55,29 @@ struct ExerciseDemoView: View {
         min(height, max(room, minHeight))
     }
 
+    /// The height at which two square poses and their gap exactly fill `width`, plus the label band
+    /// above them: the stage never draws taller than its poses need.
+    static func naturalHeight(width: CGFloat) -> CGFloat {
+        max(0, (width - ExerciseIllustration.poseSpacing) / 2) + ExerciseIllustration.labelBand
+    }
+
     var body: some View {
-        ExerciseIllustration(prescription: prescription, animatesGlyph: animatesGlyph)
-            .padding(Theme.Spacing.sm)
+        ExerciseIllustration(prescription: prescription, animatesGlyph: animatesGlyph, showsPoseLabels: true)
             .frame(maxWidth: .infinity)
             .frame(height: height)
-            .background(
-                Theme.Colors.secondaryBackground,
-                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-            )
+            .background(Self.stageBackground(tone), in: RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
+    }
+
+    /// The stage's lit background: an ellipse 95% x 75% anchored bottom centre, from the day's tint to
+    /// `stageBase` at 78%.
+    static func stageBackground(_ tone: DayTone) -> some ShapeStyle {
+        EllipticalGradient(
+            stops: [.init(color: tone.tint, location: 0), .init(color: Theme.Colors.stageBase, location: 0.78)],
+            center: .bottom,
+            startRadiusFraction: 0,
+            endRadiusFraction: 1
+        )
     }
 }
 
@@ -87,9 +106,14 @@ struct ExerciseIllustration: View {
     /// is too small for two poses side by side to read.
     var startPoseOnly: Bool = false
 
+    /// Labels each pose START and END (HOLD for a hold's single pose) in its frame's empty top-left,
+    /// and lights a floor glow under each figure: the Trainer stage's dressing. A thumbnail leaves it off.
+    var showsPoseLabels: Bool = false
+
     var resolver: TrainerPoseResolver = .bundled
 
     @Environment(\.trainer) private var trainer
+    @Environment(\.dayTone) private var tone
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -111,13 +135,17 @@ struct ExerciseIllustration: View {
     private var isTextOnly: Bool { CustomWorkout.isTextOnly(exerciseId: prescription.exercise.id) }
 
     /// The gap between the two poses of a pair.
-    private static let poseSpacing: CGFloat = Theme.Spacing.sm
+    static let poseSpacing: CGFloat = Theme.Spacing.sm
+
+    /// The band above the poses that holds their START / END / HOLD labels, so a label never sits on art
+    /// that reaches the top of its square (a wall, raised arms).
+    static let labelBand: CGFloat = 24
 
     @ViewBuilder
     private func content(_ art: TrainerPoseArt, in size: CGSize) -> some View {
         // One pose's square: half the width (less the gap) or the full height, whichever is smaller -
         // the same for a pair and a single pose, so a single pose is never bigger than a paired one.
-        let side = max(0, min((size.width - Self.poseSpacing) / 2, size.height))
+        let side = max(0, min((size.width - Self.poseSpacing) / 2, size.height - (showsPoseLabels ? Self.labelBand : 0)))
         if isTextOnly {
             Text(prescription.exercise.displayName)
                 .font(Theme.Typography.title)
@@ -134,51 +162,95 @@ struct ExerciseIllustration: View {
     private func artContent(_ art: TrainerPoseArt, side: CGFloat, size: CGSize) -> some View {
         switch art {
         case .pair(let start, _) where startPoseOnly:
-            pose(start, side: min(size.width, size.height))
+            pose(start, side: min(size.width, size.height), label: nil)
         case .pair(let start, let end):
             HStack(spacing: Self.poseSpacing) {
-                pose(start, side: side)
-                pose(end, side: side)
+                pose(start, side: side, label: "Start")
+                pose(end, side: side, label: "End")
             }
         case .single(_, let name):
-            pose(name, side: startPoseOnly ? min(size.width, size.height) : side)
+            pose(name, side: startPoseOnly ? min(size.width, size.height) : side,
+                 label: prescription.exercise.isHold ? "Hold" : nil)
         case .none:
             glyph(size: min(size.width, size.height))
         }
     }
 
-    private func pose(_ name: String, side: CGFloat) -> some View {
+    /// One square pose, shown whole (`.fit`, never cropped or stretched). On the stage it sits over a
+    /// floor glow - an ellipse across 5-95% of the frame's width and 80-93% of its height, the day's
+    /// color at 70% fading to clear, under feet the art places at 87% - with its overline label in the
+    /// band above the square, never on the art. A 1 pt warm-white outline (four 1 pt shadows) keeps the
+    /// ink line off the black.
+    @ViewBuilder
+    private func pose(_ name: String, side: CGFloat, label: String?) -> some View {
+        if showsPoseLabels {
+            VStack(alignment: .leading, spacing: 0) {
+                // Fixed at 11 pt: the band does not grow with text.
+                Text((label ?? "").uppercased())
+                    .font(ThemeFont(Theme.Typography.FontName.textBold, fixedSize: 11))
+                    .tracking(Theme.Typography.overlineTracking * 11)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .padding(.leading, 12)
+                    .frame(width: side, height: Self.labelBand, alignment: .bottomLeading)
+                ZStack {
+                    Ellipse()
+                        .fill(EllipticalGradient(
+                            colors: [tone.color.opacity(0.7), tone.color.opacity(0)],
+                            center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
+                        ))
+                        .frame(width: side * 0.9, height: side * 0.13)
+                        .position(x: side / 2, y: side * 0.865)
+                    poseImage(name, side: side)
+                }
+                .frame(width: side, height: side)
+            }
+            .accessibilityHidden(true)
+        } else {
+            poseImage(name, side: side)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func poseImage(_ name: String, side: CGFloat) -> some View {
         Image(name)
             .resizable()
             .interpolation(.high)
             .aspectRatio(1, contentMode: .fit)
             .frame(width: side, height: side)
-            .accessibilityHidden(true)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
+            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
     }
 
+    /// The no-art fallback: the movement's day mark in the session's color, pulsing gently on an idle
+    /// card (never under Reduce Motion).
     @ViewBuilder
     private func glyph(size: CGFloat) -> some View {
-        let base = Image(systemName: symbolName)
-            .font(.system(size: size * 0.45, weight: .semibold))
-            .foregroundStyle(Theme.Colors.accent)
+        let base = DayMarkView(mark: mark, filled: true, color: tone.color, size: size * 0.45)
 
         if reduceMotion || !animatesGlyph {
             base // static fallback - no animation against Reduce Motion, or where a still illustration is wanted
         } else {
-            base.symbolEffect(.pulse, options: .repeating)
+            base.phaseAnimator([1.0, 0.55]) { view, opacity in
+                view.opacity(opacity)
+            } animation: { _ in .easeInOut(duration: 0.9) }
         }
     }
 
-    /// A movement-appropriate SF Symbol so the fallback reads as the right kind of exercise.
-    private var symbolName: String {
+    /// The day mark that stands for the movement's pattern, so the fallback reads as the right kind of
+    /// exercise: the dome for push, the arch for pull, the steps for legs, the circle for core, the
+    /// crescent for mobility and the climb for locomotion.
+    private var mark: DayMark {
         switch prescription.exercise.movementPattern {
-        case .push: return "figure.strengthtraining.traditional"
-        case .squat: return "figure.cross.training"
-        case .hinge: return "figure.strengthtraining.functional"
-        case .core: return "figure.core.training"
-        case .pull: return "figure.climbing"
-        case .mobility: return "figure.flexibility"
-        case .locomotion: return "figure.run"
+        case .push: return .push
+        case .pull: return .pull
+        case .squat, .hinge: return .legs
+        case .core: return .sun
+        case .mobility: return .rest
+        case .locomotion: return .climb
         }
     }
 }

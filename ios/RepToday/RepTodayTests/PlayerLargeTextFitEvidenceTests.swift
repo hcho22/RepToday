@@ -16,9 +16,14 @@ import SwiftUI
 final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     private let story = "player-large-text"
-    private let screen = CGSize(width: 375, height: 667)
-    /// An iPhone SE (3rd generation): a 20 pt status bar, no home indicator.
-    private let statusBar: CGFloat = 20
+    /// An iPhone SE (3rd generation): 375x667 pt, a 20 pt status bar, no home indicator.
+    private static let smallPhone = Phone(name: "375x667", size: CGSize(width: 375, height: 667), safeArea: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0))
+    /// An iPhone 16: 402x874 pt, a 62 pt status bar and a 34 pt home indicator.
+    private static let roomyPhone = Phone(name: "402x874", size: CGSize(width: 402, height: 874), safeArea: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0))
+    /// The phone hosted now; every test but the timer-placement ones runs on the small one.
+    private var phone = PlayerLargeTextFitEvidenceTests.smallPhone
+    private var screen: CGSize { phone.size }
+    private var statusBar: CGFloat { phone.safeArea.top }
     private var window: UIWindow?
 
     private let sizes: [DynamicTypeSize] = [.large, .xLarge, .xxxLarge, .accessibility1, .accessibility3, .accessibility5]
@@ -28,7 +33,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
 
     /// The secondary controls by accessibility label, with the title each one shows.
     private let secondaryTitles: [String: String] = [
-        "More time": "+ More time",
+        "More time": ActiveSessionView.moreTimeTitle,
         "Swap this exercise": "Swap",
         "Complete set": "Complete set",
         "Finish exercise": "Finish exercise",
@@ -91,24 +96,69 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         }
     }
 
-    /// The controls are measured at the width SwiftUI actually draws their titles - the player's body
-    /// type and the rest overlay's button type, with Bold Text off and on - so the row-or-column choice
-    /// and each column's minimum account for the heavier glyphs Bold Text draws.
+    /// The controls are measured at the width SwiftUI actually draws their titles - the quiet actions'
+    /// type and the rest screen's button type, with Bold Text off and on - so the row-or-column choice
+    /// and each column's minimum account for the heavier cut Bold Text draws.
     func testMeasurementMatchesWhatSwiftUIDraws() {
         let text = "Skip rest Complete"
         for size in sizes {
-            for (font, style) in [(Theme.Typography.body, UIFont.TextStyle.body), (Theme.Typography.button, .headline)] {
+            for (font, style) in [(Theme.Typography.quietAction, ActiveSessionView.MeasuredStyle.quietAction), (Theme.Typography.sessionSecondaryButton, .sessionSecondaryButton)] {
                 for weight in [LegibilityWeight.regular, .bold] {
                     let drawn = UIHostingController(rootView: Text(text).font(font).fixedSize()
                         .environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight))
                         .sizeThatFits(in: CGSize(width: 10_000, height: 10_000)).width
                     let measured = ActiveSessionView.textWidth(text, style: style, size: size, weight: weight)
-                    XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style.rawValue) \(weight): measured narrower than drawn")
-                    XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style.rawValue) \(weight): measured wider than drawn")
+                    XCTAssertGreaterThanOrEqual(measured, drawn - 0.01, "\(size) \(style) \(weight): measured narrower than drawn")
+                    XCTAssertLessThan(measured - drawn, 1.5, "\(size) \(style) \(weight): measured wider than drawn")
                 }
                 XCTAssertGreaterThan(ActiveSessionView.textWidth(text, style: style, size: size, weight: .bold),
                                      ActiveSessionView.textWidth(text, style: style, size: size, weight: nil),
-                                     "\(size) \(style.rawValue): Bold Text measures no wider than regular")
+                                     "\(size) \(style): Bold Text measures no wider than regular")
+            }
+        }
+    }
+
+    /// At every accessibility text size the exercise screen opens with its workout timer whole and
+    /// above the pinned Done, with no scrolling, on a small and a roomy phone (DESIGN `Z2-Exercise-AX`):
+    /// the stage, the title row and the round tracker give way, never the timer.
+    func testWorkWindowTimerOpensAboveDoneAtAccessibilitySizes() throws {
+        for id in ["push_wall", "hinge_long_lever_bridge"] {
+            let session = workout([("Strength", .strength, [try prescription(id, sets: 4), try prescription("squat_bodyweight", sets: 4)])])
+            try assertTimerOpensAbovePrimary(session, primary: "Done", ring: "Work window, ", name: id)
+        }
+    }
+
+    /// The same for a running hold above Stop hold - a training hold and a per-side warm-up stretch,
+    /// whose round tracker carries its side line too.
+    func testRunningHoldTimerOpensAboveStopHoldAtAccessibilitySizes() throws {
+        let plank = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 4), try prescription("push_wall", sets: 4)])])
+        try assertTimerOpensAbovePrimary(plank, primary: "Stop hold", ring: "Hold, ", name: "core_forearm_plank")
+        let stretch = workout([("Warm-up", .mobility, [try prescription("mobility_kneeling_hip_flexor", sets: 1)]),
+                               ("Strength", .strength, [try prescription("push_wall", sets: 2)])])
+        try assertTimerOpensAbovePrimary(stretch, primary: "Stop hold", ring: "Hold, ", name: "mobility_kneeling_hip_flexor")
+    }
+
+    private func assertTimerOpensAbovePrimary(_ session: Workout, primary: String, ring: String, name: String,
+                                              file: StaticString = #filePath, line: UInt = #line) throws {
+        defer { phone = Self.smallPhone }
+        for device in [Self.roomyPhone, Self.smallPhone] {
+            phone = device
+            for size in [DynamicTypeSize.accessibility1, .accessibility3, .accessibility5] {
+                let look = "\(name) \(device.name) \(size)"
+                let engine = OnDeviceWorkoutEngine(exerciseService: try MockExerciseService())
+                host(ActiveSessionView(workout: session, workoutEngine: engine, user: user()), .dark, size: size)
+                XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix(ring) } }, timeout: 5),
+                              "\(look): no running countdown; tree reads \(labels())", file: file, line: line)
+                HostedSurface.pump(for: 0.5)
+
+                XCTAssertEqual(scrollView()?.contentOffset.y ?? 0, 0, accuracy: 0.5, "\(look): the player opened scrolled", file: file, line: line)
+                // Found by its prefix: the label carries the remaining seconds, which change as it runs.
+                let timer = try XCTUnwrap(frame(where: { $0.hasPrefix(ring) }), "\(look): no timer; tree reads \(labels())", file: file, line: line)
+                let pinned = try XCTUnwrap(frame(of: primary), "\(look): no \(primary)", file: file, line: line)
+                let visible = try XCTUnwrap(visibleScrollArea(), "\(look): no scroll area", file: file, line: line)
+                XCTAssertLessThanOrEqual(timer.maxY, pinned.minY + 0.5, "\(look): the timer at \(timer) runs under \(primary) at \(pinned)", file: file, line: line)
+                XCTAssertTrue(visible.insetBy(dx: 0, dy: -0.5).contains(timer), "\(look): the timer at \(timer) is not whole in the visible column \(visible)", file: file, line: line)
+                if size == .accessibility5 { try capture("timer-above-\(primary == "Done" ? "done" : "stop-hold")-\(name)-\(device.name)", .dark) }
             }
         }
     }
@@ -197,7 +247,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
                 assertOnScreenAndApart(["End session", "Pause session", extend, "Skip rest"], look)
                 if let skip = frame(of: "Skip rest"), let more = frame(of: extend) {
                     for (control, title) in [(skip, "Skip rest"), (more, "+\(ActiveSessionViewModel.restExtension)s")] {
-                        let needed = ActiveSessionView.textWidth(title, style: .headline, size: size, weight: weight)
+                        let needed = ActiveSessionView.textWidth(title, style: .sessionSecondaryButton, size: size, weight: weight)
                         XCTAssertGreaterThanOrEqual(control.width, needed, "\(look): \"\(title)\" is wider than its button", file: #filePath, line: #line)
                     }
                     if size == .large, weight == nil {
@@ -237,10 +287,17 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     private func assertNoWordBreak(_ label: String, _ look: String, file: StaticString, line: UInt) {
         guard let control = frame(of: label), let title = secondaryTitles[label] else { return }
         let longest = ActiveSessionView.longestWordWidth(title, size: hostedSize, weight: hostedWeight)
-        XCTAssertGreaterThanOrEqual(control.width, longest, "\(look): \"\(title)\" breaks a word in its \(control.width) pt control", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(control.width, longest - 0.01, "\(look): \"\(title)\" breaks a word in its \(control.width) pt control", file: file, line: line)
     }
 
     // MARK: - Fixtures
+
+    /// A phone the player is hosted on: its screen and its safe area.
+    private struct Phone {
+        let name: String
+        let size: CGSize
+        let safeArea: UIEdgeInsets
+    }
 
     /// The Dynamic Type size of the surface hosted now.
     private var hostedSize: DynamicTypeSize = .large
@@ -286,7 +343,7 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
         hostedWeight = weight
         let (_, hosted) = HostedSurface.host(
             view.environment(\.dynamicTypeSize, size).environment(\.legibilityWeight, weight), size: screen, settleFor: 1.5, style: style,
-            emulatingSafeArea: UIEdgeInsets(top: statusBar, left: 0, bottom: 0, right: 0)
+            emulatingSafeArea: phone.safeArea
         )
         window = hosted
     }
@@ -302,6 +359,13 @@ final class PlayerLargeTextFitEvidenceTests: XCTestCase {
     private func frame(of label: String) -> CGRect? {
         guard let root = root(), let origin = window?.frame.origin,
               let frame = AccessibilityTree.element(labeled: label, in: root)?.accessibilityFrame else { return nil }
+        return frame.offsetBy(dx: -origin.x, dy: -origin.y)
+    }
+
+    /// The frame of the element whose label satisfies `predicate`, in the hosted window's coordinates.
+    private func frame(where predicate: (String) -> Bool) -> CGRect? {
+        guard let root = root(), let origin = window?.frame.origin,
+              let frame = AccessibilityTree.element(whereLabel: predicate, in: root)?.accessibilityFrame else { return nil }
         return frame.offsetBy(dx: -origin.x, dy: -origin.y)
     }
 
