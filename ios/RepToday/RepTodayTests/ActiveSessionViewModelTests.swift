@@ -2042,10 +2042,6 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(resumed.canStartHold, "the resumed leg is ready to begin fresh on side 2")
     }
 
-    /// Playing a resumed uneven pre-CC03 circuit through to the end never crashes and never drops the
-    /// work banked before the pause. The position-driven rotation is total-preserving from the saved
-    /// spot - a shorter station drops out of the later rounds via `hasSet` - so an old snapshot's uneven
-    /// block finishes cleanly rather than trapping or losing a completed set.
     /// The resume card's progress counts circuit rounds: paused at round 4 of a 5-station, 4-round
     /// training block, the player sits back on the block's first station, yet most of the session is done.
     func testResumeProgressCountsCircuitRounds() {
@@ -2079,6 +2075,10 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(state.progress, 22.0 / 24.0, accuracy: 0.0001, "first cooldown: everything before it is done")
     }
 
+    /// Playing a resumed uneven pre-CC03 circuit through to the end never crashes and never drops the
+    /// work banked before the pause. The position-driven rotation is total-preserving from the saved
+    /// spot - a shorter station drops out of the later rounds via `hasSet` - so an old snapshot's uneven
+    /// block finishes cleanly rather than trapping or losing a completed set.
     func testResumedUnevenPreCircuitPlaysToCompletionWithoutLosingWork() {
         let strength = WorkoutBlock(
             id: UUID(), title: "Strength", category: .strength,
