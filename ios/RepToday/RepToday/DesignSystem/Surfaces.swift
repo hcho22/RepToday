@@ -228,12 +228,10 @@ struct ThemeToggleStyle: ToggleStyle {
             }
             .frame(width: 52, height: 32)
             .animation(.easeOut(duration: 0.12), value: configuration.isOn)
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -(Theme.Spacing.minTouchTarget - 32) / 2))
             .onTapGesture { configuration.isOn.toggle() }
             .accessibilityHidden(true)
         }
-        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
         .accessibilityAddTraits(.isButton)
