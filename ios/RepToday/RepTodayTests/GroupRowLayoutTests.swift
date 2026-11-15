@@ -3,28 +3,41 @@ import UIKit
 import XCTest
 @testable import RepToday
 
-/// The Settings rows that show a value (`SettingsValueRowLabel`: Trainer, Reminders, Focus Areas) in a
-/// row group on the narrowest phone the app supports (375pt wide), at every text size. No word is
-/// ever broken in half, the title and the value never overlap, and at the accessibility sizes the value
-/// sits under the title rather than beside it.
+/// The shared group row (`GroupRow`) on the narrowest phone the app supports (375pt wide), in a row group,
+/// with the titles and values the Settings and Profile screens give it, at every text size. No word is ever
+/// broken in half, the title and the value never overlap, and at the accessibility sizes the value sits
+/// under the title rather than beside it.
 @MainActor
-final class SettingsValueRowLayoutTests: XCTestCase {
+final class GroupRowLayoutTests: XCTestCase {
 
     private struct Row {
-        let icon: AppIcon
+        let icon: AppIcon?
         let title: String
-        let value: String
-        var valueLineLimit: Int?
+        var value: String?
+        var showsChevron = true
     }
 
-    private let rows: [Row] = Trainer.allCases.map(\.displayName).map {
+    /// The rows that show a value: Trainer, Reminders, Focus Areas.
+    private let valueRows: [Row] = Trainer.allCases.map(\.displayName).map {
         Row(icon: .profile, title: TrainerChoiceCopy.settingsTitle, value: $0)
     } + [
         Row(icon: .profile, title: TrainerChoiceCopy.settingsTitle, value: TrainerChoiceCopy.notChosenValue),
         Row(icon: .bell, title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(0)),
         Row(icon: .bell, title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(2)),
-        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([]), valueLineLimit: 2),
-        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([.arms, .legs]), valueLineLimit: 2),
+        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([])),
+        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([.arms, .legs])),
+        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary(FocusArea.allCases)),
+    ]
+
+    /// The rows that show only a title: Profile's and the rest of Settings'.
+    private let titleRows: [Row] = [
+        Row(icon: .profile, title: "Account"),
+        Row(icon: .settings, title: "Settings"),
+        Row(icon: nil, title: "Privacy Policy", showsChevron: false),
+        Row(icon: .coach, title: CoachDataDisclosureCopy.settingsRowTitle, showsChevron: false),
+        Row(icon: .shield, title: InjuryFlagsCopy.title),
+        Row(icon: .signout, title: SettingsView.signOutTitle, showsChevron: false),
+        Row(icon: .trash, title: SettingsView.deleteAccountTitle, showsChevron: false),
     ]
 
     /// The font `token` draws at `size`: its cut scaled for its text style and rounded to a whole point, as
@@ -36,21 +49,15 @@ final class SettingsValueRowLayoutTests: XCTestCase {
         return UIFont(name: token.name, size: pointSize) ?? .systemFont(ofSize: pointSize)
     }
 
-    /// Hosts every row at `size` and checks each.
-    private func assertRowsReadCleanly(at size: DynamicTypeSize) throws {
-        let rows = self.rows
-        let screen = CGSize(width: 375, height: 2400)
+    /// Hosts every row at `size`, each in its own row group as the screens lay it out, and checks each.
+    private func assertRowsReadCleanly(_ rows: [Row], at size: DynamicTypeSize) throws {
+        let screen = CGSize(width: 375, height: 3600)
         let (_, window) = HostedSurface.host(
             VStack(spacing: Theme.Spacing.smd) {
                 ForEach(rows.indices, id: \.self) { index in
                     let row = rows[index]
                     RowGroup {
-                        SettingsValueRowLabel(
-                            icon: row.icon,
-                            title: row.title,
-                            value: row.value,
-                            valueLineLimit: row.valueLineLimit
-                        )
+                        GroupRow(icon: row.icon, title: row.title, value: row.value, showsChevron: row.showsChevron)
                     }
                 }
             }
@@ -74,15 +81,15 @@ final class SettingsValueRowLayoutTests: XCTestCase {
 
         for row in rows {
             let title = try next(row.title)
-            let shown = try next(row.value)
+            let shown = try row.value.map(next)
 
             // A text broken mid-word is narrower than that word, so every word must fit its text's width -
             // at full size beside the title, and at no less than the row's shrink once stacked, where a
             // split word would also take a line more than the text has words.
-            let scale = size.isAccessibilitySize ? SettingsValueRowLabel.stackedMinimumScale : 1
-            for (text, element, token) in [
-                (row.title, title, SettingsValueRowLabel.titleFont), (row.value, shown, SettingsValueRowLabel.valueFont),
-            ] {
+            let scale = size.isAccessibilitySize ? GroupRow.stackedMinimumScale : 1
+            var texts: [(String, NSObject, ThemeFont)] = [(row.title, title, GroupRow.titleFont)]
+            if let value = row.value, let shown { texts.append((value, shown, GroupRow.valueFont)) }
+            for (text, element, token) in texts {
                 let font = font(token, at: size)
                 let words = text.split(separator: " ").map(String.init)
                 for word in words {
@@ -91,26 +98,39 @@ final class SettingsValueRowLayoutTests: XCTestCase {
                                                 "\"\(word)\" is broken across lines in \"\(text)\" at \(size)")
                 }
                 if size.isAccessibilitySize {
-                    XCTAssertLessThanOrEqual(element.accessibilityFrame.height, CGFloat(words.count) * font.lineHeight + 2,
+                    // A row whose title is its only text reports that text at the row's frame, so its bound
+                    // allows the row's vertical padding and its 60 pt floor.
+                    let lines = CGFloat(words.count) * font.lineHeight
+                    let bound = row.value == nil
+                        ? max(lines + 2 * Theme.Spacing.smd, Theme.Spacing.rowHeight)
+                        : lines
+                    XCTAssertLessThanOrEqual(element.accessibilityFrame.height, bound + 2,
                                              "\"\(text)\" takes more lines than it has words at \(size)")
                 }
             }
 
+            guard let value = row.value, let shown else { continue }
             XCTAssertFalse(title.accessibilityFrame.intersects(shown.accessibilityFrame),
-                           "\(row.title) \(title.accessibilityFrame) overlaps \"\(row.value)\" \(shown.accessibilityFrame) at \(size)")
+                           "\(row.title) \(title.accessibilityFrame) overlaps \"\(value)\" \(shown.accessibilityFrame) at \(size)")
             if size.isAccessibilitySize {
                 XCTAssertGreaterThanOrEqual(shown.accessibilityFrame.minY, title.accessibilityFrame.maxY,
-                                            "\"\(row.value)\" should sit under \(row.title) at \(size)")
+                                            "\"\(value)\" should sit under \(row.title) at \(size)")
             } else {
                 XCTAssertGreaterThanOrEqual(shown.accessibilityFrame.minX, title.accessibilityFrame.maxX,
-                                            "\"\(row.value)\" should trail \(row.title) at \(size)")
+                                            "\"\(value)\" should trail \(row.title) at \(size)")
             }
         }
     }
 
-    func testValueRowsNeverBreakAWordOrOverlapAtAnyTextSize() throws {
+    /// The largest accessibility size on the narrowest phone, where "Reminders" or "Settings" in Headline
+    /// is wider than the row and used to split mid-word: every row stacks and shrinks a word instead.
+    func testNoRowBreaksAWordAtTheLargestTextSize() throws {
+        try assertRowsReadCleanly(valueRows + titleRows, at: .accessibility5)
+    }
+
+    func testRowsNeverBreakAWordOrOverlapAtAnyTextSize() throws {
         for size in DynamicTypeSize.allCases {
-            try assertRowsReadCleanly(at: size)
+            try assertRowsReadCleanly(valueRows + titleRows, at: size)
         }
     }
 }

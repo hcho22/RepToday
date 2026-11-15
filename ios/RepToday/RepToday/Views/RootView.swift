@@ -307,7 +307,7 @@ struct ProfileTabView: View {
                             NavigationLink {
                                 AccountView()
                             } label: {
-                                SettingsValueRowLabel(icon: .profile, title: "Account")
+                                GroupRow(icon: .profile, title: "Account", showsChevron: true)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Account")
@@ -318,7 +318,7 @@ struct ProfileTabView: View {
                             NavigationLink {
                                 SettingsView()
                             } label: {
-                                SettingsValueRowLabel(icon: .settings, title: "Settings")
+                                GroupRow(icon: .settings, title: "Settings", showsChevron: true)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Settings")

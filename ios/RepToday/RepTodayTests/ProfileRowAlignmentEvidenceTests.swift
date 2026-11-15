@@ -52,7 +52,7 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
         try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.profileRowAlignment)
     }
 
-    /// Renders the Profile tab's rows (`SettingsValueRowLabel`, each with its own icon) in their group at
+    /// Renders the Profile tab's rows (`GroupRow`, each with its own icon) in their group at
     /// the narrowest phone's width (an iPhone SE) and reads where each title lands: every title starts at
     /// the same x. The bare labels are hosted (not `ProfileTabView`) because a
     /// `NavigationLink`'s own accessibility label merges its row into one element, hiding the title's frame.
@@ -63,7 +63,7 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
             RowGroup {
                 VStack(spacing: 0) {
                     ForEach(rows, id: \.title) { row in
-                        SettingsValueRowLabel(icon: row.icon, title: row.title)
+                        GroupRow(icon: row.icon, title: row.title, showsChevron: true)
                     }
                 }
             }

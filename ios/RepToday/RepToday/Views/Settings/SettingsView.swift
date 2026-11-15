@@ -54,7 +54,11 @@ struct SettingsView: View {
                         .accessibilityHint(Self.toggleHint)
                     GroupSeparator()
                     Link(destination: LegalLinks.privacyPolicy) {
-                        SettingsValueRowLabel(title: "Privacy Policy", trailingIcon: .external)
+                        HStack(spacing: Theme.Spacing.smd) {
+                            GroupRow(title: "Privacy Policy")
+                            IconView(icon: .external, size: 20)
+                                .foregroundStyle(Theme.Colors.text3)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Privacy Policy")
@@ -70,7 +74,7 @@ struct SettingsView: View {
                 // the pre-use modal shows.
                 GroupHeader("AI Coach")
                 group {
-                    SettingsValueRowLabel(icon: .coach, title: CoachDataDisclosureCopy.settingsRowTitle, trailingIcon: nil)
+                    GroupRow(icon: .coach, title: CoachDataDisclosureCopy.settingsRowTitle)
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(CoachDataDisclosureCopy.settingsRowTitle)
                 }
@@ -81,10 +85,11 @@ struct SettingsView: View {
                     NavigationLink {
                         RemindersView(service: services.reminders)
                     } label: {
-                        SettingsValueRowLabel(
+                        GroupRow(
                             icon: .bell,
                             title: CoachReminderCopy.settingsTitle,
-                            value: Self.reminderSummary(reminderCount)
+                            value: Self.reminderSummary(reminderCount),
+                            showsChevron: true
                         )
                     }
                     .buttonStyle(.plain)
@@ -103,11 +108,11 @@ struct SettingsView: View {
                     NavigationLink {
                         FocusAreasView(services: services)
                     } label: {
-                        SettingsValueRowLabel(
+                        GroupRow(
                             icon: .focus,
                             title: FocusAreasCopy.title,
                             value: FocusAreasCopy.summary(focusAreas),
-                            valueLineLimit: 2
+                            showsChevron: true
                         )
                     }
                     .buttonStyle(.plain)
@@ -132,7 +137,7 @@ struct SettingsView: View {
                     NavigationLink {
                         InjuryFlagsView(services: services)
                     } label: {
-                        SettingsValueRowLabel(icon: .shield, title: InjuryFlagsCopy.title)
+                        GroupRow(icon: .shield, title: InjuryFlagsCopy.title, showsChevron: true)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(InjuryFlagsCopy.title)
@@ -166,12 +171,7 @@ struct SettingsView: View {
                         let model = deletionModel()
                         Task { await model.deleteAccountTapped() }
                     } label: {
-                        SettingsValueRowLabel(
-                            icon: .trash,
-                            title: Self.deleteAccountTitle,
-                            trailingIcon: nil,
-                            tint: Theme.Colors.danger
-                        )
+                        GroupRow(icon: .trash, title: Self.deleteAccountTitle, titleColor: Theme.Colors.danger)
                     }
                     .buttonStyle(.plain)
                     .disabled(isAccountActionRunning)
@@ -288,11 +288,10 @@ struct SettingsView: View {
             signOutModel().signOutTapped()
         } label: {
             HStack(spacing: Theme.Spacing.sm) {
-                SettingsValueRowLabel(
+                GroupRow(
                     icon: .signout,
                     title: progress ?? Self.signOutTitle,
-                    trailingIcon: nil,
-                    tint: progress == nil ? Theme.Colors.text1 : Theme.Colors.text2
+                    titleColor: progress == nil ? Theme.Colors.text1 : Theme.Colors.text2
                 )
                 if progress != nil {
                     ProgressView()
@@ -336,10 +335,11 @@ struct SettingsView: View {
                 }
             }
         } label: {
-            SettingsValueRowLabel(
+            GroupRow(
                 icon: .profile,
                 title: TrainerChoiceCopy.settingsTitle,
-                value: model?.valueText ?? ""
+                value: model.flatMap { $0.valueText.isEmpty ? nil : $0.valueText },
+                showsChevron: true
             )
             .contentShape(Rectangle())
         }
@@ -525,105 +525,4 @@ struct SettingsView: View {
     }
     .environment(\.services, ServiceContainer.mock())
     .environment(AppState.preview(isOnboarded: true, selectedTab: .profile))
-}
-
-/// A row inside a Settings or Profile group: an optional icon, the title, an optional value and a
-/// trailing glyph (the chevron of a row that opens something, the external mark of a link, or none), at
-/// least 60 pt tall, in the group-row tokens (`GroupRow`'s icon, Headline title and `text2` value).
-///
-/// At the accessibility text sizes the value moves under the title so the title and the value each keep
-/// the row's full width rather than splitting it and breaking words in half. The title is never squeezed
-/// for the value: the value wraps first. Stacked, a text gets one line per word and shrinks rather than
-/// split a word too wide for its line ("Reminders" at the largest size on the narrowest phone); the glyphs
-/// stop growing at the first accessibility size to leave the text the room.
-struct SettingsValueRowLabel: View {
-    var icon: AppIcon?
-    let title: String
-    var value: String = ""
-    /// The most lines the value may take; `nil` lets it wrap as far as it needs.
-    var valueLineLimit: Int?
-    /// The trailing glyph, in `text3`: the chevron by default, `nil` for none.
-    var trailingIcon: AppIcon? = .chevr
-    /// The title's color, which a tinted row's icon takes too (`danger` for Delete Account).
-    var tint: Color = Theme.Colors.text1
-
-    /// The largest text size the row's glyphs grow to.
-    static let largestGlyphSize = DynamicTypeSize.accessibility1
-
-    /// How far a stacked text shrinks before a word would split.
-    static let stackedMinimumScale: CGFloat = 0.7
-
-    /// The title's type: Headline, Inter Bold 17.
-    static let titleFont = Theme.Typography.headline
-
-    /// The value's type: Callout, Inter Medium 15.
-    static let valueFont = Theme.Typography.calloutMedium
-
-    /// One line per word: a word that does not fit its line overflows the limit, so the text shrinks
-    /// instead of breaking the word.
-    private static func lineLimit(forWordsIn text: String) -> Int {
-        max(1, text.split(separator: " ").count)
-    }
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.legibilityWeight) private var legibilityWeight
-
-    /// The width of the widest word of `text` in `font`: side by side, neither text is given less, so a
-    /// word wraps whole rather than splitting.
-    private func widestWord(of text: String, in font: ThemeFont) -> CGFloat {
-        text.split(separator: " ")
-            .map { font.width(of: String($0), size: dynamicTypeSize, weight: legibilityWeight) }
-            .max() ?? 0
-    }
-
-    var body: some View {
-        let stacksValue = dynamicTypeSize.isAccessibilitySize
-        // Stacked, the icon and the trailing glyph stay on the title's line rather than centering on the value.
-        HStack(alignment: stacksValue ? .firstTextBaseline : .center, spacing: Theme.Spacing.smd) {
-            if let icon {
-                ScaledIcon(icon: icon, size: 22, relativeTo: .headline)
-                    .foregroundStyle(tint == Theme.Colors.text1 ? Theme.Colors.text2 : tint)
-                    .dynamicTypeSize(...Self.largestGlyphSize)
-            }
-            let textLayout = stacksValue
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
-                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
-            textLayout {
-                Text(title)
-                    .font(Self.titleFont)
-                    .foregroundStyle(tint)
-                    .lineLimit(stacksValue ? Self.lineLimit(forWordsIn: title) : nil)
-                    .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minWidth: stacksValue ? nil : widestWord(of: title, in: Self.titleFont), alignment: .leading)
-                    .layoutPriority(1)
-                if !stacksValue {
-                    Spacer(minLength: Theme.Spacing.sm)
-                }
-                if !value.isEmpty {
-                    Text(value)
-                        .font(Self.valueFont)
-                        .foregroundStyle(Theme.Colors.text2)
-                        .multilineTextAlignment(stacksValue ? .leading : .trailing)
-                        .lineLimit(stacksValue
-                            ? min(Self.lineLimit(forWordsIn: value), valueLineLimit ?? .max)
-                            : valueLineLimit)
-                        .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minWidth: stacksValue ? nil : widestWord(of: value, in: Self.valueFont), alignment: .trailing)
-                }
-            }
-            if stacksValue {
-                Spacer(minLength: 0)
-            }
-            if let trailingIcon {
-                ScaledIcon(icon: trailingIcon, size: 20, relativeTo: .headline)
-                    .foregroundStyle(Theme.Colors.text3)
-                    .dynamicTypeSize(...Self.largestGlyphSize)
-            }
-        }
-        .padding(.vertical, Theme.Spacing.smd)
-        .frame(minHeight: Theme.Spacing.rowHeight)
-        .contentShape(Rectangle())
-    }
 }
