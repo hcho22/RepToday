@@ -182,10 +182,6 @@ struct ReadyView: View {
 
                     healthSuggestions
 
-                    if let consistency = viewModel.consistency {
-                        ConsistencyCard(consistency: consistency)
-                    }
-
                     if let note = viewModel.policyNote {
                         PolicyNoteCard(note: note)
                     }
@@ -194,6 +190,12 @@ struct ReadyView: View {
 
                     DifferentWorkoutButton(minutes: viewModel.requestedMinutes) {
                         Task { await viewModel.showDifferentWorkout() }
+                    }
+
+                    // The score card sits under the controls that shape today's session
+                    // (`screens/T10-Today.html`).
+                    if let consistency = viewModel.consistency {
+                        ConsistencyCard(consistency: consistency)
                     }
 
                     ForEach(workout.blocks) { block in
@@ -819,12 +821,24 @@ private struct ConsistencyCard: View {
     private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 || consistency.score > 0 }
 
     var body: some View {
-        // At the accessibility text sizes the score stacks above the words, so neither column is
-        // squeezed into breaking a word across lines.
+        if hasHistory && !dynamicTypeSize.isAccessibilitySize {
+            // DESIGN's score card: the score the Progress tab also reads, in `sun`, beside its words.
+            ScoreCard(score: Int(consistency.score.rounded()), headline: Self.headline, footnote: pride)
+                .accessibilityLabel(accessibilityText)
+        } else {
+            stackedCard
+        }
+    }
+
+    private static let headline = "You're someone who moves."
+
+    /// Before there is a score, the words alone; at the accessibility text sizes, the score stacked above
+    /// them, so neither column is squeezed into breaking a word across lines.
+    private var stackedCard: some View {
         let layout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
             : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
-        layout {
+        return layout {
             if hasHistory {
                 Text("\(Int(consistency.score.rounded()))")
                     .cappedDisplayFont(Theme.Typography.FontName.displayLarge, size: 76)
@@ -840,8 +854,11 @@ private struct ConsistencyCard: View {
                         .overlineStyle()
                         .foregroundStyle(Theme.Colors.sun)
                         .fixedSize(horizontal: false, vertical: true)
+                        // Tracked open, "CONSISTENCY" outgrows a small phone's card at the largest sizes
+                        // and would break inside the word; it stops growing where it still fits whole.
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 }
-                Text("You're someone who moves.")
+                Text(Self.headline)
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.text1)
                     .fixedSize(horizontal: false, vertical: true)

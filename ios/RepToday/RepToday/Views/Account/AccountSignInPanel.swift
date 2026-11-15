@@ -8,7 +8,8 @@ import SwiftUI
 /// Every color, font and dimension comes from `Theme`; controls are full-width, at least 56pt tall, and
 /// grow with Dynamic Type instead of truncating. Continue with Apple is the system
 /// `ASAuthorizationAppleIDButton` in its white style (DESIGN "Icons and marks"), fully round, which
-/// draws its own title at a fixed size; Google and email are `surface2` buttons whose titles wrap.
+/// draws its own title at a fixed size; Continue with Google is Google's dark-theme button with its
+/// official "G" (`GoogleSignInButton`); email is a `surface2` button. The last two titles wrap.
 struct AccountSignInPanel: View {
     @Bindable var viewModel: AccountSignInViewModel
     @FocusState private var focusedField: Field?
@@ -81,11 +82,11 @@ struct AccountSignInPanel: View {
             .accessibilityLabel("Continue with Apple")
             .accessibilityHint("Signs in with your Apple Account")
 
-            // Text only: Google's mark is a licensed asset this app does not ship
-            // (docs/asset-attribution.md), and a stand-in glyph would misrepresent it.
-            choiceButton("Continue with Google", working: viewModel.activity == .google) {
+            GoogleSignInButton(working: viewModel.activity == .google) {
                 Task { await viewModel.signInWithGoogle() }
             }
+            .disabled(viewModel.isWorking)
+            .accessibilityLabel("Continue with Google")
             .accessibilityHint("Opens Google sign-in")
 
             choiceButton("Continue with email", icon: .mail, working: false) {
@@ -271,9 +272,8 @@ struct AccountSignInPanel: View {
         .accessibilityLabel(title)
     }
 
-    /// One sign-in choice after Apple's: a `surface2` capsule with a white label and an optional icon, the
-    /// same type, weight and padding for each, filling the height its column gives it so the two always
-    /// match.
+    /// The email choice: a `surface2` capsule with a white label and an optional icon, filling the height
+    /// its column gives it so it always matches the other choices.
     private func choiceButton(
         _ title: String,
         icon: AppIcon? = nil,
@@ -312,6 +312,73 @@ struct AccountSignInPanel: View {
     private func inputField<Content: View>(isFocused: Bool, @ViewBuilder _ content: () -> Content) -> some View {
         content()
             .themeInputField(isFocused: isFocused)
+    }
+}
+
+// MARK: - Continue with Google
+
+/// Continue with Google as Google's dark-theme button (Sign in with Google branding guidelines,
+/// developers.google.com/identity/branding-guidelines): a #131314 fill with a 1 pt #8E918F inside stroke
+/// and a #E3E3E3 label, the official full-color "G" at its standard 20 pt with 12 pt after it, fully
+/// round. The mark is Google's own artwork (`Assets.xcassets/GoogleG`, see `docs/asset-attribution.md`),
+/// never recolored or resized, and sits on the same #131314 it is drawn on in Google's asset. The label
+/// keeps the app's button type so the three choices read alike, and it wraps at large text sizes.
+private struct GoogleSignInButton: View {
+    let working: Bool
+    let action: () -> Void
+
+    /// The brand colors the guidelines set for the dark theme. They belong to Google's button, not to the
+    /// Theme palette.
+    private enum Brand {
+        static let fill = Color(hex: 0x131314)
+        static let stroke = Color(hex: 0x8E918F)
+        static let label = Color(hex: 0xE3E3E3)
+    }
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Spacing.smd) {
+                if working {
+                    ProgressView().tint(Brand.label)
+                        .frame(width: 20, height: 20)
+                } else {
+                    Image("GoogleG")
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 20, height: 20)
+                        .accessibilityHidden(true)
+                }
+                Text("Continue with Google")
+                    .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(Brand.label)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, maxHeight: .infinity)
+            .background(Brand.fill, in: Capsule())
+            .overlay(Capsule().strokeBorder(Brand.stroke, lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(GooglePressStyle())
+        .opacity(isEnabled ? 1 : 0.4)
+    }
+}
+
+/// The app's press feedback (92% scale, 80% opacity, still under Reduce Motion) for the Google button,
+/// which draws its own brand surface.
+private struct GooglePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .animation(.easeOut(duration: 0.12)) {
+                $0.opacity(configuration.isPressed ? 0.8 : 1)
+                    .scaleEffect(configuration.isPressed && !reduceMotion ? 0.92 : 1)
+            }
     }
 }
 

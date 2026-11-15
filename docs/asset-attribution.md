@@ -45,3 +45,12 @@ Since its provenance could not be reconstructed, it was removed rather than kept
 Nothing depended on it: no `Exercises.json` entry ever referenced it, and at the time the seam it validated was covered by `ExerciseDemoView`'s fallback path plus `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile`, which gated `animationName` against the bundle.
 The whole animation seam has since been retired (US-TP12, ADR-0008): `Exercise.animationName`, the Lottie package and that test are gone, and the exercise card shows the static Trainer pose art above.
 Any future asset still arrives with its source and license row **before** it is added to `Resources`.
+
+## Google "G" mark (Continue with Google)
+
+The full-color Google "G" on Save your plan's Continue with Google button, which the design direction requires to use Google's official asset.
+It is Google's own artwork, unaltered: a square cut from Google's dark-theme icon button, so the mark keeps its standard size (20 pt), colors and the #131314 background Google draws it on, which the button's fill matches.
+
+| File | Embedded name | Source | License | Cleared to ship |
+| --- | --- | --- | --- | --- |
+| `Assets.xcassets/GoogleG.imageset/google-g.png`, `google-g@2x.png`, `google-g@3x.png` | `GoogleG` | Google's Sign in with Google pre-approved assets, https://developers.google.com/static/identity/images/signin-assets.zip (SHA-256 `ba884069e12093b06bcfd776915081254a7c95094b80d50be2c5dc6bac1c1da1`, downloaded 2026-11-15), `iOS/PNG @1x|@2x|@3x/Dark/Theme=Dark, Show text=No, Shape=Pill, Platform=iOS*.png`, each cropped to the 20 pt square around the "G" (offset 12 pt) with no other change. | Google brand feature, used only as the Sign in with Google branding guidelines allow (https://developers.google.com/identity/branding-guidelines: the standard full-color "G", unchanged in size and color, on the dark-theme button with "Continue with Google"); any other use needs Google's written consent under the Guidelines for Third Party Use of Google Brand Features. | Yes (2026-11-15) |
