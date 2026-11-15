@@ -109,6 +109,7 @@ struct StrengthGraduationRevealView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background.ignoresSafeArea())
+        .statusBarBacking()
         // Trap VoiceOver inside the reveal so the tabs underneath are not reachable until it is
         // dismissed - the modal semantics a system sheet would give for free.
         .accessibilityAddTraits(.isModal)
