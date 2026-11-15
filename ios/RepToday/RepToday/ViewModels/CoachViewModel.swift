@@ -82,17 +82,16 @@ final class CoachViewModel {
     struct QuickAction: Identifiable, Equatable {
         let title: String
         let message: String
-        let systemImage: String
         var id: String { title }
     }
 
     static let quickActions: [QuickAction] = [
-        QuickAction(title: "Write me a workout", message: "Write me a workout for today.", systemImage: "list.bullet.rectangle"),
-        QuickAction(title: "I worked out outside", message: "I did a workout outside Rep Today today.", systemImage: "figure.run"),
-        QuickAction(title: "Shorter session", message: "I only have 10 minutes today.", systemImage: "timer"),
-        QuickAction(title: "Rest today", message: "I'd like to rest today.", systemImage: "bed.double"),
-        QuickAction(title: "Remind me", message: "Remind me to train on weekdays at 7:30 AM.", systemImage: "bell"),
-        QuickAction(title: "How am I doing?", message: "How am I doing?", systemImage: "chart.line.uptrend.xyaxis"),
+        QuickAction(title: "Write me a workout", message: "Write me a workout for today."),
+        QuickAction(title: "I worked out outside", message: "I did a workout outside Rep Today today."),
+        QuickAction(title: "Shorter session", message: "I only have 10 minutes today."),
+        QuickAction(title: "Rest today", message: "I'd like to rest today."),
+        QuickAction(title: "Remind me", message: "Remind me to train on weekdays at 7:30 AM."),
+        QuickAction(title: "How am I doing?", message: "How am I doing?"),
     ]
 
     private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }

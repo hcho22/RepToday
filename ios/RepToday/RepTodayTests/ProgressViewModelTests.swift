@@ -408,7 +408,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
     private func snapshot(viewModel: ProgressViewModel, tall: Bool, fileName: String) async throws {
         // Pre-load so the populated content path renders when the view is hosted.
         await viewModel.load()
-        try render(viewModel: viewModel, tall: tall, fileName: fileName)
+        try await render(viewModel: viewModel, tall: tall, fileName: fileName)
     }
 
     /// The scratch height a hosted `ProgressTabView` is given so the whole of its `ScrollView` lays out
@@ -419,8 +419,9 @@ final class ProgressTabSnapshotTests: XCTestCase {
     private enum HostHeight {
         // Headroom for the whole scrolling surface to lay out at once; the capture is cropped back to
         // the measured content, so a comfortable margin costs nothing. Raised for US-AN01's premium
-        // strength-journey card (the tallest premium surface now).
-        static let populated: CGFloat = 5400
+        // strength-journey card (the tallest premium surface now), and again for the visual direction's
+        // roomier cards and rails.
+        static let populated: CGFloat = 7200
         static let empty: CGFloat = 900
     }
 
@@ -429,22 +430,31 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// and the accessibility reads run through, so neither can drift onto its own magic height or lose
     /// the outgrew-host guard the other has: a surface grown past its host height fails loudly on both
     /// paths rather than being captured cropped or read clipped.
+    ///
+    /// The view reloads its model from its own `.task` when it appears, and on iOS 26 that task starts
+    /// eagerly and cannot finish inside the synchronous pump `HostedSurface.host` runs from this async
+    /// test - so a history-less model would still read `isLoading` and draw the loading spinner rather
+    /// than the empty state. Suspending until the reload lands, then laying out again, is what lets the
+    /// measure and the capture read the settled surface.
     private func hostedProgressTab(
         _ viewModel: ProgressViewModel, tall: Bool
-    ) throws -> (host: UIHostingController<ProgressTabView>, contentSize: CGSize) {
+    ) async throws -> (host: UIHostingController<ProgressTabView>, contentSize: CGSize) {
         let layoutSize = CGSize(width: 393, height: tall ? HostHeight.populated : HostHeight.empty)
         let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
         renderWindow = window
+        try await HostedSurface.settle(until: { !viewModel.isLoading })
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
         let contentHeight = try capturedHeight(of: host.view, laidOutIn: layoutSize)
         return (host, CGSize(width: layoutSize.width, height: contentHeight))
     }
 
-    /// Hosting, measurement and capture stay in one synchronous body so that the height and the render
-    /// read the very same laid-out hierarchy: an intervening suspension would let the surface change
-    /// between the height being taken and the pixels being composited against it. Everything that has
-    /// to be awaited (`viewModel.load()`) has already happened by the time this is called.
-    private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
-        let (host, size) = try hostedProgressTab(viewModel, tall: tall)
+    /// Measurement and capture run back to back with no suspension between them, so that the height and
+    /// the render read the very same laid-out hierarchy: an intervening suspension would let the surface
+    /// change between the height being taken and the pixels being composited against it. The only
+    /// awaits (`viewModel.load()` and the view's own reload) finish before the height is taken.
+    private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) async throws {
+        let (host, size) = try await hostedProgressTab(viewModel, tall: tall)
 
         // Capturing (which pins the render scale) is `HostedSurface`'s, and encoding, the did-it-draw
         // check and the write are all `EvidenceOutput`'s, so a capture that failed any precondition
@@ -662,7 +672,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
     private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async throws -> [String] {
         await viewModel.load()
 
-        let (host, _) = try hostedProgressTab(viewModel, tall: true)
+        let (host, _) = try await hostedProgressTab(viewModel, tall: true)
         let labels = AccessibilityTree.labels(in: host.view)
 
         renderWindow?.isHidden = true

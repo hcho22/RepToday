@@ -1955,3 +1955,25 @@ The first three steps of the approved design handoff (`DESIGN.md`, `tokens.json`
 - **Accessibility sizes (`Z2-Exercise-AX`).** The column above the pinned actions (overline, stage labels, title row, round tracker, timer label) stops growing at `ActiveSessionView.columnTypeCap` (xxxLarge) and keeps wrapping, and at every accessibility size the quiet actions move into the scrolling body, so the work-window and hold timer opens whole above Done / Stop hold with no scrolling on 375x667 and 402x874. "+ More time" keeps its "+" with "More" through a no-break space (`ActiveSessionView.moreTimeTitle`); VoiceOver still reads "More time".
 - **Kept as today (captain's answer).** Paused keeps Done (Resume stays in the top bar); a running hold keeps Stop hold; no new haptics or tones (the last seconds are visual only); the Trainer choice stays tap-to-choose. Exercise and rest swap in one cut with the next movement rising in, rather than the timer moving between them.
 - **Animation scope.** The timer bar and the button press animate through `animation(_:body:)`: an implicit `.animation(_:value:)` there carried into the exercise-to-rest swap and left the outgoing screen, invisible, in VoiceOver's tree.
+
+## Visual direction: Progress, the Strength Phase moment, Coach and the Paywall (2026-11-14)
+
+The handoff's step 5 for these screens (mockups `P22` to `P25`, `C26` to `C28`, `W29`, and the undrawn Progress empty state).
+Appearance only: behavior, data, copy, navigation, accessibility identifiers and VoiceOver labels are unchanged.
+
+- **Progress.** The header and the `sun` score (128 pt) sit on black with two stat tiles under them; every card is `surface1`, radius 24, 18 pt padding, with a Bricolage title.
+  The climb card counts weeks on a `StepBar` and marks each foundation with its day mark in its color (Push, Pull, Legs, and the `sun` circle for Core); a cleared line carries the `legs` check.
+  The ladder and the strength journey share one rail: a filled check in the foundation's color for a cleared rung, a `sun` ring for the current one, a `surface3` lock for a locked one.
+  The calendar marks a session day with the filled `sun` mark and today with a `sun` tile; its paging buttons are 44 pt `surface2` circles.
+  Bests read as rows with Bricolage values; balance bars are white on `surface3`; the Premium upsell is a `sunTint` card with the Coach mark.
+  The empty state, not drawn, is the same card parts with the `sun` mark in outline.
+- **Strength Phase moment.** A full black screen with the `climb` mark, the headline in `sun`, the four points with custom icons and Keep climbing pinned below; it applies `.statusBarBacking()`, so its scrolled body stays clear of the status bar.
+- **Coach.** The tab draws its own header (the Coach mark and title, a VoiceOver heading) above every state - the conversation, the free preview, loading and each notice - with the navigation bar hidden; the user's bubble is white and the Coach's `surface2`, each with its tail corner; chips use `ChipButtonStyle`; the composer is a 52 pt field beside a 52 pt `sun` Send circle.
+  The free preview frames its sample exchange on the stage base with the example's buttons drawn quiet; the data disclosure is a bottom sheet over the scrim (`BottomSheetOverlay`) that hugs its content and scrolls only when it must.
+  Custom Workout steps show the Trainer's start pose on a small lit stage; the editor keeps its system `List` (reorder, delete and swipe depend on it), restyled, with DESIGN's stepper.
+- **Paywall.** Its own top row (a Close circle and the centered name) replaces the navigation bar; the plans stay `sun` cards, since a tap still buys one; Restore is pinned below as a ghost button.
+- **New shared parts** (`DesignSystem/InfoComponents.swift`): `StepBar`, `ShareBar`, `IconPointRow`, `IconTextRow`, `CircleIconButtonStyle`, `BottomSheetOverlay`, `WrappingRow`, `keepsWordsWhole(_:)` and `capsuleLabelInset(_:)`.
+- **Largest text sizes.** Titles keep every word whole (`keepsWordsWhole`), rows stack, the calendar's header stacks and its day numbers stop growing at 20 pt, chart axis labels stop at 18 pt, proposal cards put their icon above the words, the Coach's quick-action chips leave the pinned sideways row and wrap (`WrappingRow`) at the end of the conversation, and a wrapped capsule label keeps clear of the curve.
+- **Kept as today.** The tab bar stays the system `TabView` (shared with the other tabs).
+  The calendar marks session days rather than each Training Day, and has no legend; the ladder has no Trainer art at the current rung and every ladder stays expanded; the Coach header has no data shortcut; the free preview has no feature list; the paywall buys a plan on tap rather than selecting one for a separate trial button.
+  Each needs data or a control the app does not have, and is recorded as a follow-up.

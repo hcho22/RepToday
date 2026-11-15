@@ -90,7 +90,7 @@ struct ExerciseDemoView: View {
 /// - a **pair**: start on the left, end on the right, equal squares, each aspect-fit to the full
 ///   untrimmed 600x600 canvas so the two poses share one frame and never jump;
 /// - a **single pose**: that pose, the same size, centered;
-/// - **no art** (or no Trainer yet): the per-`MovementPattern` SF-Symbol glyph, as before.
+/// - **no art** (or no Trainer yet): the per-`MovementPattern` day mark (`glyph(size:)`).
 ///
 /// The art is static (no flipbook, cross-fade, or rep sync) and drawn as-is on both sides of a
 /// per-side movement. To VoiceOver the whole illustration is one element (US-TP09) whose label names
