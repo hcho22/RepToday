@@ -215,8 +215,6 @@ struct OptionCard: View {
 /// The 52 x 32 toggle: on, a `sun` track with a black 26 pt knob; off, a `surface3` track with a
 /// `text2` knob. Keeps the system toggle's accessibility (value and trait).
 struct ThemeToggleStyle: ToggleStyle {
-    private static let hitSlop = (Theme.Spacing.minTouchTarget - 32) / 2
-
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Theme.Spacing.smd) {
             configuration.label
@@ -230,10 +228,9 @@ struct ThemeToggleStyle: ToggleStyle {
             }
             .frame(width: 52, height: 32)
             .animation(.easeOut(duration: 0.12), value: configuration.isOn)
-            .padding(.vertical, Self.hitSlop)
+            .frame(minHeight: Theme.Spacing.minTouchTarget)
             .contentShape(Rectangle())
             .onTapGesture { configuration.isOn.toggle() }
-            .padding(.vertical, -Self.hitSlop)
             .accessibilityHidden(true)
         }
         .contentShape(Rectangle())
