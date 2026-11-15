@@ -5,7 +5,7 @@ import SwiftUI
 /// It exists because US-T06 needs a reachable, clearly-labelled home for the anonymous-telemetry
 /// opt-out, and burying that control would defeat the point of an opt-out. It is deliberately a real
 /// sectioned Settings surface rather than an inline toggle on the Profile placeholder, so a later,
-/// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it, which
+/// broader Profile/Settings story **extends** it - another header and row group - rather than replacing it, which
 /// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Reminders (US-CA08), Training
 /// safety (US-AC08), Trainer (US-TP11), and Account (US-AD01, with Sign Out since US-SO01). Nothing else
 /// about Profile changes here.
