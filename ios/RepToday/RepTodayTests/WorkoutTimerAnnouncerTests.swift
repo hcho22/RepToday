@@ -29,6 +29,15 @@ final class WorkoutTimerAnnouncerTests: XCTestCase {
         XCTAssertEqual(announcements(total: 3), ["Halfway, 1 second left"])
     }
 
+    /// A countdown whose halfway point falls at or below three seconds (the 5-second switch-sides beat)
+    /// never says "Halfway" after it has said "3 seconds left".
+    func testAHalfwayAtOrBelowThreeSecondsGivesWayToTheThreeSecondMark() {
+        XCTAssertEqual(announcements(total: 4), ["3 seconds left"])
+        XCTAssertEqual(announcements(total: 5), ["3 seconds left"])
+        XCTAssertEqual(announcements(total: 6), ["3 seconds left"])
+        XCTAssertEqual(announcements(total: 8), ["Halfway, 4 seconds left", "3 seconds left"])
+    }
+
     func testSilentWithoutVoiceOverOrWhilePaused() {
         XCTAssertEqual(announcements(total: 50, voiceOver: false), [])
         XCTAssertEqual(announcements(total: 50, isLive: false), [])

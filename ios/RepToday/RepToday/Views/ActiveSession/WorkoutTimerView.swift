@@ -175,7 +175,8 @@ private struct LastSecondsBeat: ViewModifier {
 
 /// Announces a countdown's halfway point, ten seconds and three seconds to VoiceOver, each once per
 /// countdown, and only while VoiceOver runs and the countdown is live. A countdown too short to reach a
-/// mark from above (a 10-second window never announces "10 seconds") skips it.
+/// mark from above (a 10-second window never announces "10 seconds") skips it, and one whose halfway
+/// point falls at or below the three-second mark announces only "3 seconds".
 struct WorkoutTimerAnnouncer {
     private var announced: Set<Int> = []
     private var lastTotal: Int?
@@ -192,9 +193,12 @@ struct WorkoutTimerAnnouncer {
         lastTotal = total
         lastRemaining = remaining
         guard isLive, voiceOverRunning, remaining > 0, total > 0 else { return nil }
-        let marks = [(total / 2, "Halfway, \(CountWording.phrase(total / 2, singular: "second", plural: "seconds")) left"),
-                     (10, "10 seconds left"),
-                     (3, "3 seconds left")]
+        let halfway = total / 2
+        var marks: [(Int, String)] = []
+        if halfway > 3 || total <= 3 {
+            marks.append((halfway, "Halfway, \(CountWording.phrase(halfway, singular: "second", plural: "seconds")) left"))
+        }
+        marks += [(10, "10 seconds left"), (3, "3 seconds left")]
         for (mark, sentence) in marks where mark > 0 && mark < total && remaining <= mark && remaining > mark - 2 && !announced.contains(mark) {
             announced.insert(mark)
             UIAccessibility.post(notification: .announcement, argument: sentence)

@@ -221,16 +221,9 @@ enum Theme {
             Font.custom(FontName.displayLarge, fixedSize: size)
         }
 
-        /// A display style scaled with Dynamic Type for `size` but capped at `Theme.Typography.displayCap`
+        /// A display size scaled with Dynamic Type for `size` but capped at `Theme.Typography.displayCap`
         /// points, so the largest accessibility sizes wrap a headline instead of blowing it past the
         /// screen. Read through `.cappedDisplayFont(...)`, which supplies the environment's size.
-        static func cappedDisplay(
-            _ name: String, size: CGFloat, relativeTo style: UIFont.TextStyle, dynamicTypeSize: DynamicTypeSize
-        ) -> Font {
-            Font.custom(name, fixedSize: cappedDisplaySize(size, relativeTo: style, dynamicTypeSize: dynamicTypeSize))
-        }
-
-        /// The point size `cappedDisplay` draws: `size` scaled for `dynamicTypeSize`, never above the cap.
         static func cappedDisplaySize(_ size: CGFloat, relativeTo style: UIFont.TextStyle, dynamicTypeSize: DynamicTypeSize) -> CGFloat {
             let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
             let scaled = UIFontMetrics(forTextStyle: style).scaledValue(for: size, compatibleWith: traits)
