@@ -3,47 +3,37 @@ import UIKit
 import XCTest
 @testable import RepToday
 
-/// The Settings rows that show a value (`SettingsValueRowLabel`: Trainer, Reminders, Focus Areas) in an
-/// inset-grouped list on the narrowest phone the app supports (375pt wide), at every text size. No word is
+/// The Settings rows that show a value (`SettingsValueRowLabel`: Trainer, Reminders, Focus Areas) in a
+/// row group on the narrowest phone the app supports (375pt wide), at every text size. No word is
 /// ever broken in half, the title and the value never overlap, and at the accessibility sizes the value
 /// sits under the title rather than beside it.
 @MainActor
 final class SettingsValueRowLayoutTests: XCTestCase {
 
     private struct Row {
-        let systemImage: String
+        let icon: AppIcon
         let title: String
         let value: String
         var valueLineLimit: Int?
-        var trailingSystemImage: String?
     }
 
-    /// A navigation row's disclosure chevron. The list merges a link into one element, hiding the frames
-    /// read here, so a navigation row is hosted bare with this glyph standing in for the list's.
-    private static let disclosure = "chevron.right"
-
     private let rows: [Row] = Trainer.allCases.map(\.displayName).map {
-        Row(systemImage: "figure.strengthtraining.functional", title: TrainerChoiceCopy.settingsTitle, value: $0,
-            trailingSystemImage: "chevron.up.chevron.down")
+        Row(icon: .profile, title: TrainerChoiceCopy.settingsTitle, value: $0)
     } + [
-        Row(systemImage: "figure.strengthtraining.functional", title: TrainerChoiceCopy.settingsTitle,
-            value: TrainerChoiceCopy.notChosenValue, trailingSystemImage: "chevron.up.chevron.down"),
-        Row(systemImage: "bell", title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(0),
-            trailingSystemImage: SettingsValueRowLayoutTests.disclosure),
-        Row(systemImage: "bell", title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(2),
-            trailingSystemImage: SettingsValueRowLayoutTests.disclosure),
-        Row(systemImage: "scope", title: FocusAreasCopy.title, value: FocusAreasCopy.summary([]),
-            valueLineLimit: 2, trailingSystemImage: SettingsValueRowLayoutTests.disclosure),
-        Row(systemImage: "scope", title: FocusAreasCopy.title, value: FocusAreasCopy.summary([.arms, .legs]),
-            valueLineLimit: 2, trailingSystemImage: SettingsValueRowLayoutTests.disclosure),
+        Row(icon: .profile, title: TrainerChoiceCopy.settingsTitle, value: TrainerChoiceCopy.notChosenValue),
+        Row(icon: .bell, title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(0)),
+        Row(icon: .bell, title: CoachReminderCopy.settingsTitle, value: SettingsView.reminderSummary(2)),
+        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([]), valueLineLimit: 2),
+        Row(icon: .focus, title: FocusAreasCopy.title, value: FocusAreasCopy.summary([.arms, .legs]), valueLineLimit: 2),
     ]
 
-    /// The body font the row draws at `size`: `Theme.Typography.body`, Inter Regular 17 scaled for the
-    /// body text style and rounded to a whole point, as SwiftUI draws a custom font.
-    private func font(at size: DynamicTypeSize) -> UIFont {
+    /// The font `token` draws at `size`: its cut scaled for its text style and rounded to a whole point, as
+    /// SwiftUI draws a custom font.
+    private func font(_ token: ThemeFont, at size: DynamicTypeSize) -> UIFont {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
-        let pointSize = UIFontMetrics(forTextStyle: .body).scaledValue(for: 17, compatibleWith: traits).rounded()
-        return UIFont(name: Theme.Typography.FontName.textRegular, size: pointSize) ?? .systemFont(ofSize: pointSize)
+        let style = token.uiTextStyle ?? .body
+        let pointSize = UIFontMetrics(forTextStyle: style).scaledValue(for: token.size, compatibleWith: traits).rounded()
+        return UIFont(name: token.name, size: pointSize) ?? .systemFont(ofSize: pointSize)
     }
 
     /// Hosts every row at `size` and checks each.
@@ -51,21 +41,20 @@ final class SettingsValueRowLayoutTests: XCTestCase {
         let rows = self.rows
         let screen = CGSize(width: 375, height: 2400)
         let (_, window) = HostedSurface.host(
-            List {
+            VStack(spacing: Theme.Spacing.smd) {
                 ForEach(rows.indices, id: \.self) { index in
                     let row = rows[index]
-                    Section {
+                    RowGroup {
                         SettingsValueRowLabel(
-                            systemImage: row.systemImage,
+                            icon: row.icon,
                             title: row.title,
                             value: row.value,
-                            valueLineLimit: row.valueLineLimit,
-                            trailingSystemImage: row.trailingSystemImage
+                            valueLineLimit: row.valueLineLimit
                         )
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
             .environment(\.dynamicTypeSize, size),
             size: screen
         )
@@ -90,9 +79,11 @@ final class SettingsValueRowLayoutTests: XCTestCase {
             // A text broken mid-word is narrower than that word, so every word must fit its text's width -
             // at full size beside the title, and at no less than the row's shrink once stacked, where a
             // split word would also take a line more than the text has words.
-            let font = font(at: size)
             let scale = size.isAccessibilitySize ? SettingsValueRowLabel.stackedMinimumScale : 1
-            for (text, element) in [(row.title, title), (row.value, shown)] {
+            for (text, element, token) in [
+                (row.title, title, SettingsValueRowLabel.titleFont), (row.value, shown, SettingsValueRowLabel.valueFont),
+            ] {
+                let font = font(token, at: size)
                 let words = text.split(separator: " ").map(String.init)
                 for word in words {
                     let wordWidth = (word as NSString).size(withAttributes: [.font: font]).width

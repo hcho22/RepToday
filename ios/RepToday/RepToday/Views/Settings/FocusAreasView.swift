@@ -95,33 +95,43 @@ struct FocusAreasView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                ForEach(FocusArea.allCases) { area in
-                    row(area)
+        ScrollView {
+            VStack(spacing: Theme.Spacing.smd) {
+                RowGroup {
+                    VStack(spacing: 0) {
+                        ForEach(FocusArea.allCases) { area in
+                            if area != FocusArea.allCases.first {
+                                GroupSeparator()
+                            }
+                            row(area)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.xs)
                 }
-            } footer: {
-                Text(FocusAreasCopy.intro)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                GroupFooter(FocusAreasCopy.intro)
             }
-            .listRowBackground(Theme.Colors.surface)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.bottom, Theme.Spacing.mlg)
         }
         // Pinned like Today's Start bar, with what the last save did right above it, so the confirmation
         // and its result are always in reach whatever the text size.
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 if let error = viewModel.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(Theme.Typography.caption)
+                    Text(error)
+                        .font(Theme.Typography.footnote)
                         .foregroundStyle(Theme.Colors.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if didSave && !viewModel.hasChanges {
-                    Label(FocusAreasCopy.saved, systemImage: "checkmark.circle.fill")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Label {
+                        Text(FocusAreasCopy.saved)
+                    } icon: {
+                        ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
+                            .foregroundStyle(Theme.Colors.legs)
+                    }
+                    .font(Theme.Typography.footnote)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 Button {
                     Task {
@@ -133,23 +143,20 @@ struct FocusAreasView: View {
                 } label: {
                     Text(FocusAreasCopy.save)
                         .font(Theme.Typography.button)
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .disabled(!viewModel.hasChanges || viewModel.isSaving)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.vertical, Theme.Spacing.smd)
             .background(Theme.Colors.background)
         }
         .task { await viewModel.load() }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
-        .navigationTitle(FocusAreasCopy.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .screenTitle(FocusAreasCopy.title)
     }
 
     private func row(_ area: FocusArea) -> some View {
@@ -159,23 +166,23 @@ struct FocusAreasView: View {
             didSave = false
         } label: {
             HStack(spacing: Theme.Spacing.md) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(area.label)
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(area.detail)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
                 }
-                Spacer(minLength: Theme.Spacing.sm)
-                Image(systemName: "checkmark")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .opacity(isSelected ? 1 : 0)
-                    .accessibilityHidden(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                SelectionCheck(isSelected: isSelected)
+                    .animation(.easeOut(duration: 0.12), value: isSelected)
             }
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            .padding(.vertical, Theme.Spacing.smd)
+            .frame(minHeight: Theme.Spacing.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
