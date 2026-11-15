@@ -1956,6 +1956,50 @@ The first three steps of the approved design handoff (`DESIGN.md`, `tokens.json`
 - **Kept as today (captain's answer).** Paused keeps Done (Resume stays in the top bar); a running hold keeps Stop hold; no new haptics or tones (the last seconds are visual only); the Trainer choice stays tap-to-choose. Exercise and rest swap in one cut with the next movement rising in, rather than the timer moving between them.
 - **Animation scope.** The timer bar and the button press animate through `animation(_:body:)`: an implicit `.animation(_:value:)` there carried into the exercise-to-rest swap and left the outgoing screen, invisible, in VoiceOver's tree.
 
+## Visual direction: Progress, the Strength Phase moment, Coach and the Paywall (2026-11-14)
+
+The handoff's step 5 for these screens (mockups `P22` to `P25`, `C26` to `C28`, `W29`, and the undrawn Progress empty state).
+Appearance only: behavior, data, copy, navigation, accessibility identifiers and VoiceOver labels are unchanged.
+
+- **Progress.** The header and the `sun` score (128 pt) sit on black with two stat tiles under them; every card is `surface1`, radius 24, 18 pt padding, with a Bricolage title.
+  The climb card counts weeks on a `StepBar` and marks each foundation with its day mark in its color (Push, Pull, Legs, and the `sun` circle for Core); a cleared line carries the `legs` check.
+  The ladder and the strength journey share one rail: a filled check in the foundation's color for a cleared rung, a `sun` ring for the current one, a `surface3` lock for a locked one.
+  The calendar marks a session day with the filled `sun` mark and today with a `sun` tile; its paging buttons are 44 pt `surface2` circles.
+  Bests read as rows with Bricolage values; balance bars are white on `surface3`; the Premium upsell is a `sunTint` card with the Coach mark.
+  The empty state, not drawn, is the same card parts with the `sun` mark in outline.
+- **Strength Phase moment.** A full black screen with the `climb` mark, the headline in `sun`, the four points with custom icons and Keep climbing pinned below; it applies `.statusBarBacking()`, so its scrolled body stays clear of the status bar.
+- **Coach.** The tab draws its own header (the Coach mark and title, a VoiceOver heading) above every state - the conversation, the free preview, loading and each notice - with the navigation bar hidden; the user's bubble is white and the Coach's `surface2`, each with its tail corner; chips use `ChipButtonStyle`; the composer is a 52 pt field beside a 52 pt `sun` Send circle.
+  The free preview frames its sample exchange on the stage base with the example's buttons drawn quiet; the data disclosure is a bottom sheet over the scrim (`BottomSheetOverlay`) that hugs its content and scrolls only when it must.
+  Custom Workout steps show the Trainer's start pose on a small lit stage; the editor keeps its system `List` (reorder, delete and swipe depend on it), restyled, with DESIGN's stepper.
+- **Paywall.** Its own top row (a Close circle and the centered name) replaces the navigation bar; the plans stay `sun` cards, since a tap still buys one; Restore is pinned below as a ghost button.
+- **New shared parts** (`DesignSystem/InfoComponents.swift`): `StepBar`, `ShareBar`, `IconPointRow`, `IconTextRow`, `CircleIconButtonStyle`, `BottomSheetOverlay`, `WrappingRow`, `keepsWordsWhole(_:)` and `capsuleLabelInset(_:)`.
+- **Largest text sizes.** Titles keep every word whole (`keepsWordsWhole`), rows stack, the calendar's header stacks and its day numbers stop growing at 20 pt, chart axis labels stop at 18 pt, proposal cards put their icon above the words, the Coach's quick-action chips leave the pinned sideways row and wrap (`WrappingRow`) at the end of the conversation, and a wrapped capsule label keeps clear of the curve.
+- **Kept as today.** The tab bar stays the system `TabView` (shared with the other tabs).
+  The calendar marks session days rather than each Training Day, and has no legend; the ladder has no Trainer art at the current rung and every ladder stays expanded; the Coach header has no data shortcut; the free preview has no feature list; the paywall buys a plan on tap rather than selecting one for a separate trial button.
+  Each needs data or a control the app does not have, and is recorded as a follow-up.
+
+## Visual direction: Today, the Welcome Page, onboarding and sign-in (2026-11-14)
+
+Step 4 of the design handoff and the first-run screens of step 5, built on the Theme and components of the section above.
+Appearance only: behavior, data, persistence, copy, navigation, accessibility identifiers and VoiceOver labels are unchanged.
+
+- **New shared pieces (`DesignSystem/Forms.swift`, `DesignSystem/ScreenTypography.swift`).**
+  `FlowLayout` wraps chips onto new lines instead of scrolling or squeezing them; `themeInputField(isFocused:)` is the 18 pt `surface2` input with its `sun` focus outline; `FieldLabel`, `ThemeSegmentedPicker` (stacks at accessibility sizes) and `InlineLinkLabel` complete the forms.
+  `ScreenTypography` adds the in-between type sizes these mockups set (greeting, lead, card title, list value, input, stepper value, code digit), each scaling through `relativeTo:`.
+  No existing component changed.
+- **Today (`T10`, `T10b`, `T11`, `T12`, `T14`).**
+  The headline is the day in its color over its length in Display L, set at its 57 pt leading, with the day mark at the top right (stepping aside at accessibility sizes); VoiceOver still reads "Push Day: 30 min".
+  Duration chips take the day's color and wrap at accessibility sizes; Different workout is an outline button; the Consistency Score sits below it in the shared `ScoreCard` (the score Today already loads, which Progress also shows; before there is a score the card keeps its words alone, and at accessibility sizes the score stacks above them); block cards (an overline per block, the training block in the day's color, rows split by `line` separators, name above target at accessibility sizes), the resume card (outlined and filled in the paused session's color, with a progress bar), the Rest Day cards (Recovery in `rest`) and the Outside Activity card follow the mockups.
+  Start is pinned in the day's color, its label capped at accessibility2 so the list keeps the screen.
+  The Outside Activity sheet replaces its `Form` with a grid of activity tiles and When, Duration and Distance rows on the sheet's `surface1`; Duration keeps one adjustable VoiceOver element.
+- **Welcome Page (`F01`).** The big day mark, "Today is", the day name in Display XL in its color, and the Cycle strip with day-colored marks, a TODAY pill under today and "Done" under a done step; "Let's go" takes the day's color.
+- **Onboarding (`F02` to `F08`).** Display M questions capped at 68 pt, a `sun` segmented progress bar, both Trainers on a lit stage on the first step, the themed name and why inputs, the segmented sex choice, Bricolage stepper values in 44 pt round buttons (the press-and-hold repeat is unchanged), option cards for activity and Focus Areas, a `ThemeToggleStyle` row, wrapping injury chips and the duration tiles.
+- **Save your plan (`F09`, `F09b`, `F09c`) and the existing-user sign-in.** Continue with Apple is the system `ASAuthorizationAppleIDButton` in its white style, kept round; it still runs the existing sign-in and, at accessibility sizes, takes the height of the wrapped choices beside it so the three keep one height.
+  Continue with Google is Google's dark-theme button from its Sign in with Google branding guidelines (#131314 fill, 1 pt #8E918F stroke, #E3E3E3 label, the official full-color "G" at 20 pt with 12 pt after it), the mark bundled unaltered from Google's own assets (`docs/asset-attribution.md`); its label keeps the app's Inter rather than Google Sans so the three choices read alike.
+  Email is a `surface2` button; the email code shows one box per digit over the same text field, so typing, pasting, AutoFill and VoiceOver are unchanged.
+- **Kept as today.** The Rest Day's Recovery preview (Trainer art, movement count) and Cycle strip, the "Paused session" overline, the email and code steps' own titles and pinned buttons, and the mockups' copy edits are not built, since each needs new data or copy; the app has no End-session confirmation (End keeps the session resumable), so there is none to restyle.
+  The tab bar stays the system `TabView` (above), and the Outside Activity sheet keeps its navigation bar and system date picker.
+
 ## Visual direction: Profile, Account, Settings and their sub-screens (2026-11-14)
 
 DESIGN.md's step 5 for the Profile tab and everything reached from it: Profile, Account, Settings, Focus Areas, Areas to protect, Reminders and its editor. Appearance only: behavior, data, copy, navigation, accessibility identifiers and VoiceOver labels are unchanged.

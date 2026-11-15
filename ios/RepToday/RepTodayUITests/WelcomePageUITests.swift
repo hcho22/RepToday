@@ -11,6 +11,11 @@ final class WelcomePageUITests: XCTestCase {
     func testAColdLaunchOpensOnTheWelcomePageAndAResumeDoesNot() {
         let app = TestApp(self)
         app.terminate()
+        // The page names a day only once there is a plan, so a suite run first on a fresh simulator (or a
+        // parallel clone) onboards before the cold launch it asserts.
+        app.launch(.optedOutWithNoProbe, answersHealthPrompt: false)
+        onboardIfNoProfile(in: app)
+        app.terminate()
         app.launch(.optedOutWithNoProbe, answersHealthPrompt: false, passesWelcomePage: false)
         defer { app.terminate() }
 

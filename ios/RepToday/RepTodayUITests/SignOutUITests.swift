@@ -29,7 +29,7 @@ final class SignOutUITests: XCTestCase {
         app.buttons["Continue"].tap()
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
+        focus(name, in: app)
         name.typeText("Riley\n")
         finishOnboardingThroughSaveYourPlan(in: app)
         app.answerHealthPromptIfPresented()
@@ -96,7 +96,7 @@ final class SignOutUITests: XCTestCase {
         finishOnboardingThroughSaveYourPlan(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 15), "an account with no plan did not continue into the questions")
-        name.tap()
+        focus(name, in: app)
         name.typeText("Riley\n")
         let finish = app.buttons["Finish"]
         for _ in 0..<8 where !finish.exists {

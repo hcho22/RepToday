@@ -20,21 +20,20 @@ struct AccountRequiredView: View {
             Theme.Colors.background.ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    Image(systemName: "person.crop.circle.badge.checkmark")
-                        .font(.system(size: 56, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.accent)
+                VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
+                    IconView(icon: .profile, size: 56)
+                        .foregroundStyle(Theme.Colors.sun)
                         .padding(.top, Theme.Spacing.xl)
-                        .accessibilityHidden(true)
 
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("Keep your history")
-                            .font(Theme.Typography.largeTitle)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .cappedDisplayFont(size: 40)
+                            .foregroundStyle(Theme.Colors.text1)
+                            .fixedSize(horizontal: false, vertical: true)
                             .accessibilityAddTraits(.isHeader)
                         Text("Rep Today now saves to your account. Sign in once and everything on this phone - your plan and every session you've finished - comes with you.")
                             .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .foregroundStyle(Theme.Colors.text2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -42,19 +41,16 @@ struct AccountRequiredView: View {
 
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         Text("Your sessions stay on this phone while they save, and you can keep training offline.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .font(Theme.Typography.fieldLabel.weight(.regular))
+                            .foregroundStyle(Theme.Colors.text2)
                             .fixedSize(horizontal: false, vertical: true)
                         Link(destination: LegalLinks.privacyPolicy) {
-                            Text("Privacy Policy")
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.Colors.accent)
-                                .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                            InlineLinkLabel(title: "Privacy Policy", font: Theme.Typography.fieldLabel)
                         }
                         .accessibilityLabel("Privacy Policy")
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.horizontal, Theme.Spacing.screenMargin)
                 .padding(.bottom, Theme.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

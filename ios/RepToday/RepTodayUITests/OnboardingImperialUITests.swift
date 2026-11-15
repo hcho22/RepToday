@@ -49,10 +49,10 @@ final class OnboardingImperialUITests: XCTestCase {
             .path
     }()
 
-    /// A step button is a 44pt square; the pair sits flush against the row's trailing edge with a
-    /// hairline divider between them, so their centres are a fixed inset in from that edge.
+    /// A step button is a 44pt circle; the pair sits flush against the row's trailing edge with an
+    /// 8pt gap between them, so their centres are a fixed inset in from that edge.
     private let stepButtonSide: CGFloat = 44
-    private let dividerWidth: CGFloat = 1
+    private let buttonGap: CGFloat = 8
 
     private var app: TestApp!
 
@@ -90,7 +90,7 @@ final class OnboardingImperialUITests: XCTestCase {
 
         let nameField = app.textFields.firstMatch
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "the basics step has no name field")
-        nameField.tap()
+        focus(nameField, in: app)
         // The keyboard covers the measurement rows entirely, so it is dismissed the way the user
         // does it - otherwise every press below lands on a letter key instead of a step button.
         nameField.typeText("Riley\n")
@@ -116,9 +116,9 @@ final class OnboardingImperialUITests: XCTestCase {
         coordinate(in: row, insetFromTrailingEdge: stepButtonSide / 2)
     }
 
-    /// The centre of a row's `-` button: one button and one divider further in.
+    /// The centre of a row's `-` button: one button and the gap between the two further in.
     private func minusButton(of row: XCUIElement) -> XCUICoordinate {
-        coordinate(in: row, insetFromTrailingEdge: stepButtonSide * 1.5 + dividerWidth)
+        coordinate(in: row, insetFromTrailingEdge: stepButtonSide * 1.5 + buttonGap)
     }
 
     private func coordinate(in row: XCUIElement, insetFromTrailingEdge inset: CGFloat) -> XCUICoordinate {

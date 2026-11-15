@@ -2042,6 +2042,39 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(resumed.canStartHold, "the resumed leg is ready to begin fresh on side 2")
     }
 
+    /// The resume card's progress counts circuit rounds: paused at round 4 of a 5-station, 4-round
+    /// training block, the player sits back on the block's first station, yet most of the session is done.
+    func testResumeProgressCountsCircuitRounds() {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [holdPrescription("cat_cow", sets: 1, seconds: 30), holdPrescription("arm_circles", sets: 1, seconds: 30)]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: ["push_up", "row", "squat", "bridge", "plank"].map { repPrescription($0, sets: 4, reps: 15) }
+        )
+        let cooldown = WorkoutBlock(
+            id: UUID(), title: "Cooldown", category: .cooldown,
+            exercises: [holdPrescription("forward_fold", sets: 1, seconds: 30), holdPrescription("child_pose", sets: 1, seconds: 30)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 30, wasReturn: false, blocks: [warmup, strength, cooldown]
+        )
+        var state = ActiveSessionState(fresh: workout)
+        XCTAssertEqual(state.slots.count, 9)
+
+        state.currentStepIndex = 2
+        state.currentSet = 4
+        XCTAssertEqual(state.progress, 17.0 / 24.0, accuracy: 0.0001, "round 4, station A: both warm-ups and three full rounds done")
+
+        state.currentSet = 1
+        XCTAssertEqual(state.progress, 2.0 / 24.0, accuracy: 0.0001, "round 1, station A: only the warm-up is done")
+
+        state.currentStepIndex = 7
+        XCTAssertEqual(state.progress, 22.0 / 24.0, accuracy: 0.0001, "first cooldown: everything before it is done")
+    }
+
     /// Playing a resumed uneven pre-CC03 circuit through to the end never crashes and never drops the
     /// work banked before the pause. The position-driven rotation is total-preserving from the saved
     /// spot - a shorter station drops out of the later rounds via `hasSet` - so an old snapshot's uneven
