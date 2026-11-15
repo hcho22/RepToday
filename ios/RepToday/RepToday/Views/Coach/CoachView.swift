@@ -192,6 +192,12 @@ struct CoachTabView: View {
                         if viewModel.isSending {
                             typingIndicator
                         }
+                        // At accessibility sizes a chip can be wider than the screen, so the chips wrap
+                        // here, at the end of the conversation, instead of a pinned sideways row.
+                        if dynamicTypeSize.isAccessibilitySize {
+                            quickActionChips(wrapping: true)
+                                .padding(.top, Theme.Spacing.sm)
+                        }
                         if let offer = viewModel.injuryRoutingOffer {
                             CoachInjuryOfferView(
                                 area: offer.area,
@@ -224,7 +230,9 @@ struct CoachTabView: View {
             if let error = viewModel.errorMessage {
                 errorBanner(error)
             }
-            quickActions
+            if !dynamicTypeSize.isAccessibilitySize {
+                quickActions
+            }
             inputBar
         }
     }
@@ -318,25 +326,38 @@ struct CoachTabView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The quick-action chips: one tap sends a plain request the Coach answers with a proposal.
+    /// The quick-action chips in a pinned sideways row: one tap sends a plain request the Coach answers
+    /// with a proposal.
     private var quickActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm) {
-                ForEach(CoachViewModel.quickActions) { action in
-                    Button {
-                        begin { await viewModel.sendQuickAction(action) }
-                    } label: {
-                        // The row scrolls sideways, so a chip keeps its whole title on one line.
-                        Text(action.title)
-                            .fixedSize()
-                    }
-                    .buttonStyle(ChipButtonStyle(isSelected: false))
-                    .disabled(viewModel.isSending || !viewModel.isDataSharingAcknowledged)
-                    .accessibilityHint("Asks the coach: \(action.message)")
-                }
+                quickActionChips(wrapping: false)
             }
             .padding(.horizontal, Theme.Spacing.screenMargin)
             .padding(.top, 10)
+        }
+    }
+
+    /// The chips themselves: one line each in the sideways row, or wrapped (each chip's own title too,
+    /// when it is wider than the screen) at accessibility sizes.
+    @ViewBuilder
+    private func quickActionChips(wrapping: Bool) -> some View {
+        let chips = ForEach(CoachViewModel.quickActions) { action in
+            Button {
+                begin { await viewModel.sendQuickAction(action) }
+            } label: {
+                Text(action.title)
+                    .fixedSize(horizontal: !wrapping, vertical: false)
+                    .keepsWordsWhole(action.title)
+            }
+            .buttonStyle(ChipButtonStyle(isSelected: false))
+            .disabled(viewModel.isSending || !viewModel.isDataSharingAcknowledged)
+            .accessibilityHint("Asks the coach: \(action.message)")
+        }
+        if wrapping {
+            WrappingRow { chips }
+        } else {
+            chips
         }
     }
 

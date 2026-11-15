@@ -1372,7 +1372,7 @@ private struct DifficultyMixCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 segmentedBar
-                LegendFlow(spacing: Theme.Spacing.md, lineSpacing: Theme.Spacing.xs) {
+                WrappingRow(spacing: Theme.Spacing.md, lineSpacing: Theme.Spacing.xs) {
                     legend(label: "Too easy", count: mix.tooEasy, opacity: 0.35)
                     legend(label: "Just right", count: mix.justRight, opacity: 1.0)
                     legend(label: "Too hard", count: mix.tooHard, opacity: 0.6)
@@ -1985,44 +1985,6 @@ private struct LadderRail: View {
                 IconView(icon: .lock, size: 15).foregroundStyle(Theme.Colors.textSecondary)
             }
             .frame(width: 28, height: 28)
-        }
-    }
-}
-
-/// Wraps its children onto as many lines as they need (a chart legend at large text).
-private struct LegendFlow: Layout {
-    var spacing: CGFloat
-    var lineSpacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, widest: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width {
-                y += lineHeight + lineSpacing
-                x = 0
-                lineHeight = 0
-            }
-            x += size.width + spacing
-            widest = max(widest, x - spacing)
-            lineHeight = max(lineHeight, size.height)
-        }
-        return CGSize(width: min(widest, width), height: y + lineHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + size.width > bounds.maxX {
-                y += lineHeight + lineSpacing
-                x = bounds.minX
-                lineHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
         }
     }
 }

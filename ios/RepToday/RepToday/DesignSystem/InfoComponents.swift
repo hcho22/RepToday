@@ -210,3 +210,61 @@ private struct CapsuleLabelInset: ViewModifier {
             .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.lg : 0)
     }
 }
+
+// MARK: - Wrapping row
+
+/// Lays its children out left to right and wraps them onto as many lines as they need, each child
+/// offered at most the row's width (so a child wider than the row wraps its own text rather than
+/// overflowing): chips at accessibility text sizes, a chart legend.
+struct WrappingRow: Layout {
+    var spacing: CGFloat = Theme.Spacing.sm
+    var lineSpacing: CGFloat = Theme.Spacing.sm
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: min(width, proposal.width ?? width), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for (index, size) in zip(row.indices, row.sizes) {
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var sizes: [CGSize] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            let ideal = subviews[index].sizeThatFits(.unspecified)
+            let size = ideal.width > width
+                ? subviews[index].sizeThatFits(ProposedViewSize(width: width, height: nil))
+                : ideal
+            let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            if !row.indices.isEmpty && needed > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            row.indices.append(index)
+            row.sizes.append(size)
+            row.height = max(row.height, size.height)
+        }
+        if !row.indices.isEmpty { rows.append(row) }
+        return rows
+    }
+}
