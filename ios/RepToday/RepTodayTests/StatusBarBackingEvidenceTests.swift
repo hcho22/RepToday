@@ -159,6 +159,17 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
         }
     }
 
+    /// The Strength Phase moment covers the whole app on black, and at the largest text size its mark,
+    /// headline and points scroll under the status bar above the pinned Keep climbing.
+    func testStrengthPhaseMomentKeepsTheStatusBarClearWhenScrolled() throws {
+        for look in [Look.largestLight, .largestDark] {
+            try assertStatusBarClear(
+                StrengthGraduationRevealView(level: .beginner, onDismiss: {}), look: look,
+                named: "strength-phase-\(look.name)"
+            )
+        }
+    }
+
     // MARK: - Checking the band
 
     /// Hosts `view` as an iPhone SE in `look`, scrolls it so content passes behind the status bar, and

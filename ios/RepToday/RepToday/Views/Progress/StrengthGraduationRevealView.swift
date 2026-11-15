@@ -28,7 +28,7 @@ struct StrengthGraduationRevealView: View {
     /// The points the reveal makes, each an honest statement of what the earned phase means and what
     /// changes now - never a reward, always the consequence of demonstrated behavior.
     private struct Point: Identifiable {
-        let symbol: String
+        let icon: AppIcon
         let title: String
         let detail: String
 
@@ -43,34 +43,34 @@ struct StrengthGraduationRevealView: View {
     private var points: [Point] {
         [
             Point(
-                symbol: "figure.strengthtraining.traditional",
+                icon: .check,
                 title: "You earned this",
                 detail: "Weeks of showing up and clearing the foundations got you here. Strength is earned, not chosen - and you built it."
             ),
             wasHeldToStaples
                 ? Point(
-                    symbol: "arrow.up.forward",
+                    icon: .arrowup,
                     title: "Harder work is ready when you are",
                     detail: "Your sessions can now draw from every movement, not only the classics - including the harder skills you've been climbing toward. Rep Today still picks the day's work for you - it just has more room to vary and challenge you."
                 )
                 : Point(
-                    symbol: "arrow.up.forward",
+                    icon: .arrowup,
                     title: "Harder work is ready when you are",
                     detail: "Your sessions can now reach the harder skills you've been climbing toward. Rep Today still picks the day's work for you - it just has more room to challenge you."
                 ),
             wasHeldToStaples
                 ? Point(
-                    symbol: "figure.stairs",
+                    icon: .progress,
                     title: "More movements join your ladder",
                     detail: "The rungs beyond the classics are open, and so are the Strength-Phase movements that finish the Push, Legs, and Core ladders. They'll show up as you're ready for them."
                 )
                 : Point(
-                    symbol: "figure.stairs",
+                    icon: .progress,
                     title: "New skills join your ladder",
                     detail: "The Strength-Phase movements that finish the Push, Legs, and Core ladders are unlocked. They'll show up as you're ready for them."
                 ),
             Point(
-                symbol: "map",
+                icon: .map,
                 title: "See the whole climb",
                 detail: "Open the progression map on the Progress tab to see every foundation's ladder, from where you started to the top rung."
             )
@@ -78,50 +78,49 @@ struct StrengthGraduationRevealView: View {
     }
 
     var body: some View {
-        ZStack {
-            // The scrim behind the card. Hidden from VoiceOver so focus lives inside the modal; a tap
-            // here is deliberately inert, keeping the dismiss button the one, unmistakable way out.
-            Theme.Colors.textPrimary.opacity(0.35)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
-            card
-                .padding(Theme.Spacing.lg)
-        }
-    }
-
-    private var card: some View {
+        // A full-screen moment on black (P25): the Strength Phase mark, the headline in `sun`, what it
+        // means, and one way out pinned below the scrolling body.
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                VStack(alignment: .leading, spacing: 18) {
+                    DayMarkView(mark: .climb, color: Theme.Colors.sun, size: 116)
+                        .padding(.top, Theme.Spacing.lg)
+
                     header
 
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    VStack(alignment: .leading, spacing: 14) {
                         ForEach(points) { point in
-                            pointRow(point)
+                            IconPointRow(icon: point.icon, title: point.title, detail: point.detail, detailIsMarkdown: true)
                         }
                     }
                 }
-                .padding(Theme.Spacing.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.bottom, Theme.Spacing.mlg)
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
 
             dismissButton
-                .padding(Theme.Spacing.lg)
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, 10)
+                .padding(.bottom, Theme.Spacing.sm)
+                .frame(maxWidth: 560)
         }
-        .background(Theme.Colors.background)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.background.ignoresSafeArea())
+        .statusBarBacking()
         // Trap VoiceOver inside the reveal so the tabs underneath are not reachable until it is
         // dismissed - the modal semantics a system sheet would give for free.
         .accessibilityAddTraits(.isModal)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("You've earned the Strength Phase")
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                .cappedDisplayFont(size: 42)
+                .foregroundStyle(Theme.Colors.sun)
+                .keepsWordsWhole("You've earned the Strength Phase")
                 .fixedSize(horizontal: false, vertical: true)
             Text("You're someone who moves - and it shows. Here's what you've built and what it opens up.")
                 .font(Theme.Typography.body)
@@ -133,39 +132,15 @@ struct StrengthGraduationRevealView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private func pointRow(_ point: Point) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            Image(systemName: point.symbol)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
-                .frame(width: 32)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(point.title)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(.init(point.detail))
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        // One element per point so VoiceOver reads a whole point at a time.
-        .accessibilityElement(children: .combine)
-    }
-
     private var dismissButton: some View {
         Button(action: onDismiss) {
             Text("Keep climbing")
                 .font(Theme.Typography.button)
+                .capsuleLabelInset("Keep climbing")
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.workoutTouchTarget)
+                .frame(minHeight: Theme.Spacing.startButtonHeight)
         }
         .accentFilledButtonStyle()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityLabel("Keep climbing")
         .accessibilityHint("Dismisses this and returns to Rep Today")
     }

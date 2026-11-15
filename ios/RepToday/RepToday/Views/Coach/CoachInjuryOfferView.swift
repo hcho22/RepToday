@@ -62,12 +62,18 @@ struct CoachInjuryOfferView: View {
     let onAccept: () -> Void
     let onDecline: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                Image(systemName: "shield.lefthalf.filled")
+        VStack(alignment: .leading, spacing: 14) {
+            // At accessibility sizes the icon sits above the words, which then keep the card's width.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.smd))
+            layout {
+                ScaledIcon(icon: .shield, size: 24, relativeTo: .headline)
                     .foregroundStyle(Theme.Colors.accent)
-                    .accessibilityHidden(true)
+                    .padding(.top, 1)
                 Text(CoachInjuryOfferCopy.offer(for: area))
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textPrimary)
@@ -80,31 +86,32 @@ struct CoachInjuryOfferView: View {
             // Stacked rather than side by side, the same treatment the coach's other in-flow decision
             // (the US-AC04 disclosure) uses: both affordances stay full width and one-line at every
             // Dynamic Type size, so neither reads as the cramped afterthought of the other.
-            VStack(spacing: Theme.Spacing.sm) {
+            VStack(spacing: Theme.Spacing.xs) {
                 Button(action: onAccept) {
                     Text(CoachInjuryOfferCopy.accept)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset(CoachInjuryOfferCopy.accept)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 48)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .accessibilityLabel(CoachInjuryOfferCopy.accept)
                 .accessibilityHint(CoachInjuryOfferCopy.acceptHint(for: area))
 
                 Button(action: onDecline) {
                     Text(CoachInjuryOfferCopy.decline)
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .capsuleLabelInset(CoachInjuryOfferCopy.decline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }
+                .ghostButtonStyle()
                 .accessibilityLabel(CoachInjuryOfferCopy.decline)
                 .accessibilityHint(CoachInjuryOfferCopy.declineHint)
             }
         }
         .padding(Theme.Spacing.md)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .cardSurface(outlined: true)
     }
 }
 

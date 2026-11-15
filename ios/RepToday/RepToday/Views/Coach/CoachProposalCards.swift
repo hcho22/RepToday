@@ -82,13 +82,19 @@ struct CoachProposalCard: View {
     let onDecline: () -> Void
     let onUndo: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                ScaledIcon(icon: CoachProposalCopy.icon(proposal.action), size: 22, relativeTo: .headline)
+        VStack(alignment: .leading, spacing: 14) {
+            // At accessibility sizes the icon sits above the words, which then keep the card's width.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.smd))
+            layout {
+                ScaledIcon(icon: CoachProposalCopy.icon(proposal.action), size: 24, relativeTo: .headline)
                     .foregroundStyle(Theme.Colors.accent)
-                    .frame(minWidth: 28)
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(CoachProposalCopy.title(proposal.action))
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textPrimary)
@@ -136,9 +142,26 @@ private struct ProposalControls: View {
     let onUndo: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         switch status {
+        case .proposed where !isEnabled:
+            // A card shown only as an example (the free preview): both choices drawn quiet, so the
+            // sample never reads as an action waiting on the user.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            layout {
+                ForEach([confirmTitle, CoachProposalCopy.decline], id: \.self) { title in
+                    Text(title)
+                        .font(Theme.Typography.button)
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background(Theme.Colors.surface2, in: Capsule())
+                }
+            }
         case .proposed:
             let layout = dynamicTypeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: Theme.Spacing.sm))
@@ -153,6 +176,7 @@ private struct ProposalControls: View {
                         }
                     }
                     .font(Theme.Typography.button)
+                    .capsuleLabelInset(confirmTitle)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 48)
                 }
@@ -163,6 +187,7 @@ private struct ProposalControls: View {
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset(CoachProposalCopy.decline)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 48)
                 }
@@ -170,23 +195,33 @@ private struct ProposalControls: View {
                 .disabled(isBusy)
             }
         case .applied:
-            HStack(spacing: Theme.Spacing.sm) {
+            // At accessibility sizes Undo moves under the outcome, at full width, so neither word splits.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
+            layout {
                 HStack(spacing: Theme.Spacing.sm) {
                     ScaledIcon(icon: .check, size: 20)
                         .foregroundStyle(Theme.Colors.legs)
                     Text(CoachProposalCopy.applied)
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.legs)
+                        .fixedSize()
                 }
                 .accessibilityElement(children: .combine)
-                Spacer(minLength: Theme.Spacing.sm)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: Theme.Spacing.sm)
+                }
                 if canUndo {
                     Button(action: onUndo) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            ScaledIcon(icon: .undo, size: 18)
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ScaledIcon(icon: .undo, size: 20)
                             Text(CoachProposalCopy.undo)
-                                .font(Theme.Typography.headline)
+                                .font(Theme.Typography.callout.weight(.bold))
+                                .fixedSize()
                         }
+                        .padding(.horizontal, 2)
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
                         .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
                     }
                     .outlineButtonStyle()
@@ -249,46 +284,47 @@ struct CustomWorkoutCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Custom Workout · about \(minutes) min")
-                    .font(Theme.Typography.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: Theme.Spacing.smd) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                // The overline's words are spoken as written; the caps are its look only.
+                Text("Custom Workout · about \(minutes) min".uppercased())
+                    .overlineStyle()
                     .foregroundStyle(Theme.Colors.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Custom Workout · about \(minutes) min")
                 Text(accepted?.title ?? draft.title)
-                    .font(Theme.Typography.headline)
+                    .cappedDisplayFont(Theme.Typography.FontName.displaySmall, size: 26, relativeTo: .title2)
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .keepsWordsWhole(accepted?.title ?? draft.title)
                     .fixedSize(horizontal: false, vertical: true)
                 if !draft.note.isEmpty {
                     Text(draft.note)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .accessibilityElement(children: .combine)
 
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(prescriptions) { prescription in
                     CustomWorkoutStepRow(prescription: prescription, trainer: trainer)
                 }
             }
+            .padding(.vertical, Theme.Spacing.xs)
 
             controls
 
             if let error {
                 Text(error)
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.footnote)
                     .foregroundStyle(Theme.Colors.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                .stroke(Theme.Colors.accent.opacity(status == .proposed ? 0.5 : 0), lineWidth: 1)
-        )
+        .cardSurface(outlined: true)
         .accessibilityElement(children: .contain)
     }
 
@@ -303,61 +339,62 @@ struct CustomWorkoutCard: View {
                 Button { onReview(false) } label: {
                     Text("Review and accept")
                         .font(Theme.Typography.button)
+                        .capsuleLabelInset("Review and accept")
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 52)
                 }
                 .accentFilledButtonStyle()
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .disabled(isBusy)
                 .accessibilityHint("Opens the workout so you can change it before accepting. Nothing plays until you accept.")
 
                 Button(action: onDecline) {
                     Text(CoachProposalCopy.decline)
                         .font(Theme.Typography.button)
-                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .capsuleLabelInset(CoachProposalCopy.decline)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .frame(minHeight: 48)
                 }
-                .buttonStyle(.bordered)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .secondaryButtonStyle()
                 .disabled(isBusy)
             }
         case .applied:
             layout {
                 if let accepted {
                     Button { onPlay(accepted) } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .font(Theme.Typography.button)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ScaledIcon(icon: .play, size: 20, relativeTo: .headline)
+                            Text("Play")
+                        }
+                        .font(Theme.Typography.button)
+                        .capsuleLabelInset("Play")
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
                     }
                     .accentFilledButtonStyle()
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                     .accessibilityLabel("Play \(accepted.title)")
                     .accessibilityHint("Starts it in the hands-free player. It counts like an Outside Activity.")
                 }
                 if canUndo {
                     Button(action: onUndo) {
-                        Text(CoachProposalCopy.undo)
-                            .font(Theme.Typography.button)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ScaledIcon(icon: .undo, size: 20, relativeTo: .headline)
+                            Text(CoachProposalCopy.undo)
+                        }
+                        .font(Theme.Typography.button)
+                        .capsuleLabelInset(CoachProposalCopy.undo)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 52)
                     }
-                    .buttonStyle(.bordered)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                    .outlineButtonStyle()
                     .disabled(isBusy)
+                    .accessibilityLabel(CoachProposalCopy.undo)
                     .accessibilityHint("Removes this workout from your saved workouts")
                 }
             }
         case .undone:
-            Label(CoachProposalCopy.undone, systemImage: "arrow.uturn.backward")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+            CardOutcome(text: CoachProposalCopy.undone, icon: .undo)
         case .declined:
-            Label(CoachProposalCopy.declined, systemImage: "xmark")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+            CardOutcome(text: CoachProposalCopy.declined, icon: .close)
         }
     }
 }
@@ -368,33 +405,37 @@ struct CustomWorkoutStepRow: View {
     let prescription: PrescribedExercise
     let trainer: Trainer?
 
-    @ScaledMetric(relativeTo: .body) private var thumbnail: CGFloat = 56
+    @ScaledMetric(relativeTo: .body) private var thumbnail: CGFloat = 64
 
     private var isTextOnly: Bool { CustomWorkout.isTextOnly(exerciseId: prescription.exercise.id) }
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        HStack(spacing: Theme.Spacing.smd) {
             Group {
                 if isTextOnly {
-                    Image(systemName: "text.alignleft")
-                        .font(Theme.Typography.headline)
+                    // A step with no catalog movement has no picture: the empty stage holds a quiet
+                    // "other" glyph in its place.
+                    IconView(icon: .other, size: 26)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 } else {
                     ExerciseIllustration(prescription: prescription, animatesGlyph: false, startPoseOnly: true)
                         .environment(\.trainer, trainer)
+                        .padding(2)
                 }
             }
-            .frame(width: min(thumbnail, 72), height: min(thumbnail, 72))
-            .background(Theme.Colors.background, in: RoundedRectangle(cornerRadius: Theme.Spacing.sm))
+            .frame(width: min(thumbnail, 80), height: min(thumbnail, 80))
+            .background(ExerciseDemoView.stageBackground(.sun), in: RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(prescription.exercise.displayName)
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(ActiveSessionView.targetText(prescription) + (isTextOnly ? " · text only" : ""))
-                    .font(Theme.Typography.caption)
+                    .font(ThemeFont(Theme.Typography.FontName.value, size: 16, relativeTo: .callout))
+                    .monospacedDigit()
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -405,5 +446,22 @@ struct CustomWorkoutStepRow: View {
             "\(prescription.exercise.displayName), \(ActiveSessionView.targetAccessibilityText(prescription))"
                 + (isTextOnly ? ", text only, no picture" : "")
         )
+    }
+}
+
+/// A settled card's outcome: one quiet `text2` line with its icon.
+private struct CardOutcome: View {
+    let text: String
+    let icon: AppIcon
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            ScaledIcon(icon: icon, size: 16, relativeTo: .callout)
+            Text(text)
+                .font(Theme.Typography.calloutSemiBold)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.Colors.textSecondary)
+        .accessibilityElement(children: .combine)
     }
 }
