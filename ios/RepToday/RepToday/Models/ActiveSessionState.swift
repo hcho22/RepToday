@@ -127,3 +127,34 @@ struct ActiveSessionState: Codable, Equatable {
         self.exercisedMinutes = exercisedMinutes
     }
 }
+
+extension ActiveSessionState {
+    /// The share of the session's sets behind the play head, walked the way the player walks it: a
+    /// linear bookend plays each exercise's sets in turn, while a circuit block plays one set of every
+    /// station per round, so there `currentStepIndex` is the station and `currentSet` the round.
+    var progress: Double {
+        let total = slots.reduce(0) { $0 + $1.prescription.sets }
+        guard total > 0, slots.indices.contains(currentStepIndex) else { return 0 }
+        let current = slots[currentStepIndex]
+        let set = max(currentSet, 1)
+        let done: Int
+        if SessionAssembly.isCircuit(current.blockCategory) {
+            func inBlock(_ index: Int) -> Bool {
+                slots[index].blockTitle == current.blockTitle && slots[index].blockCategory == current.blockCategory
+            }
+            var lower = currentStepIndex
+            while lower > 0, inBlock(lower - 1) { lower -= 1 }
+            var upper = currentStepIndex
+            while upper + 1 < slots.count, inBlock(upper + 1) { upper += 1 }
+            let before = slots[..<lower].reduce(0) { $0 + $1.prescription.sets }
+            let within = (lower...upper).reduce(0) { sum, index in
+                let sets = slots[index].prescription.sets
+                return sum + min(sets, set - 1) + (index < currentStepIndex && sets >= set ? 1 : 0)
+            }
+            done = before + within
+        } else {
+            done = slots[..<currentStepIndex].reduce(0) { $0 + $1.prescription.sets } + set - 1
+        }
+        return Double(min(done, total)) / Double(total)
+    }
+}

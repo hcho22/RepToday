@@ -741,7 +741,7 @@ private struct ResumeSessionCard: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.Colors.surface3)
-                    Capsule().fill(tone.color).frame(width: proxy.size.width * progress)
+                    Capsule().fill(tone.color).frame(width: proxy.size.width * state.progress)
                 }
             }
             .frame(height: 8)
@@ -783,13 +783,6 @@ private struct ResumeSessionCard: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session in progress. \(positionText)")
-    }
-
-    /// The share of the session's exercises already behind the user.
-    private var progress: CGFloat {
-        let total = state.slots.count
-        guard total > 0 else { return 0 }
-        return CGFloat(min(max(state.currentStepIndex, 0), total)) / CGFloat(total)
     }
 
     /// "You're on Push-up, exercise 3 of 8." - the exact place the player will reopen to. Falls back
