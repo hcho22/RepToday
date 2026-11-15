@@ -91,7 +91,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         app.tabBars.buttons["Profile"].tap()
         app.buttons["Settings"].tap()
         let focusRow = app.buttons["Focus Areas"]
-        let settingsList = app.descendants(matching: .collectionView).firstMatch
+        let settingsList = app.descendants(matching: .scrollView).containing(.button, identifier: "Focus Areas").firstMatch
         XCTAssertTrue(settingsList.waitForExistence(timeout: 5))
         scrollUntilHittable(focusRow, in: app, within: settingsList)
         XCTAssertTrue(focusRow.exists && focusRow.isHittable, "Settings never brought Focus Areas into reach")
