@@ -50,6 +50,7 @@ struct InjuryFlagsView: View {
     /// render. When present, a confirmed change bumps its US-AC08 revision so the Ready screen
     /// regenerates today's session against the new safety filter without a relaunch.
     @Environment(AppState.self) private var appState: AppState?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var viewModel: InjuryFlagsViewModel
 
@@ -113,42 +114,21 @@ struct InjuryFlagsView: View {
                 }
 
                 GroupFooter(InjuryFlagsCopy.reversible)
+
+                if dynamicTypeSize.isAccessibilitySize {
+                    status
+                }
             }
             .padding(.horizontal, Theme.Spacing.screenMargin)
             .padding(.bottom, Theme.Spacing.mlg)
         }
         // The confirmation, pinned: the change is named immediately above the control that makes it, so the
-        // user is confirming something specific rather than pressing an opaque Save.
+        // user is confirming something specific rather than pressing an opaque Save. At accessibility sizes
+        // the named change ends the scrolling column instead, so the pinned button never covers a switch.
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                if let summary = viewModel.changeSummary {
-                    Text(summary)
-                        .font(Theme.Typography.callout)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel(summary)
-                }
-
-                if viewModel.didSave {
-                    Label {
-                        Text(InjuryFlagsCopy.saved)
-                    } icon: {
-                        ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
-                            .foregroundStyle(Theme.Colors.legs)
-                    }
-                    .font(Theme.Typography.footnote)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(InjuryFlagsCopy.saved)
-                }
-
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(Theme.Typography.footnote)
-                        .foregroundStyle(Theme.Colors.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel(error)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    status
                 }
 
                 Button(action: confirm) {
@@ -184,6 +164,42 @@ struct InjuryFlagsView: View {
             }
         }
         .task { await viewModel.load(preselecting: preselect) }
+    }
+
+    /// The named change, the Saved line and any error: what the confirmation is about and what it did.
+    @ViewBuilder
+    private var status: some View {
+        if let summary = viewModel.changeSummary {
+            Text(summary)
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(summary)
+        }
+
+        if viewModel.didSave {
+            Label {
+                Text(InjuryFlagsCopy.saved)
+            } icon: {
+                ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
+                    .foregroundStyle(Theme.Colors.legs)
+            }
+            .font(Theme.Typography.footnote)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(InjuryFlagsCopy.saved)
+        }
+
+        if let error = viewModel.errorMessage {
+            Text(error)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.danger)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(error)
+        }
     }
 
     private func binding(for area: InjuryOption) -> Binding<Bool> {

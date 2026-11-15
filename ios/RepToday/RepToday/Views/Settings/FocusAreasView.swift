@@ -82,6 +82,7 @@ struct FocusAreaList: View {
 struct FocusAreasView: View {
     /// Optional so a hosted evidence surface can mount the screen without an `AppState`.
     @Environment(AppState.self) private var appState: AppState?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var viewModel: FocusAreasViewModel
     @State private var didSave = false
@@ -109,29 +110,20 @@ struct FocusAreasView: View {
                     .padding(.vertical, Theme.Spacing.xs)
                 }
                 GroupFooter(FocusAreasCopy.intro)
+
+                if dynamicTypeSize.isAccessibilitySize {
+                    status
+                }
             }
             .padding(.horizontal, Theme.Spacing.screenMargin)
             .padding(.bottom, Theme.Spacing.mlg)
         }
-        // Pinned like Today's Start bar, with what the last save did right above it, so the confirmation
-        // and its result are always in reach whatever the text size.
+        // Pinned like Today's Start bar, with what the last save did right above it; at accessibility sizes
+        // that result scrolls with the areas instead, so the pinned bar never covers them.
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(Theme.Typography.footnote)
-                        .foregroundStyle(Theme.Colors.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if didSave && !viewModel.hasChanges {
-                    Label {
-                        Text(FocusAreasCopy.saved)
-                    } icon: {
-                        ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
-                            .foregroundStyle(Theme.Colors.legs)
-                    }
-                    .font(Theme.Typography.footnote)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    status
                 }
                 Button {
                     Task {
@@ -157,6 +149,29 @@ struct FocusAreasView: View {
         .task { await viewModel.load() }
         .background(Theme.Colors.background)
         .screenTitle(FocusAreasCopy.title)
+    }
+
+    /// What the last save did: its error, or the Saved line.
+    @ViewBuilder
+    private var status: some View {
+        if let error = viewModel.errorMessage {
+            Text(error)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.danger)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if didSave && !viewModel.hasChanges {
+            Label {
+                Text(FocusAreasCopy.saved)
+            } icon: {
+                ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
+                    .foregroundStyle(Theme.Colors.legs)
+            }
+            .font(Theme.Typography.footnote)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private func row(_ area: FocusArea) -> some View {
