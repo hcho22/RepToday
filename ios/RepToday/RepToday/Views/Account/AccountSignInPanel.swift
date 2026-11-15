@@ -364,7 +364,7 @@ private struct GoogleSignInButton: View {
             .contentShape(Capsule())
         }
         .buttonStyle(GooglePressStyle())
-        .opacity(isEnabled ? 1 : 0.4)
+        .opacity(isEnabled || working ? 1 : 0.4)
     }
 }
 
