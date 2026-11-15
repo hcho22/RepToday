@@ -107,9 +107,12 @@ struct RemindersView: View {
             .listRowBackground(Theme.Colors.surface1)
             .listRowSeparatorTint(Theme.Colors.line)
             .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 18))
+            // The footnote's 12 pt gap is drawn inside its own row instead (below).
+            .listSectionSpacing(0)
 
             // The footnote as a clear row of its own, so it lines up with the group's edge like every
-            // other group's footnote rather than taking a list footer's deeper inset.
+            // other group's footnote rather than taking a list footer's deeper inset. Its 12 pt top and
+            // bottom insets keep the first and last lines clear of the row's rounded-corner mask.
             Section {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     if let message = viewModel.message {
@@ -121,7 +124,7 @@ struct RemindersView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
+                .listRowInsets(EdgeInsets(top: Theme.Spacing.smd, leading: 0, bottom: Theme.Spacing.smd, trailing: 0))
             }
         }
         // A list rather than a stack of groups, so each reminder keeps its swipe-to-delete; drawn in the
