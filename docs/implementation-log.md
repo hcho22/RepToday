@@ -1968,7 +1968,7 @@ Appearance only: behavior, data, copy, navigation, accessibility identifiers and
   Bests read as rows with Bricolage values; balance bars are white on `surface3`; the Premium upsell is a `sunTint` card with the Coach mark.
   The empty state, not drawn, is the same card parts with the `sun` mark in outline.
 - **Strength Phase moment.** A full black screen with the `climb` mark, the headline in `sun`, the four points with custom icons and Keep climbing pinned below.
-- **Coach.** The tab draws its own header (the Coach mark and title) with the navigation bar hidden; the user's bubble is white and the Coach's `surface2`, each with its tail corner; chips use `ChipButtonStyle`; the composer is a 52 pt field beside a 52 pt `sun` Send circle.
+- **Coach.** The tab draws its own header (the Coach mark and title, a VoiceOver heading) above every state - the conversation, the free preview, loading and each notice - with the navigation bar hidden; the user's bubble is white and the Coach's `surface2`, each with its tail corner; chips use `ChipButtonStyle`; the composer is a 52 pt field beside a 52 pt `sun` Send circle.
   The free preview frames its sample exchange on the stage base with the example's buttons drawn quiet; the data disclosure is a bottom sheet over the scrim (`BottomSheetOverlay`) that hugs its content and scrolls only when it must.
   Custom Workout steps show the Trainer's start pose on a small lit stage; the editor keeps its system `List` (reorder, delete and swipe depend on it), restyled, with DESIGN's stepper.
 - **Paywall.** Its own top row (a Close circle and the centered name) replaces the navigation bar; the plans stay `sun` cards, since a tap still buys one; Restore is pinned below as a ghost button.

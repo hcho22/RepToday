@@ -44,6 +44,13 @@ final class CoachViewEvidenceTests: XCTestCase {
         AccessibilityTree.spokenStrings(in: root).joined(separator: " • ")
     }
 
+    /// The tab's own header - the Coach title, read as a heading - since the navigation bar is hidden.
+    private func assertCoachHeading(in root: UIView, file: StaticString = #filePath, line: UInt = #line) {
+        let heading = AccessibilityTree.element(labeled: CoachCopy.title, in: root)
+        XCTAssertNotNil(heading, spoken(root), file: file, line: line)
+        XCTAssertTrue(heading?.accessibilityTraits.contains(.header) == true, "the Coach title is a heading", file: file, line: line)
+    }
+
     private func capture(_ root: UIView, _ name: String, size: CGSize = CoachViewEvidenceTests.phone) throws {
         let path = try EvidenceOutput.write(HostedSurface.capture(root, size: size), named: name, for: story)
         print("US-CA06 EVIDENCE: \(name) -> \(path)")
@@ -121,6 +128,7 @@ final class CoachViewEvidenceTests: XCTestCase {
             let root = host(CoachTabView(viewModel: fixture.viewModel), style: style)
             let spoken = spoken(root)
             XCTAssertTrue(spoken.contains(CoachCopy.previewTitle), spoken)
+            assertCoachHeading(in: root)
             XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.unlock, in: root))
             XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.restore, in: root))
             XCTAssertNil(AccessibilityTree.element(labeled: "Message to the coach", in: root), "a free user gets no chat")
@@ -128,6 +136,7 @@ final class CoachViewEvidenceTests: XCTestCase {
         }
         let large = host(CoachTabView(viewModel: fixture.viewModel), size: CGSize(width: 393, height: 2400), textSize: .accessibility5)
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachCopy.unlock, in: large))
+        assertCoachHeading(in: large)
         try capture(large, "06-free-preview-largest-text.png", size: CGSize(width: 393, height: 2400))
         let sent = await fixture.coach.sent
         XCTAssertTrue(sent.isEmpty, "the preview never talks to the Coach")
@@ -176,6 +185,12 @@ final class CoachViewEvidenceTests: XCTestCase {
         XCTAssertEqual(unavailable.access, .unavailable)
         let root = host(CoachTabView(viewModel: unavailable))
         XCTAssertTrue(spoken(root).contains(CoachCopy.unavailable), spoken(root))
+        assertCoachHeading(in: root)
         try capture(root, "07-unavailable.png")
+
+        let large = host(CoachTabView(viewModel: unavailable), size: Self.small, textSize: .accessibility5)
+        XCTAssertTrue(spoken(large).contains(CoachCopy.unavailable), spoken(large))
+        assertCoachHeading(in: large)
+        try capture(large, "07-unavailable-largest-text-375x667.png", size: Self.small)
     }
 }

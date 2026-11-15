@@ -47,8 +47,8 @@ struct CoachTabView: View {
                 }
             }
             .navigationTitle(CoachCopy.title)
-            // The tab draws its own header (the Coach mark and title) in the conversation, as on every
-            // other tab, so the bar itself stays hidden.
+            // The tab draws its own header (the Coach mark and title) on every state, as on every other
+            // tab, so the bar itself stays hidden.
             .toolbar(.hidden, for: .navigationBar)
             .statusBarBacking()
         }
@@ -105,14 +105,19 @@ struct CoachTabView: View {
     private var content: some View {
         switch viewModel.access {
         case .loading:
-            ProgressView()
-                .tint(Theme.Colors.textSecondary)
-                .accessibilityLabel("Loading the coach")
+            titledNotice {
+                ProgressView()
+                    .tint(Theme.Colors.textSecondary)
+                    .accessibilityLabel("Loading the coach")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         case .unavailable:
-            CoachNotice(text: CoachCopy.unavailable)
+            titledNotice { CoachNotice(text: CoachCopy.unavailable) }
         case .offline:
-            CoachNotice(text: CoachCopy.offline, actionTitle: CoachCopy.retry) {
-                Task { await viewModel.load() }
+            titledNotice {
+                CoachNotice(text: CoachCopy.offline, actionTitle: CoachCopy.retry) {
+                    Task { await viewModel.load() }
+                }
             }
         case .free:
             CoachPreviewView(
@@ -121,18 +126,40 @@ struct CoachTabView: View {
                 onRestore: { Task { await viewModel.restorePurchases() } }
             )
         case let .unconfirmed(message):
-            CoachNotice(text: message, actionTitle: CoachCopy.restore) {
-                Task { await viewModel.restorePurchases() }
+            titledNotice {
+                CoachNotice(text: message, actionTitle: CoachCopy.restore) {
+                    Task { await viewModel.restorePurchases() }
+                }
             }
         case .premium:
             if declinedDisclosure && !viewModel.isDataSharingAcknowledged {
-                CoachNotice(icon: .shield, text: CoachDataDisclosureCopy.declined, actionTitle: CoachDataDisclosureCopy.review) {
-                    declinedDisclosure = false
-                    present(disclosure: true)
+                titledNotice {
+                    CoachNotice(icon: .shield, text: CoachDataDisclosureCopy.declined, actionTitle: CoachDataDisclosureCopy.review) {
+                        declinedDisclosure = false
+                        present(disclosure: true)
+                    }
                 }
             } else {
                 conversation
             }
+        }
+    }
+
+    /// A full-tab state under the Coach header, filling the screen and scrolling only when large text
+    /// makes it taller than the phone.
+    private func titledNotice<Notice: View>(@ViewBuilder _ notice: () -> Notice) -> some View {
+        let notice = notice()
+        return GeometryReader { viewport in
+            ScrollView {
+                VStack(spacing: 0) {
+                    CoachHeader()
+                        .padding(.horizontal, Theme.Spacing.screenMargin)
+                        .padding(.top, Theme.Spacing.xs)
+                    notice
+                }
+                .frame(minHeight: viewport.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
@@ -549,7 +576,8 @@ struct CoachPreviewView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    // At the top, so the answer to a Restore is on screen whatever the phone's size.
+                    CoachHeader()
+                    // Under the header, so the answer to a Restore is on screen whatever the phone's size.
                     if let note {
                         Text(note)
                             .font(Theme.Typography.callout)
@@ -609,7 +637,7 @@ struct CoachPreviewView: View {
                     .accessibilityLabel("Example: you tell the coach about a run, and it offers to log it for you.")
                 }
                 .padding(.horizontal, Theme.Spacing.screenMargin)
-                .padding(.top, Theme.Spacing.sm)
+                .padding(.top, Theme.Spacing.xs)
                 .padding(.bottom, Theme.Spacing.mlg)
             }
 
