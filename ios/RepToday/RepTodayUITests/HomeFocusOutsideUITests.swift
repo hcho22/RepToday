@@ -23,7 +23,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         welcome.tap()
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
+        focus(name, in: app)
         name.typeText("Riley\n")
         let chest = app.buttons["Chest"]
         for _ in 0..<4 where !chest.exists {

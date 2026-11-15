@@ -90,7 +90,7 @@ final class OnboardingImperialUITests: XCTestCase {
 
         let nameField = app.textFields.firstMatch
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "the basics step has no name field")
-        nameField.tap()
+        focus(nameField, in: app)
         // The keyboard covers the measurement rows entirely, so it is dismissed the way the user
         // does it - otherwise every press below lands on a letter key instead of a step button.
         nameField.typeText("Riley\n")
