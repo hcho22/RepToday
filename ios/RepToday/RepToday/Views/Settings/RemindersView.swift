@@ -163,7 +163,7 @@ private struct ReminderRow: View {
             Button(action: onEdit) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(CoachReminderCopy.time(hour: reminder.hour, minute: reminder.minute))
-                        .font(ThemeFont(Theme.Typography.FontName.displaySmall, size: 28, relativeTo: .title2))
+                        .cappedDisplayFont(Theme.Typography.FontName.displaySmall, size: 28, relativeTo: .title2)
                         .monospacedDigit()
                         .foregroundStyle(Theme.Colors.textPrimary)
                         // A time is one word: it shrinks rather than break between the digits and AM.
