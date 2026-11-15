@@ -419,8 +419,9 @@ final class ProgressTabSnapshotTests: XCTestCase {
     private enum HostHeight {
         // Headroom for the whole scrolling surface to lay out at once; the capture is cropped back to
         // the measured content, so a comfortable margin costs nothing. Raised for US-AN01's premium
-        // strength-journey card (the tallest premium surface now).
-        static let populated: CGFloat = 5400
+        // strength-journey card (the tallest premium surface now), and again for the visual direction's
+        // roomier cards and rails.
+        static let populated: CGFloat = 7200
         static let empty: CGFloat = 900
     }
 
