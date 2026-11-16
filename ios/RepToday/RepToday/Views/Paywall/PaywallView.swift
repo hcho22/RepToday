@@ -13,6 +13,8 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PaywallViewModel
+    /// The laid-out height of the purchase/restore answer's text, which sizes its pinned area.
+    @State private var messageHeight: CGFloat = 0
     private let premiumSessionAuthority: PremiumSessionAuthority
     private let onUnlock: (Subscription) -> Void
 
@@ -64,9 +66,24 @@ struct PaywallView: View {
             onUnlock(grant.subscription)
             dismiss()
         }
+        .onChange(of: viewModel.message) { _, message in
+            if let message {
+                AccessibilityNotification.Announcement(message).post()
+            }
+        }
     }
 
     private var content: some View {
+        GeometryReader { sheet in
+            content(messageMaxHeight: sheet.size.height * Self.messageMaxHeightFraction)
+        }
+    }
+
+    /// The most of the sheet's height the answer to a purchase or restore may take, so at the largest
+    /// text sizes it never crowds out the plans; a longer answer scrolls within that space.
+    private static let messageMaxHeightFraction: CGFloat = 0.3
+
+    private func content(messageMaxHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -86,14 +103,6 @@ struct PaywallView: View {
                             .disabled(viewModel.isBusy)
                             .accessibilityHint("Loads available Premium plans from the App Store")
                     }
-                    if let message = viewModel.message {
-                        Text(message)
-                            .font(Theme.Typography.footnote)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityLabel(message)
-                    }
                     disclosure
                     legalLinks
                 }
@@ -103,11 +112,38 @@ struct PaywallView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            restoreButton
-                .padding(.horizontal, Theme.Spacing.screenMargin)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.sm)
+            // The answer to a purchase or a restore sits with the pinned button, outside the scroll
+            // area: below the plans it was drawn under the button, off screen, so a restore that found
+            // nothing looked like nothing happened.
+            VStack(spacing: Theme.Spacing.xs) {
+                if let message = viewModel.message {
+                    resultMessage(message, maxHeight: messageMaxHeight)
+                }
+                restoreButton
+            }
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.sm)
         }
+    }
+
+    /// What became of the last purchase or restore, as tall as its text up to `maxHeight` and scrolling
+    /// in place past it. It appears without moving VoiceOver's focus, so it is also announced (`body`'s
+    /// `onChange(of: viewModel.message)`).
+    private func resultMessage(_ message: String, maxHeight: CGFloat) -> some View {
+        ScrollView {
+            Text(message)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel(message)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { messageHeight = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicatorsFlash(trigger: messageHeight > maxHeight)
+        .frame(height: min(messageHeight, maxHeight))
     }
 
     /// Close on the left, the sheet's name centered over the whole row.
@@ -189,6 +225,8 @@ struct PaywallView: View {
                 }
                 Text("Restore purchases")
                     .font(Theme.Typography.callout.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
             .frame(minHeight: Theme.Spacing.minTouchTarget)
