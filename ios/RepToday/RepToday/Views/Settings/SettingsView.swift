@@ -5,7 +5,7 @@ import SwiftUI
 /// It exists because US-T06 needs a reachable, clearly-labelled home for the anonymous-telemetry
 /// opt-out, and burying that control would defeat the point of an opt-out. It is deliberately a real
 /// sectioned Settings surface rather than an inline toggle on the Profile placeholder, so a later,
-/// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it, which
+/// broader Profile/Settings story **extends** it - another header and row group - rather than replacing it, which
 /// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Reminders (US-CA08), Training
 /// safety (US-AC08), Trainer (US-TP11), and Account (US-AD01, with Sign Out since US-SO01). Nothing else
 /// about Profile changes here.
@@ -45,218 +45,143 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var appState = appState
 
-        List {
-            Section {
-                Toggle(isOn: $appState.analyticsEnabled) {
-                    Text(Self.toggleTitle)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                }
-                .tint(Theme.Colors.accent)
-                .frame(minHeight: Theme.Spacing.minTouchTarget)
-                .accessibilityLabel(Self.toggleTitle)
-                .accessibilityHint(Self.toggleHint)
-
-                Link(destination: LegalLinks.privacyPolicy) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Text("Privacy Policy")
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.accent)
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.up.right.square")
-                            .foregroundStyle(Theme.Colors.textSecondary)
+        ScrollView {
+            VStack(spacing: Theme.Spacing.smd) {
+                GroupHeader("Privacy")
+                group {
+                    SwitchRow(title: Self.toggleTitle, isOn: $appState.analyticsEnabled)
+                        .accessibilityLabel(Self.toggleTitle)
+                        .accessibilityHint(Self.toggleHint)
+                    GroupSeparator()
+                    Link(destination: LegalLinks.privacyPolicy) {
+                        HStack(spacing: Theme.Spacing.smd) {
+                            GroupRow(title: "Privacy Policy")
+                            IconView(icon: .external, size: 20)
+                                .foregroundStyle(Theme.Colors.text3)
+                        }
                     }
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Privacy Policy")
+                    .accessibilityHint("Opens Rep Today's privacy policy in your browser")
                 }
-                .accessibilityLabel("Privacy Policy")
-                .accessibilityHint("Opens Rep Today's privacy policy in your browser")
-            } header: {
-                Text("Privacy")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(Self.explanation)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
+                GroupFooter(Self.explanation)
 
-            // US-AC04: the coach data disclosure, mirrored into Settings so the same facts are
-            // documented where a user looks for privacy choices. It is deliberately its **own** section,
-            // separate from the telemetry opt-out above - it is informational (the consent gesture is
-            // the one-time acknowledgement at first coach use, and using the coach at all is the opt-in),
-            // and it neither reads nor writes the telemetry flag. The footer states the same disclosure
-            // the pre-use modal shows.
-            Section {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                    Text(CoachDataDisclosureCopy.settingsRowTitle)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                    Spacer(minLength: 0)
+                // US-AC04: the coach data disclosure, mirrored into Settings so the same facts are
+                // documented where a user looks for privacy choices. It is deliberately its **own** group,
+                // separate from the telemetry opt-out above - it is informational (the consent gesture is
+                // the one-time acknowledgement at first coach use, and using the coach at all is the opt-in),
+                // and it neither reads nor writes the telemetry flag. The footer states the same disclosure
+                // the pre-use modal shows.
+                GroupHeader("AI Coach")
+                group {
+                    GroupRow(icon: .coach, title: CoachDataDisclosureCopy.settingsRowTitle)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(CoachDataDisclosureCopy.settingsRowTitle)
                 }
-                .frame(minHeight: Theme.Spacing.minTouchTarget)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(CoachDataDisclosureCopy.settingsRowTitle)
-            } header: {
-                Text("AI Coach")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(CoachDataDisclosureCopy.settingsFooter)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
+                GroupFooter(CoachDataDisclosureCopy.settingsFooter)
 
-            // US-CA08: the training reminders the Coach or the user set, listed, editable and deletable.
-            Section {
-                NavigationLink {
-                    RemindersView(service: services.reminders)
-                } label: {
-                    SettingsValueRowLabel(
-                        systemImage: "bell",
-                        title: CoachReminderCopy.settingsTitle,
-                        value: Self.reminderSummary(reminderCount)
-                    )
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(CoachReminderCopy.settingsTitle)
-                .accessibilityValue(Self.reminderSummary(reminderCount))
-                .accessibilityHint("See, change or delete your training reminders")
-                .accessibilityAddTraits(.isButton)
-            }
-            .listRowBackground(Theme.Colors.surface)
-
-            // US-HO02: Focus Areas, the body parts a user wants a bit more attention on. A preference, not a
-            // safety filter, so it sits apart from the injury control below.
-            Section {
-                NavigationLink {
-                    FocusAreasView(services: services)
-                } label: {
-                    SettingsValueRowLabel(
-                        systemImage: "scope",
-                        title: FocusAreasCopy.title,
-                        value: FocusAreasCopy.summary(focusAreas),
-                        valueLineLimit: 2
-                    )
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(FocusAreasCopy.title)
-                .accessibilityValue(FocusAreasCopy.summary(focusAreas))
-                .accessibilityHint("Choose the body parts you want a bit more attention on")
-                .accessibilityAddTraits(.isButton)
-
-                Toggle(isOn: healthSuggestionsBinding) {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        Text(Self.healthToggleTitle)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+                // US-CA08: the training reminders the Coach or the user set, listed, editable and deletable.
+                group {
+                    NavigationLink {
+                        RemindersView(service: services.reminders)
+                    } label: {
+                        GroupRow(
+                            icon: .bell,
+                            title: CoachReminderCopy.settingsTitle,
+                            value: Self.reminderSummary(reminderCount),
+                            showsChevron: true
+                        )
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(CoachReminderCopy.settingsTitle)
+                    .accessibilityValue(Self.reminderSummary(reminderCount))
+                    .accessibilityHint("See, change or delete your training reminders")
+                    .accessibilityAddTraits(.isButton)
                 }
-                .tint(Theme.Colors.accent)
-                .frame(minHeight: Theme.Spacing.minTouchTarget)
-                .accessibilityLabel(Self.healthToggleTitle)
-                .accessibilityHint("Turns Apple Health workout suggestions on or off")
-            } header: {
-                Text("Training")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(Self.healthToggleFooter)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
+                .padding(.top, Theme.Spacing.sm)
 
-            // US-AC08: the injury control - the one place an injury safety filter is set or cleared
-            // after onboarding, and the destination the coach's routing offer navigates to. It is a
-            // real, findable Settings row precisely because the coach must never be the thing that
-            // sets it; the footer says so plainly.
-            Section {
-                NavigationLink {
-                    InjuryFlagsView(services: services)
-                } label: {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "shield.lefthalf.filled")
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                        Text(InjuryFlagsCopy.title)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Spacer(minLength: 0)
+                // US-HO02: Focus Areas, the body parts a user wants a bit more attention on. A preference, not a
+                // safety filter, so it sits apart from the injury control below.
+                GroupHeader("Training")
+                group {
+                    NavigationLink {
+                        FocusAreasView(services: services)
+                    } label: {
+                        GroupRow(
+                            icon: .focus,
+                            title: FocusAreasCopy.title,
+                            value: FocusAreasCopy.summary(focusAreas),
+                            showsChevron: true
+                        )
                     }
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(FocusAreasCopy.title)
+                    .accessibilityValue(FocusAreasCopy.summary(focusAreas))
+                    .accessibilityHint("Choose the body parts you want a bit more attention on")
+                    .accessibilityAddTraits(.isButton)
+                    GroupSeparator()
+                    SwitchRow(icon: .health, title: Self.healthToggleTitle, isOn: healthSuggestionsBinding)
+                        .accessibilityLabel(Self.healthToggleTitle)
+                        .accessibilityHint("Turns Apple Health workout suggestions on or off")
                 }
-                .accessibilityLabel(InjuryFlagsCopy.title)
-                .accessibilityHint("Choose areas Rep Today should work around in future sessions")
-            } header: {
-                Text("Training safety")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(InjuryFlagsCopy.settingsFooter)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
+                GroupFooter(Self.healthToggleFooter)
 
-            // US-TP11: the Trainer who demonstrates each movement, switchable at any time. Its own section
-            // above Account (captain, Open Question 5), so the destructive action stays last.
-            Section {
-                trainerRow
-            } header: {
-                Text(TrainerChoiceCopy.settingsTitle)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(trainerSettings?.errorMessage ?? TrainerChoiceCopy.settingsFooter)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(trainerSettings?.errorMessage == nil ? Theme.Colors.textSecondary : Theme.Colors.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
-
-            // US-AD01: the mandatory account-deletion path (App Store Guideline 5.1.1(v)). A
-            // destructive, clearly-labelled row in its own section, so it is findable in one tap from
-            // the Profile tab's Settings and never mistaken for a benign control. US-SO01 puts Sign Out
-            // above it, in plain styling (decision 13), for a signed-in user.
-            Section {
-                if appState.account != nil {
-                    signOutRow
-                }
-
-                Button(role: .destructive) {
-                    let model = deletionModel()
-                    Task { await model.deleteAccountTapped() }
-                } label: {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "trash")
-                        Text(Self.deleteAccountTitle)
-                            .font(Theme.Typography.body)
-                        Spacer(minLength: 0)
+                // US-AC08: the injury control - the one place an injury safety filter is set or cleared
+                // after onboarding, and the destination the coach's routing offer navigates to. It is a
+                // real, findable Settings row precisely because the coach must never be the thing that
+                // sets it; the footer says so plainly.
+                GroupHeader("Training safety")
+                group {
+                    NavigationLink {
+                        InjuryFlagsView(services: services)
+                    } label: {
+                        GroupRow(icon: .shield, title: InjuryFlagsCopy.title, showsChevron: true)
                     }
-                    .foregroundStyle(Theme.Colors.danger)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(InjuryFlagsCopy.title)
+                    .accessibilityHint("Choose areas Rep Today should work around in future sessions")
                 }
-                .disabled(isAccountActionRunning)
-                .accessibilityLabel(Self.deleteAccountTitle)
-                .accessibilityHint("Permanently deletes your profile and workout history")
-            } header: {
-                Text("Account")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            } footer: {
-                Text(appState.account != nil ? Self.signOutFooter + "\n\n" + Self.deleteAccountFooter : Self.deleteAccountFooter)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                GroupFooter(InjuryFlagsCopy.settingsFooter)
+
+                // US-TP11: the Trainer who demonstrates each movement, switchable at any time. Its own group
+                // above Account (captain, Open Question 5), so the destructive action stays last.
+                GroupHeader(TrainerChoiceCopy.settingsTitle)
+                group {
+                    trainerRow
+                }
+                GroupFooter(
+                    trainerSettings?.errorMessage ?? TrainerChoiceCopy.settingsFooter,
+                    color: trainerSettings?.errorMessage == nil ? Theme.Colors.text2 : Theme.Colors.danger
+                )
+
+                // US-AD01: the mandatory account-deletion path (App Store Guideline 5.1.1(v)). A
+                // destructive, clearly-labelled row in its own group, so it is findable in one tap from
+                // the Profile tab's Settings and never mistaken for a benign control. US-SO01 puts Sign Out
+                // above it, in plain styling (decision 13), for a signed-in user.
+                GroupHeader("Account")
+                group {
+                    if appState.account != nil {
+                        signOutRow
+                        GroupSeparator()
+                    }
+
+                    Button(role: .destructive) {
+                        let model = deletionModel()
+                        Task { await model.deleteAccountTapped() }
+                    } label: {
+                        GroupRow(icon: .trash, title: Self.deleteAccountTitle, titleColor: Theme.Colors.danger)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAccountActionRunning)
+                    .accessibilityLabel(Self.deleteAccountTitle)
+                    .accessibilityHint("Permanently deletes your profile and workout history")
+                }
+                GroupFooter(appState.account != nil ? Self.signOutFooter + "\n\n" + Self.deleteAccountFooter : Self.deleteAccountFooter)
             }
-            .listRowBackground(Theme.Colors.surface)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.bottom, Theme.Spacing.mlg)
         }
         // Every appearance re-reads: the player's one-time choice may have stored a Trainer while
         // Settings sat open on the Profile tab.
@@ -265,11 +190,8 @@ struct SettingsView: View {
             focusAreas = (try? await services.userService.currentUser())?.profile.focusAreas ?? focusAreas
             reminderCount = await services.reminders.reminders().count
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
+        .screenTitle("Settings")
         // US-AD04: the confirmation names exactly what is destroyed and warns that deleting the
         // account does not cancel an App Store subscription. The destructive button carries
         // `role: .destructive` so it renders red and is *not* the default; `.cancel` is. The message
@@ -366,22 +288,20 @@ struct SettingsView: View {
             signOutModel().signOutTapped()
         } label: {
             HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .accessibilityHidden(true)
-                Text(progress ?? Self.signOutTitle)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(progress == nil ? Theme.Colors.textPrimary : Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: Theme.Spacing.sm)
+                GroupRow(
+                    icon: .signout,
+                    title: progress ?? Self.signOutTitle,
+                    titleColor: progress == nil ? Theme.Colors.text1 : Theme.Colors.text2
+                )
                 if progress != nil {
                     ProgressView()
+                        .tint(Theme.Colors.text2)
                         .accessibilityHidden(true)
                 }
             }
-            .frame(minHeight: Theme.Spacing.minTouchTarget)
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(isAccountActionRunning)
         .accessibilityLabel(Self.signOutTitle)
         .accessibilityValue(progress ?? "")
@@ -398,7 +318,7 @@ struct SettingsView: View {
     }
 
     /// The Trainer row: the effective Trainer (or "Not chosen yet") as its value, opening a menu of the
-    /// two Trainers. Choosing one writes it at once; the checkmark marks the stored Trainer.
+    /// two Trainers. Choosing one writes it at once; the check marks the stored Trainer.
     private var trainerRow: some View {
         let model = trainerSettings
         return Menu {
@@ -408,27 +328,36 @@ struct SettingsView: View {
                     Task { await model.select(trainer) }
                 } label: {
                     if model?.trainer == trainer {
-                        Label(trainer.displayName, systemImage: "checkmark")
+                        Label { Text(trainer.displayName) } icon: { AppIcon.check.fixedImage }
                     } else {
                         Text(trainer.displayName)
                     }
                 }
             }
         } label: {
-            SettingsValueRowLabel(
-                systemImage: "figure.strengthtraining.functional",
+            GroupRow(
+                icon: .profile,
                 title: TrainerChoiceCopy.settingsTitle,
-                value: model?.valueText ?? "",
-                trailingSystemImage: "chevron.up.chevron.down"
+                value: model.flatMap { $0.valueText.isEmpty ? nil : $0.valueText },
+                showsChevron: true
             )
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(model?.isLoaded != true || model?.isSaving == true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(TrainerChoiceCopy.settingsTitle)
         .accessibilityValue(model?.valueText ?? "")
         .accessibilityHint("Choose who demonstrates each movement")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// A group of rows: the `RowGroup` card with its 4 pt inner top and bottom padding.
+    private func group<Content: View>(@ViewBuilder _ content: @escaping () -> Content) -> some View {
+        RowGroup {
+            VStack(spacing: 0, content: content)
+                .padding(.vertical, Theme.Spacing.xs)
+        }
     }
 
     /// The Apple Health suggestions switch (US-HO05). Turning it on records the choice and asks for read
@@ -596,84 +525,4 @@ struct SettingsView: View {
     }
     .environment(\.services, ServiceContainer.mock())
     .environment(AppState.preview(isOnboarded: true, selectedTab: .profile))
-}
-
-/// A Settings row that shows a current value: an icon, a title, the value and, for a row that opens a
-/// menu, a trailing glyph (a navigation row gets its chevron from the list).
-///
-/// At the accessibility text sizes the value moves under the title, as `ProfileRowLabel` moves its badge,
-/// so the title and the value each keep the row's full width rather than splitting it and breaking words
-/// in half. The title is never squeezed for the value: the value wraps first. Stacked, a text gets one line
-/// per word and shrinks, as far as `ProfileRowLabel`'s title does, rather than split a word too wide for
-/// its line ("Reminders" at the largest size on the narrowest phone); the glyphs stop growing at the first
-/// accessibility size, as `ProfileRowLabel`'s do, to leave the text the room.
-struct SettingsValueRowLabel: View {
-    let systemImage: String
-    let title: String
-    let value: String
-    /// The most lines the value may take; `nil` lets it wrap as far as it needs.
-    var valueLineLimit: Int?
-    var trailingSystemImage: String?
-
-    /// The largest text size the row's glyphs grow to.
-    static let largestGlyphSize = DynamicTypeSize.accessibility1
-
-    /// How far a stacked text shrinks before a word would split.
-    static let stackedMinimumScale: CGFloat = 0.7
-
-    /// One line per word: a word that does not fit its line overflows the limit, so the text shrinks
-    /// instead of breaking the word.
-    private static func lineLimit(forWordsIn text: String) -> Int {
-        max(1, text.split(separator: " ").count)
-    }
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        let stacksValue = dynamicTypeSize.isAccessibilitySize
-        // Stacked, the icon and the trailing glyph stay on the title's line rather than centering on the value.
-        HStack(alignment: stacksValue ? .firstTextBaseline : .center, spacing: Theme.Spacing.sm) {
-            Image(systemName: systemImage)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .dynamicTypeSize(...Self.largestGlyphSize)
-                .accessibilityHidden(true)
-            let textLayout = stacksValue
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
-                : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
-            textLayout {
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .lineLimit(stacksValue ? Self.lineLimit(forWordsIn: title) : nil)
-                    .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(1)
-                if !stacksValue {
-                    Spacer(minLength: Theme.Spacing.sm)
-                }
-                if !value.isEmpty {
-                    Text(value)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .multilineTextAlignment(stacksValue ? .leading : .trailing)
-                        .lineLimit(stacksValue
-                            ? min(Self.lineLimit(forWordsIn: value), valueLineLimit ?? .max)
-                            : valueLineLimit)
-                        .minimumScaleFactor(stacksValue ? Self.stackedMinimumScale : 1)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if stacksValue {
-                Spacer(minLength: 0)
-            }
-            if let trailingSystemImage {
-                Image(systemName: trailingSystemImage)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .dynamicTypeSize(...Self.largestGlyphSize)
-                    .accessibilityHidden(true)
-            }
-        }
-        .frame(minHeight: Theme.Spacing.minTouchTarget)
-    }
 }

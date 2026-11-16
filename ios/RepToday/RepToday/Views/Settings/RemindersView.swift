@@ -67,9 +67,10 @@ struct RemindersView: View {
             Section {
                 if viewModel.reminders.isEmpty {
                     Text(CoachReminderCopy.empty)
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, Theme.Spacing.smd)
                 }
                 ForEach(viewModel.reminders) { reminder in
                     ReminderRow(
@@ -81,36 +82,62 @@ struct RemindersView: View {
                         Button(role: .destructive) {
                             Task { await viewModel.delete(reminder) }
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label { Text("Delete") } icon: { AppIcon.trash.fixedImage }
                         }
                     }
                 }
                 Button {
                     editing = viewModel.draft()
                 } label: {
-                    Label(CoachReminderCopy.addReminder, systemImage: "plus")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.accent)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    HStack(spacing: Theme.Spacing.smd) {
+                        ScaledIcon(icon: .plus, size: 22, relativeTo: .headline)
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                        Text(CoachReminderCopy.addReminder)
+                            .font(Theme.Typography.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(Theme.Colors.accent)
+                    .padding(.vertical, Theme.Spacing.smd)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-            } footer: {
+                .buttonStyle(.plain)
+                .accessibilityLabel(CoachReminderCopy.addReminder)
+            }
+            .listRowBackground(Theme.Colors.surface1)
+            .listRowSeparatorTint(Theme.Colors.line)
+            .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 18))
+            // The footnote's 12 pt gap is drawn inside its own row instead (below).
+            .listSectionSpacing(0)
+
+            // The footnote as a clear row of its own, so it lines up with the group's edge like every
+            // other group's footnote rather than taking a list footer's deeper inset. Its 12 pt top and
+            // bottom insets keep the first and last lines clear of the row's rounded-corner mask.
+            Section {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     if let message = viewModel.message {
-                        Text(message)
-                            .foregroundStyle(Theme.Colors.danger)
+                        GroupFooter(message, color: Theme.Colors.danger)
                     }
-                    Text(CoachReminderCopy.settingsFooter)
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                    GroupFooter(CoachReminderCopy.settingsFooter)
                 }
-                .font(Theme.Typography.caption)
-                .fixedSize(horizontal: false, vertical: true)
+                // Held to the top of its row, which is at least the list's 60 pt row height.
+                .frame(maxHeight: .infinity, alignment: .top)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: Theme.Spacing.smd, leading: 0, bottom: Theme.Spacing.smd, trailing: 0))
             }
-            .listRowBackground(Theme.Colors.surface)
         }
+        // A list rather than a stack of groups, so each reminder keeps its swipe-to-delete; drawn in the
+        // group tokens: `surface1` rows at least 60 pt tall, `line` separators, the 20 pt screen margin.
+        .listStyle(.insetGrouped)
+        .listSectionSpacing(Theme.Spacing.smd)
+        .environment(\.defaultMinListRowHeight, Theme.Spacing.rowHeight)
+        .environment(\.defaultMinListHeaderHeight, 0)
+        .contentMargins(.top, Theme.Spacing.xs, for: .scrollContent)
+        .contentMargins(.horizontal, Theme.Spacing.screenMargin, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
-        .navigationTitle(CoachReminderCopy.settingsTitle)
-        .navigationBarTitleDisplayMode(.inline)
+        .screenTitle(CoachReminderCopy.settingsTitle)
         .task { await viewModel.load() }
         .sheet(item: $editing) { reminder in
             ReminderEditor(
@@ -128,18 +155,30 @@ private struct ReminderRow: View {
     let onEdit: () -> Void
     let onToggle: (Bool) -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        // At accessibility sizes the switch moves under the time, so the time keeps the row's width.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+        layout {
             Button(action: onEdit) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(CoachReminderCopy.time(hour: reminder.hour, minute: reminder.minute))
-                        .font(Theme.Typography.headline)
+                        .cappedDisplayFont(Theme.Typography.FontName.displaySmall, size: 28, relativeTo: .title2)
+                        .monospacedDigit()
                         .foregroundStyle(Theme.Colors.textPrimary)
+                        // A time is one word: it shrinks rather than break between the digits and AM.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                     Text(CoachReminderCopy.days(reminder.weekdays))
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                .padding(.vertical, Theme.Spacing.smd)
+                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.rowHeight, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -148,11 +187,12 @@ private struct ReminderRow: View {
             )
             .accessibilityHint("Edit or delete this reminder")
 
-            Toggle("", isOn: Binding(get: { reminder.isEnabled }, set: onToggle))
-                .labelsHidden()
-                .tint(Theme.Colors.accent)
-                // Names which reminder it switches; VoiceOver reads its on or off state after.
-                .accessibilityLabel("Reminder at \(CoachReminderCopy.time(hour: reminder.hour, minute: reminder.minute))")
+            // Names which reminder it switches; VoiceOver reads its on or off state after.
+            ThemeSwitch(
+                label: "Reminder at \(CoachReminderCopy.time(hour: reminder.hour, minute: reminder.minute))",
+                isOn: Binding(get: { reminder.isEnabled }, set: onToggle)
+            )
+            .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? Theme.Spacing.smd : 0)
         }
     }
 }
@@ -164,6 +204,7 @@ private struct ReminderEditor: View {
     let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var reminder: CoachReminder
     @State private var time: Date
 
@@ -183,16 +224,36 @@ private struct ReminderEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
-                        .font(Theme.Typography.body)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
-                }
-                Section {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // At accessibility sizes the picker moves under its name, so neither splits a word.
+                    let timeLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+                        : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+                    timeLayout {
+                        Text("Time")
+                            .font(Theme.Typography.headline)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // The picker carries the same name, so VoiceOver hears it once.
+                            .accessibilityHidden(true)
+                        DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                            .labelsHidden()
+                            .font(Theme.Typography.body)
+                    }
+                    .padding(.vertical, Theme.Spacing.smd)
+                    .frame(minHeight: Theme.Spacing.rowHeight)
+
+                    GroupHeader("Days")
+                        .padding(.top, Theme.Spacing.md)
+                        .padding(.bottom, Theme.Spacing.xs)
+
                     ForEach(Self.weekOrder, id: \.self) { weekday in
                         let name = Calendar.current.weekdaySymbols[weekday - 1]
-                        Toggle(name, isOn: Binding(
+                        if weekday != Self.weekOrder.first {
+                            GroupSeparator()
+                        }
+                        SwitchRow(title: name, isOn: Binding(
                             get: { reminder.weekdays.contains(weekday) },
                             set: { on in
                                 var days = Set(reminder.weekdays)
@@ -200,31 +261,34 @@ private struct ReminderEditor: View {
                                 reminder.weekdays = days.sorted()
                             }
                         ))
-                        .font(Theme.Typography.body)
-                        .tint(Theme.Colors.accent)
-                        .frame(minHeight: Theme.Spacing.minTouchTarget)
                     }
-                } header: {
-                    Text("Days")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-                if !isNew {
-                    Section {
+
+                    if !isNew {
                         Button(role: .destructive) {
                             onDelete()
                             dismiss()
                         } label: {
-                            Label("Delete reminder", systemImage: "trash")
-                                .font(Theme.Typography.body)
-                                .foregroundStyle(Theme.Colors.danger)
-                                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ScaledIcon(icon: .trash, size: 20, relativeTo: .headline)
+                                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                                Text("Delete reminder")
+                                    .font(Theme.Typography.button)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: Theme.Spacing.buttonHeight)
                         }
+                        .dangerButtonStyle()
+                        .accessibilityLabel("Delete reminder")
+                        .padding(.top, Theme.Spacing.lg)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.bottom, Theme.Spacing.mlg)
             }
-            .navigationTitle(isNew ? CoachReminderCopy.addReminder : "Edit reminder")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(Theme.Colors.surface1)
+            .screenTitle(isNew ? CoachReminderCopy.addReminder : "Edit reminder")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -243,5 +307,7 @@ private struct ReminderEditor: View {
                 }
             }
         }
+        .tint(Theme.Colors.sun)
+        .sheetSurface()
     }
 }

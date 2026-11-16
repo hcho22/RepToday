@@ -26,10 +26,10 @@ struct AccountView: View {
             now: Date()
         )
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                 card {
                     row(
-                        symbol: "person.crop.circle.fill",
+                        icon: appState.account?.method == .email ? .mail : .profile,
                         title: presentation.accountLine,
                         detail: presentation.accountDetail,
                         detailIsAddress: true
@@ -37,7 +37,12 @@ struct AccountView: View {
                 }
 
                 card {
-                    row(symbol: presentation.symbol, title: presentation.headline, detail: presentation.detail)
+                    row(
+                        icon: presentation.icon,
+                        iconColor: presentation.icon == .check ? Theme.Colors.legs : Theme.Colors.text2,
+                        title: presentation.headline,
+                        detail: presentation.detail
+                    )
                 }
 
                 if presentation.offersSignIn, let reSignIn {
@@ -49,16 +54,19 @@ struct AccountView: View {
                 }
 
                 Text("Your plan and sessions live on this phone first and save to your account whenever you're connected. Premium purchases and restores use your App Store account.")
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Theme.Spacing.xs)
+                    .padding(.top, Theme.Spacing.xs)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.bottom, Theme.Spacing.mlg)
         }
         .foregroundStyle(Theme.Colors.textPrimary)
         .background(Theme.Colors.background)
-        .navigationTitle("Account")
+        .screenTitle("Account")
         .alert(AccountSignInPanel.eraseConfirmationTitle, isPresented: $isEraseConfirmationPresented) {
             Button("Erase", role: .destructive) { Task { await eraseThisDevice() } }
             Button("Cancel", role: .cancel) {}
@@ -90,16 +98,21 @@ struct AccountView: View {
             Button(role: .destructive) {
                 isEraseConfirmationPresented = true
             } label: {
-                HStack(spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.smd) {
                     if isErasing {
                         ProgressView()
+                            .tint(Theme.Colors.danger)
+                    } else {
+                        ScaledIcon(icon: .trash, size: 22, relativeTo: .headline)
                     }
                     Text("Erase this phone's Rep Today data")
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.headline)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.rowHeight, alignment: .leading)
+                .padding(.horizontal, 18)
+                .cardSurface()
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -108,8 +121,9 @@ struct AccountView: View {
             .accessibilityHint("Asks you to confirm first")
             if eraseFailed {
                 Text("We couldn't erase this phone's data. Please try again.")
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textPrimary)
+                    .padding(.horizontal, Theme.Spacing.xs)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -129,38 +143,60 @@ struct AccountView: View {
     /// An icon beside a title and an optional second line, the second line aligned under the title.
     /// An address stays on one line, shortened in the middle if it must be: wrapping would hyphenate
     /// it and misstate it. VoiceOver reads it in full.
-    private func row(symbol: String, title: String, detail: String?, detailIsAddress: Bool = false) -> some View {
+    private func row(
+        icon: AppIcon, iconColor: Color = Theme.Colors.text2, title: String, detail: String?,
+        detailIsAddress: Bool = false
+    ) -> some View {
         Label {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail, detailIsAddress {
                     Text(detail)
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.5)
                 } else if let detail {
                     Text(detail)
-                        .font(Theme.Typography.body)
+                        .font(Theme.Typography.callout)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         } icon: {
-            Image(systemName: symbol)
-                .foregroundStyle(Theme.Colors.accent)
+            ScaledIcon(icon: icon, size: 24, relativeTo: .headline)
+                .foregroundStyle(iconColor)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
+        .labelStyle(AccountRowLabelStyle())
         .accessibilityElement(children: .combine)
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.md)
-            .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.rowHeight, alignment: .leading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, Theme.Spacing.md)
+            .cardSurface()
+    }
+}
+
+/// An Account row's icon centered on its text, 14 pt from it; at accessibility text sizes the icon sits
+/// above the text so the text, an address above all, keeps the row's full width.
+private struct AccountRowLabelStyle: LabelStyle {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.sm))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 14))
+        layout {
+            configuration.icon
+            configuration.title
+        }
     }
 }

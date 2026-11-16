@@ -61,8 +61,9 @@ final class FoundationsUITests: XCTestCase {
         XCTAssertTrue(back.waitForExistence(timeout: 10))
         XCTAssertEqual(back.value as? String, "0")
         XCTAssertEqual(app.switches["Shoulders"].firstMatch.value as? String, "0")
-        // The labeled SwiftUI switch is the whole row; its nested native switch owns the thumb.
-        back.switches.firstMatch.tap()
+        // The labeled switch is the whole row; pressed where the switch sits, at its trailing edge, as a
+        // thumb finds it (a tap on the row's middle lands on the label, which does not move it).
+        back.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         let staged = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: back)
         XCTAssertEqual(XCTWaiter().wait(for: [staged], timeout: 5), .completed)
         scrollUntilHittable(app.buttons["Save changes"], in: app)

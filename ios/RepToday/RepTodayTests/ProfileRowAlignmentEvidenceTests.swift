@@ -9,9 +9,8 @@ import UIKit
 /// `artifacts/reports/profile-row-alignment/` - plus the
 /// largest size on an iPhone SE, where nothing is squeezed to fit and every row stays reachable.
 ///
-/// Every row's title starts at the same x because its glyph sits in a fixed-width column. That is read
-/// off the rendered rows themselves, and the column only holds the promise while every glyph fits
-/// inside it, which is pinned at every text size the icon renders at.
+/// Every row's title starts at the same x, because every row's icon is the same square size. That is read
+/// off the rendered rows themselves.
 @MainActor
 final class ProfileRowAlignmentEvidenceTests: XCTestCase {
 
@@ -53,67 +52,34 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
         try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.profileRowAlignment)
     }
 
-    /// Renders the real `ProfileRowLabel` once per glyph, with and without a badge, at the Profile tab's
-    /// row width on the narrowest phone (an iPhone SE), and reads where each title and the glyph, chevron
-    /// and badge beside it land: every title starts at the same x, the glyph and chevron sit on the
-    /// title's line even when the badge moves under it, and the badge never wraps. The bare label is
-    /// hosted (not `ProfileTabView`) because a `NavigationLink`'s own accessibility label merges its row
-    /// into one element, hiding the title's frame.
+    /// Renders the Profile tab's rows (`GroupRow`, each with its own icon) in their group at
+    /// the narrowest phone's width (an iPhone SE) and reads where each title lands: every title starts at
+    /// the same x. The bare labels are hosted (not `ProfileTabView`) because a
+    /// `NavigationLink`'s own accessibility label merges its row into one element, hiding the title's frame.
     private func assertRowsLineUp(at dynamicTypeSize: DynamicTypeSize) throws {
-        let rows = ProfileRowIcon.allCases.flatMap { icon in
-            [nil, "Premium"].map { badge in
-                (icon: icon, badge: badge, title: badge == nil ? "\(icon) title" : "\(icon) badged title")
-            }
-        }
+        let rows: [(icon: AppIcon, title: String)] = [(.profile, "Account title"), (.settings, "Settings title")]
         let size = CGSize(width: 375, height: dynamicTypeSize.isAccessibilitySize ? 1600 : 852)
         let (_, hostedWindow) = HostedSurface.host(
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(rows, id: \.title) { row in
-                    ProfileRowLabel(icon: row.icon, title: row.title, badge: row.badge)
+            RowGroup {
+                VStack(spacing: 0) {
+                    ForEach(rows, id: \.title) { row in
+                        GroupRow(icon: row.icon, title: row.title, showsChevron: true)
+                    }
                 }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
             .environment(\.dynamicTypeSize, dynamicTypeSize),
             size: size
         )
         window = hostedWindow
         let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
         let elements = AccessibilityTree.elements(in: root)
-        let badgeLineHeight = UIFont.preferredFont(
-            forTextStyle: .caption1,
-            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        ).lineHeight
 
         var titleLeadingEdges: [(title: String, minX: CGFloat)] = []
         for row in rows {
             let title = try XCTUnwrap(elements.first { $0.accessibilityLabel == row.title },
                                       "no \(row.title) element; tree reads \(AccessibilityTree.labels(in: root))")
-            let titleFrame = title.accessibilityFrame
-            let rowGlyphs = elements.filter { other in
-                other !== title
-                    && other.accessibilityLabel != row.badge
-                    && other.accessibilityFrame.maxY > titleFrame.minY
-                    && other.accessibilityFrame.minY < titleFrame.maxY
-            }
-            let leading = rowGlyphs.filter { $0.accessibilityFrame.minX < titleFrame.minX }
-            let trailing = rowGlyphs.filter { $0.accessibilityFrame.minX >= titleFrame.maxX }
-            XCTAssertFalse(leading.isEmpty, "the \(row.icon.rawValue) glyph should lead the \(row.title) row")
-            XCTAssertFalse(trailing.isEmpty, "a chevron should end the \(row.title) row")
-            for glyph in leading {
-                XCTAssertLessThanOrEqual(glyph.accessibilityFrame.maxX, titleFrame.minX,
-                                         "the \(row.icon.rawValue) glyph overlaps the \(row.title) title at \(dynamicTypeSize)")
-            }
-            for glyph in leading + trailing {
-                XCTAssertEqual(glyph.accessibilityFrame.midY, titleFrame.midY, accuracy: 0.5,
-                               "\(glyph.accessibilityLabel ?? "a glyph") sits off the \(row.title) line at \(dynamicTypeSize)")
-            }
-            if let badge = row.badge {
-                let pill = try XCTUnwrap(elements.filter { $0.accessibilityLabel == badge }
-                    .min { abs($0.accessibilityFrame.midY - titleFrame.midY) < abs($1.accessibilityFrame.midY - titleFrame.midY) })
-                XCTAssertLessThan(pill.accessibilityFrame.height, 1.5 * badgeLineHeight + 2 * Theme.Spacing.xs,
-                                  "the \(badge) badge wraps onto a second line in the \(row.title) row at \(dynamicTypeSize)")
-            }
-            titleLeadingEdges.append((row.title, titleFrame.minX))
+            titleLeadingEdges.append((row.title, title.accessibilityFrame.minX))
         }
 
         let reference = try XCTUnwrap(titleLeadingEdges.first)
@@ -129,27 +95,6 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
 
     func testEveryRowLinesUpOnItsTitleAtTheLargestTextSize() throws {
         try assertRowsLineUp(at: .accessibility5)
-    }
-
-    /// The widest glyph any row uses fits the shared icon column at every text size the icon grows to,
-    /// so no glyph spills toward its title and every title starts at the same x.
-    func testEveryRowGlyphFitsTheIconColumnAtEveryTextSize() throws {
-        let sizes: [UIContentSizeCategory] = [
-            .extraSmall, .small, .medium, .large, .extraLarge, .extraExtraLarge, .extraExtraExtraLarge,
-            .accessibilityMedium,
-        ]
-        XCTAssertEqual(DynamicTypeSize(sizes.last!), ProfileRowIcon.largestTextSize,
-                       "the checked sizes should end at the icon's largest text size")
-        for size in sizes {
-            let traits = UITraitCollection(preferredContentSizeCategory: size)
-            let column = UIFontMetrics(forTextStyle: .body).scaledValue(for: ProfileRowIcon.columnWidth,
-                                                                        compatibleWith: traits)
-            let glyph = UIFontMetrics(forTextStyle: .body).scaledValue(for: ProfileRowIcon.glyphSize, compatibleWith: traits)
-            for icon in ProfileRowIcon.allCases {
-                XCTAssertLessThanOrEqual(glyph, column,
-                                         "\(icon.rawValue) is wider than the icon column at \(size.rawValue)")
-            }
-        }
     }
 
     /// On an iPhone SE (375x667 pt: a 20 pt status bar above, a 49 pt tab bar below) at the largest text

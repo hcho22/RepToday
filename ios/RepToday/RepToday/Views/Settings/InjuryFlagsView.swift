@@ -50,6 +50,7 @@ struct InjuryFlagsView: View {
     /// render. When present, a confirmed change bumps its US-AC08 revision so the Ready screen
     /// regenerates today's session against the new safety filter without a relaunch.
     @Environment(AppState.self) private var appState: AppState?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var viewModel: InjuryFlagsViewModel
 
@@ -75,106 +76,81 @@ struct InjuryFlagsView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                ForEach(InjuryOption.allCases) { area in
-                    Toggle(isOn: binding(for: area)) {
-                        Text(area.label)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textPrimary)
+        ScrollView {
+            VStack(spacing: Theme.Spacing.smd) {
+                RowGroup {
+                    VStack(spacing: 0) {
+                        ForEach(InjuryOption.allCases) { area in
+                            if area != InjuryOption.allCases.first {
+                                GroupSeparator()
+                            }
+                            SwitchRow(title: area.label, isOn: binding(for: area))
+                                // A screen that could not read the profile has nothing to stage against, so
+                                // its switches do not pretend otherwise while the confirmation sits inert.
+                                .disabled(!viewModel.canEdit)
+                                .accessibilityLabel(area.label)
+                                .accessibilityHint("Stages \(area.label.lowercased()) as an area to work around. Nothing changes until you save.")
+                        }
                     }
-                    .tint(Theme.Colors.accent)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    // A screen that could not read the profile has nothing to stage against, so its
-                    // toggles do not pretend otherwise while the confirmation sits inert below them.
-                    .disabled(!viewModel.canEdit)
-                    .accessibilityLabel(area.label)
-                    .accessibilityHint("Stages \(area.label.lowercased()) as an area to work around. Nothing changes until you save.")
+                    .padding(.vertical, Theme.Spacing.xs)
                 }
-            } footer: {
-                Text(InjuryFlagsCopy.intro)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .listRowBackground(Theme.Colors.surface)
-
-            // The confirmation: the change is named immediately above the control that makes it, so
-            // the user is confirming something specific rather than pressing an opaque Save.
-            Section {
-                if let summary = viewModel.changeSummary {
-                    Text(summary)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel(summary)
-                }
-
-                if viewModel.didSave {
-                    Label(InjuryFlagsCopy.saved, systemImage: "checkmark.circle.fill")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .accessibilityLabel(InjuryFlagsCopy.saved)
-                }
-
-                if let error = viewModel.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel(error)
-                }
+                GroupFooter(InjuryFlagsCopy.intro)
 
                 if viewModel.loadFailed {
-                    Button(InjuryFlagsCopy.retry) {
-                        Task { await viewModel.retryLoad(preselecting: preselect) }
+                    RowGroup {
+                        Button {
+                            Task { await viewModel.retryLoad(preselecting: preselect) }
+                        } label: {
+                            Text(InjuryFlagsCopy.retry)
+                                .font(Theme.Typography.headline)
+                                .foregroundStyle(Theme.Colors.accentOnElevatedSurface)
+                                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.rowHeight, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(InjuryFlagsCopy.retry)
+                        .accessibilityHint("Reads your saved areas again")
                     }
-                    .font(Theme.Typography.button)
-                    // Presented as the coach's sheet, this row sits on dark appearance's raised #2C2C2E.
-                    .foregroundStyle(Theme.Colors.accentOnElevatedSurface)
-                    .frame(minHeight: Theme.Spacing.minTouchTarget)
-                    .accessibilityLabel(InjuryFlagsCopy.retry)
-                    .accessibilityHint("Reads your saved areas again")
                 }
 
-                // Styled from `Theme` rather than `.borderedProminent` so the enabled and disabled
-                // appearances are both design-system colours rather than a system material tinted over
-                // this row's own background.
+                GroupFooter(InjuryFlagsCopy.reversible)
+
+                if dynamicTypeSize.isAccessibilitySize {
+                    changeSummary
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.bottom, Theme.Spacing.mlg)
+        }
+        // The confirmation, pinned: the change is named immediately above the control that makes it, so the
+        // user is confirming something specific rather than pressing an opaque Save. At accessibility sizes
+        // the named change ends the scrolling column instead, so the pinned block never covers a switch; what
+        // the save did stays pinned above the button either way.
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    changeSummary
+                }
+                saveResult
+
                 Button(action: confirm) {
                     Text(InjuryFlagsCopy.confirm)
                         .font(Theme.Typography.button)
-                        .foregroundStyle(viewModel.canSave ? Theme.Colors.onAccent : Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.buttonHeight)
-                        .background(
-                            viewModel.canSave ? Theme.Colors.accentFill : Theme.Colors.background,
-                            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                        )
+                        .frame(minHeight: Theme.Spacing.buttonHeight)
                 }
-                .buttonStyle(.plain)
+                .accentFilledButtonStyle()
                 .disabled(!viewModel.canSave)
-                // The row draws its own rounded button rather than the section's grouped background,
-                // so it needs the gap the section would otherwise have put there - without it the
-                // button's rounded top corners bite into the square bottom edge of the summary row
-                // directly above.
-                .listRowInsets(EdgeInsets(top: Theme.Spacing.md, leading: 0, bottom: 0, trailing: 0))
-                .listRowBackground(Color.clear)
                 .accessibilityLabel(InjuryFlagsCopy.confirm)
                 .accessibilityHint("Applies the areas you switched on to your future sessions")
-            } footer: {
-                Text(InjuryFlagsCopy.reversible)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .listRowBackground(Theme.Colors.surface)
+            .padding(.horizontal, Theme.Spacing.screenMargin)
+            .padding(.vertical, Theme.Spacing.smd)
+            .background(Theme.Colors.background)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
-        .navigationTitle(InjuryFlagsCopy.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .screenTitle(InjuryFlagsCopy.title)
         .toolbar {
             // Presented as a sheet from the coach's route, backing out is the "I changed my mind"
             // path, and a swipe-down is the least discoverable control on the screen. So it is an
@@ -190,6 +166,46 @@ struct InjuryFlagsView: View {
             }
         }
         .task { await viewModel.load(preselecting: preselect) }
+    }
+
+    /// The named change: what the confirmation is about.
+    @ViewBuilder
+    private var changeSummary: some View {
+        if let summary = viewModel.changeSummary {
+            Text(summary)
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(summary)
+        }
+    }
+
+    /// The Saved line and any error: what the confirmation did.
+    @ViewBuilder
+    private var saveResult: some View {
+        if viewModel.didSave {
+            Label {
+                Text(InjuryFlagsCopy.saved)
+            } icon: {
+                ScaledIcon(icon: .check, size: 16, relativeTo: .footnote)
+                    .foregroundStyle(Theme.Colors.legs)
+            }
+            .font(Theme.Typography.footnote)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(InjuryFlagsCopy.saved)
+        }
+
+        if let error = viewModel.errorMessage {
+            Text(error)
+                .font(Theme.Typography.footnote)
+                .foregroundStyle(Theme.Colors.danger)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(error)
+        }
     }
 
     private func binding(for area: InjuryOption) -> Binding<Bool> {

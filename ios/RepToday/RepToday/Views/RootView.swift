@@ -290,202 +290,88 @@ private struct MainTabsView: View {
     }
 }
 
-/// The Profile tab: the existing placeholder, plus navigation rows to Account and the real Settings
-/// screen. (The Coach has its own tab since M4.)
+/// The Profile tab: its header, plus navigation rows to Account and the real Settings screen. (The Coach
+/// has its own tab since M4.)
 ///
-/// Settings is a plain, prominent list-style row rather than a toolbar gear, because the one control
-/// behind it - the anonymous-usage-data opt-out - has to be *found* to be worth anything.
+/// Settings is a plain, prominent row rather than a toolbar gear, because the one control behind it - the
+/// anonymous-usage-data opt-out - has to be *found* to be worth anything.
 struct ProfileTabView: View {
     var body: some View {
         NavigationStack {
-            ZStack {
-                Theme.Colors.background
-                    .ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    ProfileHeader(title: "Profile", subtitle: "Keep your movement basics current.")
 
-                // Scrolls only when large text makes the screen taller than the phone, so every row stays
-                // reachable; otherwise the content fills the screen with the rows pinned to the bottom.
-                GeometryReader { viewport in
-                    ScrollView {
-                        content
-                            .frame(minHeight: viewport.size.height)
+                    RowGroup {
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                AccountView()
+                            } label: {
+                                GroupRow(icon: .profile, title: "Account", showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Account")
+                            .accessibilityHint("Your account and what is saved to it")
+
+                            GroupSeparator()
+
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                GroupRow(icon: .settings, title: "Settings", showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Settings")
+                            .accessibilityHint("Privacy and anonymous usage data")
+                        }
+                        .padding(.vertical, Theme.Spacing.xs)
                     }
-                    .scrollBounceBehavior(.basedOnSize)
                 }
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.xl)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .background(Theme.Colors.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .statusBarBacking()
         }
     }
-
-    private var content: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            PlaceholderTabView(
-                icon: .profile,
-                title: "Profile",
-                subtitle: "Keep your movement basics current."
-            )
-
-            VStack(spacing: Theme.Spacing.md) {
-                NavigationLink {
-                    AccountView()
-                } label: {
-                    ProfileRowLabel(icon: .account, title: "Account")
-                }
-                .accessibilityLabel("Account")
-                .accessibilityHint("Your account and what is saved to it")
-
-                NavigationLink {
-                    SettingsView()
-                } label: {
-                    ProfileRowLabel(icon: .settings, title: "Settings")
-                }
-                .accessibilityLabel("Settings")
-                .accessibilityHint("Privacy and anonymous usage data")
-            }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.xl)
-        }
-    }
 }
 
-/// The leading glyph of each Profile row. Enumerated so the shared icon column can be sized to - and
-/// tested against - the widest glyph any row uses.
-enum ProfileRowIcon: String, CaseIterable {
-    case account
-    case settings
-
-    /// The custom icon the row draws.
-    var icon: AppIcon {
-        switch self {
-        case .account: return .profile
-        case .settings: return .settings
-        }
-    }
-
-    /// The icon column's width at the default text size, scaled with Dynamic Type relative to `.body`
-    /// (the glyph's own text style). Wide enough for the widest glyph, so every row's title starts at
-    /// the same x.
-    static let columnWidth: CGFloat = 30
-
-    /// The glyph's size at the default text size, scaled with Dynamic Type the same way as the column.
-    static let glyphSize: CGFloat = 22
-
-    /// The largest text size the icon (and its column) grows to. Beyond it the glyph alone would take a
-    /// third of the row and squeeze the title it decorates down to an ellipsis.
-    static let largestTextSize: DynamicTypeSize = .accessibility1
-}
-
-/// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional badge, and a
-/// chevron. Shared so the Account and Settings rows stay visually identical.
-struct ProfileRowLabel: View {
-    let icon: ProfileRowIcon
+/// The Profile tab's header: the `sun` disc with the profile icon, the screen title in Display M and its
+/// subtitle. At accessibility text sizes the title moves under the disc so it keeps the full width.
+private struct ProfileHeader: View {
     let title: String
-    /// An optional short tag (such as "Premium"), trailing the title or, at accessibility sizes, under
-    /// it. `nil` renders no badge.
-    var badge: String?
+    let subtitle: String
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .profileRowTitleCenter, spacing: Theme.Spacing.md) {
-            ProfileRowIconView(icon: icon)
-                .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.md))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.mlg))
+        layout {
+            ZStack {
+                Circle().fill(Theme.Colors.sun)
+                IconView(icon: .profile, size: 40)
+                    .foregroundStyle(Theme.Colors.onAccent)
+            }
+            .frame(width: 84, height: 84)
+            .accessibilityHidden(true)
 
-            // At accessibility sizes the badge moves under the title, so the title keeps the row's width.
-            let textLayout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
-                : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
-            textLayout {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(title)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .alignmentGuide(.profileRowTitleCenter) { $0[VerticalAlignment.center] }
-                if !dynamicTypeSize.isAccessibilitySize {
-                    Spacer(minLength: 0)
-                }
-                if let badge {
-                    Text(badge)
-                        .font(Theme.Typography.caption.weight(.semibold))
-                        .foregroundStyle(Theme.Colors.accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .padding(.horizontal, Theme.Spacing.sm)
-                        .padding(.vertical, Theme.Spacing.xs)
-                        .background(
-                            Theme.Colors.accentBadgeFill,
-                            in: Capsule()
-                        )
-                }
+                    .cappedDisplayFont(size: 44)
+                    .foregroundStyle(Theme.Colors.text1)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if dynamicTypeSize.isAccessibilitySize {
-                Spacer(minLength: 0)
-            }
-            ScaledIcon(icon: .chevr, size: 18, isDecorative: false)
-                .foregroundStyle(Theme.Colors.textTertiary)
-                .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
-        // The standard 56pt control height, which already clears the 44pt target; it grows with large
-        // text instead of clipping the title.
-        .frame(minHeight: Theme.Spacing.buttonHeight)
-        .background(
-            Theme.Colors.surface,
-            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-        )
-    }
-}
-
-private extension VerticalAlignment {
-    /// The vertical center of a Profile row's title, so the glyph and chevron sit on the title's line
-    /// even when the badge moves under it.
-    enum ProfileRowTitleCenter: AlignmentID {
-        static func defaultValue(in context: ViewDimensions) -> CGFloat {
-            context[VerticalAlignment.center]
-        }
-    }
-
-    static let profileRowTitleCenter = VerticalAlignment(ProfileRowTitleCenter.self)
-}
-
-/// A Profile row's glyph, centered in a fixed-width column so a wide glyph never pushes its title right.
-private struct ProfileRowIconView: View {
-    let icon: ProfileRowIcon
-    @ScaledMetric(relativeTo: .body) private var columnWidth = ProfileRowIcon.columnWidth
-
-    var body: some View {
-        ScaledIcon(icon: icon.icon, size: ProfileRowIcon.glyphSize, isDecorative: false)
-            .foregroundStyle(Theme.Colors.accent)
-            .frame(width: columnWidth)
-    }
-}
-
-private struct PlaceholderTabView: View {
-    let icon: AppIcon
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            IconView(icon: icon, size: 40)
-                .foregroundStyle(Theme.Colors.accent)
-                .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
-
-            Text(title)
-                .font(Theme.Typography.title)
-                .foregroundStyle(Theme.Colors.textPrimary)
-
-            Text(subtitle)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.lg)
-        }
-        .padding(Theme.Spacing.lg)
-        // Fills whatever it is given and centres inside it, which is what pins the Settings row
-        // below it to the bottom of the tab. The enclosing screen owns the background.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

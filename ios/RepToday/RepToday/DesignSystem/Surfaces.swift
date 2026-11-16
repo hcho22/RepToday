@@ -84,6 +84,12 @@ struct GroupSeparator: View {
 
 /// A row inside a group: an optional icon, the title, an optional value and a chevron, at least 60 pt
 /// tall. At accessibility text sizes the value stacks under the title so nothing truncates.
+///
+/// No word is ever broken in half. Side by side, the title and the value each keep at least the width of
+/// their widest word, so a long value wraps between words; the title is never squeezed for the value.
+/// Stacked, each text gets one line per word and shrinks (to `stackedMinimumScale`) rather than split a
+/// word too wide for its line ("Reminders" at the largest size on the narrowest phone), and the icon and
+/// chevron stay on the title's line.
 struct GroupRow: View {
     var icon: AppIcon?
     let title: String
@@ -91,29 +97,64 @@ struct GroupRow: View {
     var showsChevron = false
     var titleColor: Color = Theme.Colors.text1
 
+    /// How far a stacked text shrinks before a word would split.
+    static let stackedMinimumScale: CGFloat = 0.7
+
+    /// The title's type (Headline) and the value's (Callout).
+    static let titleFont = Theme.Typography.headline
+    static let valueFont = Theme.Typography.callout
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.legibilityWeight) private var legibilityWeight
+
+    /// One line per word: a word that does not fit its line overflows the limit, so the text shrinks
+    /// instead of breaking the word.
+    private static func lineLimit(forWordsIn text: String) -> Int {
+        max(1, text.split(separator: " ").count)
+    }
+
+    /// The width of the widest word of `text` in `font`, as SwiftUI draws it at this text size.
+    private func widestWord(of text: String, in font: ThemeFont) -> CGFloat {
+        text.split(separator: " ")
+            .map { font.width(of: String($0), size: dynamicTypeSize, weight: legibilityWeight) }
+            .max() ?? 0
+    }
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.smd) {
+        let stacks = dynamicTypeSize.isAccessibilitySize
+        HStack(alignment: stacks ? .firstTextBaseline : .center, spacing: Theme.Spacing.smd) {
             if let icon {
                 IconView(icon: icon, size: 22)
                     .foregroundStyle(titleColor == Theme.Colors.text1 ? Theme.Colors.text2 : titleColor)
             }
-            let stack = dynamicTypeSize.isAccessibilitySize
+            let stack = stacks
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
                 : AnyLayout(HStackLayout(spacing: Theme.Spacing.sm))
             stack {
                 Text(title)
-                    .font(Theme.Typography.headline)
+                    .font(Self.titleFont)
                     .foregroundStyle(titleColor)
+                    .lineLimit(stacks ? Self.lineLimit(forWordsIn: title) : nil)
+                    .minimumScaleFactor(stacks ? Self.stackedMinimumScale : 1)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minWidth: stacks ? nil : widestWord(of: title, in: Self.titleFont), alignment: .leading)
+                    .layoutPriority(1)
+                if !stacks {
+                    Spacer(minLength: 0)
+                }
                 if let value {
                     Text(value)
-                        .font(Theme.Typography.callout)
+                        .font(Self.valueFont)
                         .foregroundStyle(Theme.Colors.text2)
+                        .multilineTextAlignment(stacks ? .leading : .trailing)
+                        .lineLimit(stacks ? Self.lineLimit(forWordsIn: value) : nil)
+                        .minimumScaleFactor(stacks ? Self.stackedMinimumScale : 1)
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(minWidth: stacks ? nil : widestWord(of: value, in: Self.valueFont), alignment: .trailing)
                 }
+            }
+            if stacks {
+                Spacer(minLength: 0)
             }
             if showsChevron {
                 IconView(icon: .chevr, size: 18)
@@ -172,7 +213,8 @@ struct OptionCard: View {
 // MARK: - Toggle
 
 /// The 52 x 32 toggle: on, a `sun` track with a black 26 pt knob; off, a `surface3` track with a
-/// `text2` knob. Keeps the system toggle's accessibility (value and trait).
+/// `text2` knob. Keeps the system toggle's accessibility (value and trait). The track's hit shape
+/// reaches out to the 44 pt touch target while its layout stays 52 x 32, so rows keep their height.
 struct ThemeToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Theme.Spacing.smd) {
@@ -187,10 +229,10 @@ struct ThemeToggleStyle: ToggleStyle {
             }
             .frame(width: 52, height: 32)
             .animation(.easeOut(duration: 0.12), value: configuration.isOn)
+            .contentShape(Rectangle().inset(by: -(Theme.Spacing.minTouchTarget - 32) / 2))
             .onTapGesture { configuration.isOn.toggle() }
             .accessibilityHidden(true)
         }
-        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
         .accessibilityAddTraits(.isButton)

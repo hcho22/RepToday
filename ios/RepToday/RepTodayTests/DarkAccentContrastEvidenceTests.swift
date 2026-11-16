@@ -275,24 +275,7 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         try assertAccentFill(of: CoachInjuryOfferCopy.accept, in: image)
     }
 
-    // MARK: - The three spots that already fell short
-
-    /// The Profile row's "Premium" badge on its (now 8%) accent wash.
-    func testProfilePremiumBadge() throws {
-        host(
-            NavigationStack {
-                ZStack {
-                    Theme.Colors.background.ignoresSafeArea()
-                    VStack { ProfileRowLabel(icon: .settings, title: "Settings", badge: "Premium") }
-                        .padding(.horizontal, Theme.Spacing.lg)
-                }
-            },
-            size: CGSize(width: 393, height: 300)
-        )
-        // The badge is visual, so the capture is the evidence and `AccentContrastTests` pins its ratio.
-        XCTAssertTrue(labels().contains("Settings"), "\(labels())")
-        try capture("08-profile-premium-badge", size: CGSize(width: 393, height: 300))
-    }
+    // MARK: - The spots that already fell short
 
     /// Asserts the row behind the injury screen's Retry and the color Retry's label drew on it.
     private func assertRetry(
