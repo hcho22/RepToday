@@ -17,6 +17,8 @@ final class ThemeSwitchHitAreaUITests: XCTestCase {
         app.buttons["Areas to protect"].tap()
         let knees = app.switches["Knees"].firstMatch
         XCTAssertTrue(knees.waitForExistence(timeout: 10))
+        let editable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: knees)
+        XCTAssertEqual(XCTWaiter().wait(for: [editable], timeout: 10), .completed, "Areas to protect never finished loading")
         let start = knees.value as? String
 
         // The track sits at the row's trailing edge, centred on the row: 26 pt in from the edge is its middle.
