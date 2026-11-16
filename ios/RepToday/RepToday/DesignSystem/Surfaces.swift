@@ -213,7 +213,8 @@ struct OptionCard: View {
 // MARK: - Toggle
 
 /// The 52 x 32 toggle: on, a `sun` track with a black 26 pt knob; off, a `surface3` track with a
-/// `text2` knob. Keeps the system toggle's accessibility (value and trait).
+/// `text2` knob. Keeps the system toggle's accessibility (value and trait). The track's hit shape
+/// reaches out to the 44 pt touch target while its layout stays 52 x 32, so rows keep their height.
 struct ThemeToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: Theme.Spacing.smd) {
