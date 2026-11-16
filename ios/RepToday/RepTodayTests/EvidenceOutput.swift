@@ -41,6 +41,7 @@ enum EvidenceOutput {
         static let statusBarBacking = "status-bar-backing"
         static let differentWorkout = "different-workout"
         static let accounts = "us-au02-accounts"
+        static let restorePurchases = "restore-purchases"
     }
 
     /// The directory `story`'s evidence is written to for this run.
