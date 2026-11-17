@@ -60,6 +60,10 @@
 		<string>Inter-Bold.ttf</string>
 		<string>Inter-ExtraBold.ttf</string>
 	</array>
+	<!-- Asked only when the user chooses Take Photo for their profile photo; choosing from the library
+	     uses the system photo picker, which needs no permission. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Rep Today uses the camera only when you choose to take a profile photo.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today saves your completed sessions as workouts in Health so your movement counts where you already track it.</string>
 	<key>NSHealthShareUsageDescription</key>

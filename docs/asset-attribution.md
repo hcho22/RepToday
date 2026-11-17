@@ -30,7 +30,7 @@ They ship as static cuts in `ios/RepToday/RepToday/Resources/Fonts/`, each famil
 
 | File | Embedded name | Source | License | Cleared to ship |
 | --- | --- | --- | --- | --- |
-| `Assets.xcassets/Icons/*.imageset/*.svg`, `Assets.xcassets/Marks/*.imageset/*.svg` | `Icons/<name>`, `Marks/<mark>-<fill\|line>` | Drawn for Rep Today in the approved design handoff (the owner's own design work); converted to template vector images with their colors set to black so they tint. No third-party artwork. | Owned by the Rep Today project. | Yes (2026-11-14) |
+| `Assets.xcassets/Icons/*.imageset/*.svg`, `Assets.xcassets/Marks/*.imageset/*.svg` | `Icons/<name>`, `Marks/<mark>-<fill\|line>` | Drawn for Rep Today in the approved design handoff (the owner's own design work; `camera`, for the profile photo, drawn on the same 24 pt grid and stroke by the project on 2026-11-16); converted to template vector images with their colors set to black so they tint. No third-party artwork. | Owned by the Rep Today project. | Yes (2026-11-14) |
 
 ## Removed assets
 

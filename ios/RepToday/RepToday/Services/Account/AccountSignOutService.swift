@@ -38,6 +38,9 @@ struct AccountSignOutService: AccountSignOutServiceProtocol {
     let engine: SyncEngine?
     let syncStore: any SyncStore
     let eraser: any AccountDeletionServiceProtocol
+    /// Copies the profile photo to the account, or `nil` when this build has no account provider. A
+    /// photo change the account has not taken counts as unsaved, like a record in the outbox.
+    var profilePhotoSync: ProfilePhotoSync?
     /// How long the upload may take before the user is told what is still waiting. Long enough for a
     /// slow connection to upload a few sessions, short enough that a phone that will never connect
     /// answers well inside the time someone waits on a spinner; an offline phone answers at once.
@@ -52,14 +55,26 @@ struct AccountSignOutService: AccountSignOutServiceProtocol {
         if migrationStage == .awaitingSignIn || migrationStage == .importingFromICloud {
             return .unsavedChanges
         }
-        if let engine {
+        let linkedUserId = await MainActor.run { appState.account?.userId }
+        let photoSync = profilePhotoSync
+        if engine != nil || photoSync != nil {
             // A cycle that runs past the bound keeps going in the background; erasing waits for it to
             // end, so nothing it pulls can land after the erase.
-            await Self.run(for: uploadTimeout) { _ = try? await engine.sync() }
+            await Self.run(for: uploadTimeout) { [engine] in
+                if let engine {
+                    _ = try? await engine.sync()
+                }
+                if let photoSync, let linkedUserId {
+                    _ = try? await photoSync.pushPending(linkedAccount: linkedUserId)
+                }
+            }
         }
         // The outbox decides, whatever the upload threw: an entry leaves it only once the account
-        // confirmed it.
+        // confirmed it. The profile photo's record does the same for the photo.
         guard let pending = try? await syncStore.pendingCount() else { return .unsavedChanges }
+        if let photoSync, photoSync.store.record().pendingChange != nil {
+            return .unsavedChanges
+        }
         return pending == 0 ? .allSaved : .unsavedChanges
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The Account screen (M3): who is signed in and how much of the device's data is on the account.
 ///
@@ -11,6 +12,9 @@ struct AccountView: View {
     @Environment(\.services) private var services
     @Environment(AppState.self) private var appState
     @Environment(AccountSyncCoordinator.self) private var syncCoordinator: AccountSyncCoordinator?
+    /// The profile photo, shown beside the account when one is set. Optional so hosted test surfaces
+    /// without one still render.
+    @Environment(ProfilePhotoModel.self) private var profilePhoto: ProfilePhotoModel?
     @State private var reSignIn: AccountSignInViewModel?
     @State private var isEraseConfirmationPresented = false
     @State private var isErasing = false
@@ -30,6 +34,7 @@ struct AccountView: View {
                 card {
                     row(
                         icon: appState.account?.method == .email ? .mail : .profile,
+                        photo: profilePhoto?.image,
                         title: presentation.accountLine,
                         detail: presentation.accountDetail,
                         detailIsAddress: true
@@ -144,7 +149,7 @@ struct AccountView: View {
     /// An address stays on one line, shortened in the middle if it must be: wrapping would hyphenate
     /// it and misstate it. VoiceOver reads it in full.
     private func row(
-        icon: AppIcon, iconColor: Color = Theme.Colors.text2, title: String, detail: String?,
+        icon: AppIcon, iconColor: Color = Theme.Colors.text2, photo: UIImage? = nil, title: String, detail: String?,
         detailIsAddress: Bool = false
     ) -> some View {
         Label {
@@ -168,9 +173,13 @@ struct AccountView: View {
                 }
             }
         } icon: {
-            ScaledIcon(icon: icon, size: 24, relativeTo: .headline)
-                .foregroundStyle(iconColor)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            if let photo {
+                ProfileAvatar(image: photo, diameter: 40)
+            } else {
+                ScaledIcon(icon: icon, size: 24, relativeTo: .headline)
+                    .foregroundStyle(iconColor)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            }
         }
         .labelStyle(AccountRowLabelStyle())
         .accessibilityElement(children: .combine)

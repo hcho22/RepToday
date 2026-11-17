@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            27,
+            29,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -59,6 +59,10 @@ final class ServiceContainerTests: XCTestCase {
         XCTAssertNil(services.syncEngine)
         let importOutcome = await services.legacyICloudImport.waitForImport(timeout: .zero)
         XCTAssertEqual(importOutcome, .nothingToImport)
+        // The profile photo: in memory, empty, and never copied to an account in the mock container.
+        XCTAssertNil(services.profilePhotoStore.photo())
+        XCTAssertNil(services.accountProfileImageService)
+        XCTAssertNil(services.profilePhotoSync)
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its

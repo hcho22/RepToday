@@ -35,6 +35,9 @@ struct RepTodayApp: App {
     /// Decides when the device's data syncs to the account and reports how it went (M3).
     @State private var syncCoordinator: AccountSyncCoordinator
 
+    /// The user's profile photo: kept on the phone, copied to the account's profile image.
+    @State private var profilePhoto: ProfilePhotoModel
+
     init() {
         // Before anything reads the opt-out flag: an XCUITest run launched with the US-T06 probe
         // argument starts from the shipped default rather than from whatever the previous run's
@@ -89,6 +92,7 @@ struct RepTodayApp: App {
             ),
             onRemoteChangesApplied: { [appState] in appState.markPlanInputsChanged() }
         ))
+        _profilePhoto = State(initialValue: ProfilePhotoModel(services: services, appState: appState))
         self.transactionListener = services.subscriptionService.startObservingTransactions()
 
         // Settings persists the authoritative gate and advances its opt-out generation before this
@@ -139,13 +143,31 @@ struct RepTodayApp: App {
                 .environment(\.services, services)
                 .environment(appState)
                 .environment(syncCoordinator)
-                .task { syncCoordinator.start(observing: persistenceController.viewContext) }
+                .environment(profilePhoto)
+                .task {
+                    syncCoordinator.start(observing: persistenceController.viewContext)
+                    profilePhoto.requestSync()
+                }
                 .onChange(of: scenePhase) { _, phase in
                     guard phase == .active else { return }
                     // A foreground is a bounded recovery trigger for work whose prior attempt was
                     // interrupted or whose background-execution lease expired.
                     Task { await services.analyticsService.resumePendingDelivery() }
                     syncCoordinator.requestSync(after: .zero)
+                    profilePhoto.requestSync()
+                }
+                // Signing in links an account (a fresh install adopts its image); signing out, erasing
+                // and deleting unlink it after the phone's photo is erased.
+                .onChange(of: appState.account) { _, _ in
+                    profilePhoto.reload()
+                    profilePhoto.requestSync()
+                }
+                // A sync that just reached the account means a connection and a session it accepts:
+                // a photo change still owed goes now rather than at its back-off.
+                .onChange(of: syncCoordinator.status) { _, status in
+                    if status == .upToDate {
+                        profilePhoto.requestSync()
+                    }
                 }
         }
     }
