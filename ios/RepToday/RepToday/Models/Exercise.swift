@@ -83,12 +83,24 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// True when the movement is doable in a small space with only a floor and wall.
     var apartmentFriendly: Bool
     /// The id of the rung this movement is a **Variation** of (ADR-0018, `CONTEXT.md` "Variation"): a
-    /// same-difficulty alternative such as a Wide push-up beside the Standard one. A Variation sits alone
-    /// in its own one-rung chain, never in a ladder, and fills a 60-minute Push or Pull Day's fifth slot
+    /// same-difficulty alternative to a rung, such as another hand or foot position of the same movement.
+    /// A Variation sits alone in its own one-rung chain, never in a ladder, and fills a 60-minute Push or Pull Day's fifth slot
     /// only while its parent is the user's current rung and Trainer art exists for both Trainers. It never
     /// advances anything (`StationRole.variation`). `nil` for every other movement; optional so the
     /// catalog and an already-persisted `Exercise` decode unchanged.
     var variationOf: String? = nil
+    /// The withdrawn movements this rung takes the place of on a user's progression (ADR-0020): a log of
+    /// any of them places the user on this rung, as if they had worked it, so someone partway up a ladder
+    /// when its bottom or top rungs were removed keeps their place instead of starting the ladder over.
+    /// It moves only *where* the user stands - clearing this rung, its Earned Reps and a Foundation still
+    /// read logs of this rung alone. Every id must be a withdrawn movement of the same pattern, and no
+    /// movement is taken over twice (load-validated). `nil` for every other movement; optional so the
+    /// catalog and an already-persisted `Exercise` decode unchanged.
+    var replaces: [String]? = nil
+    /// One short coaching line the exercise card shows under the movement's name and target, such as the
+    /// easier options for someone who cannot yet do the full movement. `nil` for most movements; optional
+    /// so an already-persisted `Exercise` decodes unchanged.
+    var cue: String? = nil
 
     /// How many times a set's prescribed per-set value is actually performed: twice for an `isPerSide`
     /// movement, once otherwise (including when the flag is absent). Read by the timing model, which has
@@ -108,4 +120,9 @@ struct Exercise: Codable, Equatable, Identifiable {
     ///   visual and VoiceOver targets so what the user is asked for cannot drift from what the engine
     ///   charges.
     var sidesPerSet: Int { isPerSide == true ? 2 : 1 }
+
+    /// The logged movement ids that place a user on this rung: its own, then every removed movement it
+    /// takes the place of (`replaces`, ADR-0020). Only "where does the user stand" reads it; what clears
+    /// the rung reads this rung's own logs.
+    var placementIds: [String] { [id] + (replaces ?? []) }
 }

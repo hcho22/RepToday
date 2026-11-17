@@ -3,7 +3,8 @@ import XCTest
 
 /// ADR-0007: beginner and intermediate users get staple movements only while in the Discipline Phase,
 /// advanced users keep today's variety, and the Strength Phase opens everything. Two kinds of movement
-/// are withdrawn for everyone: the whole primal pillar, retired with its block (ADR-0014), and Prone
+/// are withdrawn for everyone: retired movements - the whole primal pillar with its block (ADR-0014), and
+/// Wall, Incline and Knee Push-Up and both Nordic curls, which left their ladders (ADR-0020) - and Prone
 /// Y-T-W Raises, held until version 2 as the withdrawn top of the postural pull chain.
 ///
 /// Everything here runs over the real bundled `Exercises.json`, so the lists below are the captain's
@@ -16,7 +17,7 @@ final class StapleMovementsTests: XCTestCase {
 
     /// Training staples for beginner and intermediate users.
     private let beginnerTraining: Set<String> = [
-        "push_wall", "push_incline", "push_knee", "push_standard", "push_floor_dips",
+        "push_standard", "push_wide", "push_one_leg", "push_floor_dips",
         "pull_superman", "pull_wall_scapular_pull",
         "squat_wall_sit", "squat_bodyweight", "lunge_reverse",
         "hinge_glute_bridge", "hinge_single_leg_bridge", "hinge_good_morning",
@@ -24,7 +25,8 @@ final class StapleMovementsTests: XCTestCase {
     ]
     /// Training staples for intermediate users only.
     private let intermediateTraining: Set<String> = [
-        "push_diamond", "pull_floor_row", "squat_sumo", "lunge_split_squat",
+        "push_diamond", "push_side_to_side", "push_spider", "push_explosive", "push_burpee",
+        "pull_floor_row", "squat_sumo", "squat_burpee", "lunge_split_squat",
         "hinge_bridge_march", "hinge_single_leg_rdl", "core_side_plank", "core_dead_bug",
     ]
     /// Training movements for advanced users only (Strength-Phase skills excluded).
@@ -38,7 +40,7 @@ final class StapleMovementsTests: XCTestCase {
     /// The existing Strength-Phase movements, which stay as they are.
     private let strengthPhaseMovements: Set<String> = [
         "push_one_arm_assisted", "push_one_arm", "squat_pistol_assisted", "squat_pistol",
-        "core_one_leg_l_sit", "core_l_sit", "hinge_nordic_assisted", "hinge_nordic",
+        "core_one_leg_l_sit", "core_l_sit",
     ]
     /// Warm-up and cooldown staples for beginner and intermediate users.
     private let stapleStretches: Set<String> = [
@@ -55,10 +57,16 @@ final class StapleMovementsTests: XCTestCase {
         "mobility_cossack", "mobility_ankle_rocks",
     ]
     /// The primal pillar, retired for everyone with its block (ADR-0014).
-    private let retired: Set<String> = [
+    private let retiredPrimal: Set<String> = [
         "primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch",
         "primal_bear_crawl", "primal_crab_walk", "primal_ground_to_standing", "primal_bear_shoulder_tap",
     ]
+    /// The rungs that left their ladders for everyone (ADR-0020).
+    private let retiredRungs: Set<String> = [
+        "push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic",
+    ]
+    /// Every retired movement.
+    private var retired: Set<String> { retiredPrimal.union(retiredRungs) }
     /// Held back for everyone until version 2.
     private let versionTwo: Set<String> = ["pull_ytw"]
     /// Every movement no user is offered.
@@ -171,7 +179,7 @@ final class StapleMovementsTests: XCTestCase {
                          stapleStretches, advancedStretches, retired, versionTwo]
         XCTAssertEqual(all.count, partition.reduce(0) { $0 + $1.count }, "every movement is on exactly one list")
         XCTAssertEqual(Set(all.map(\.id)), partition.reduce(into: Set<String>()) { $0.formUnion($1) })
-        XCTAssertEqual(all.count, 76)
+        XCTAssertEqual(all.count, 83)
     }
 
     func testEachAudienceFieldMatchesItsList() throws {
@@ -206,11 +214,11 @@ final class StapleMovementsTests: XCTestCase {
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: level), recentLogs: [])
                 .filter { ($0.pillar != .mobility) == training }.count
         }
-        XCTAssertEqual(count(.beginner, training: true), 15)
+        XCTAssertEqual(count(.beginner, training: true), 14)
         XCTAssertEqual(count(.beginner, training: false), 16)
-        XCTAssertEqual(count(.intermediate, training: true), 23)
+        XCTAssertEqual(count(.intermediate, training: true), 27)
         XCTAssertEqual(count(.intermediate, training: false), 16)
-        XCTAssertEqual(count(.advanced, training: true), 34)
+        XCTAssertEqual(count(.advanced, training: true), 38)
         XCTAssertEqual(count(.advanced, training: false), 26)
     }
 
@@ -236,7 +244,7 @@ final class StapleMovementsTests: XCTestCase {
         let service = try MockExerciseService()
         let offered = ids(try await service.exercises())
         XCTAssertTrue(offered.isDisjoint(with: withdrawn), "the service never serves a withdrawn movement")
-        XCTAssertEqual(offered.count, 68)
+        XCTAssertEqual(offered.count, 70)
         for pillar in Pillar.allCases {
             let byPillar = try await service.exercises(for: pillar)
             XCTAssertTrue(ids(byPillar).isDisjoint(with: withdrawn))
@@ -253,7 +261,7 @@ final class StapleMovementsTests: XCTestCase {
         // is the withdrawn top of the postural chain, above the live ladder.
         let file = try fullFileLibrary()
         let primal = file.filter { $0.pillar == .primal }
-        XCTAssertEqual(ids(primal), retired)
+        XCTAssertEqual(ids(primal), retiredPrimal)
         XCTAssertEqual(Set(primal.map(\.progressionChainId)), ["primal_ground_flow", "primal_locomotion"])
         XCTAssertTrue(primal.allSatisfy { $0.audience == .retired })
         let postural = file.filter { $0.progressionChainId == "pull_postural" }.sorted { $0.progressionOrder < $1.progressionOrder }
@@ -307,7 +315,7 @@ final class StapleMovementsTests: XCTestCase {
     func testWithdrawnMovementsNeverAppearInAnySessionForAnyUser() throws {
         let library = try fullFileLibrary() // withdrawn movements deliberately present
         XCTAssertTrue(ids(library).isSuperset(of: withdrawn))
-        let logs = retired.sorted().enumerated().map { index, id in
+        let logs = retiredPrimal.sorted().enumerated().map { index, id in
             workLog(id, pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 10 - index)
         } + [workLog("pull_ytw", pattern: .pull, reps: 15, daysAgo: 2)]
         for level in FitnessLevel.allCases {
@@ -423,7 +431,7 @@ final class StapleMovementsTests: XCTestCase {
         let library = try await offeredLibrary()
         let squat = library.filter { $0.progressionChainId == "squat" }.sorted { $0.progressionOrder < $1.progressionOrder }
         XCTAssertEqual(squat.map(\.id), [
-            "squat_wall_sit", "squat_bodyweight", "squat_sumo", "squat_cossack", "squat_shrimp",
+            "squat_wall_sit", "squat_bodyweight", "squat_sumo", "squat_burpee", "squat_cossack", "squat_shrimp",
             "squat_pistol_assisted", "squat_pistol",
         ])
         let beginnerChain = MovementAccess.available(in: squat, level: .beginner, phase: .discipline).map(\.id)
@@ -454,13 +462,13 @@ final class StapleMovementsTests: XCTestCase {
             line.entryExercises(in: library).filter { MovementAccess.isAvailable($0, level: .beginner, phase: .discipline) }.map(\.id)
         }
         XCTAssertTrue(Set(entries).isSuperset(of: [
-            "push_wall", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank",
+            "push_standard", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank",
         ]))
     }
 
     func testABeginnerEarnsTheStrengthPhaseUsingStaplesOnly() async throws {
         let library = try await offeredLibrary()
-        let cleared = ["push_wall", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"]
+        let cleared = ["push_standard", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"]
         for id in cleared {
             let exercise = try XCTUnwrap(library.first { $0.id == id })
             XCTAssertTrue(MovementAccess.isAvailable(exercise, level: .beginner, phase: .discipline), "\(id) must be a beginner staple")
@@ -626,11 +634,12 @@ final class StapleMovementsTests: XCTestCase {
         let original = logs
         XCTAssertEqual(selection(chain: "squat", level: .advanced, logs: logs, library: library)?.exercise.id, "squat_cossack",
                        "advanced users keep where they were")
-        XCTAssertEqual(selection(chain: "squat", level: .intermediate, logs: logs, library: library)?.exercise.id, "squat_sumo")
+        // Burpee (ADR-0020) is the highest squat an intermediate gets below Cossack.
+        XCTAssertEqual(selection(chain: "squat", level: .intermediate, logs: logs, library: library)?.exercise.id, "squat_burpee")
         XCTAssertEqual(selection(chain: "squat", level: .beginner, logs: logs, library: library)?.exercise.id, "squat_bodyweight")
         XCTAssertEqual(logs, original, "history is read, never rewritten")
 
-        for (level, expected) in [(FitnessLevel.intermediate, "squat_sumo"), (.beginner, "squat_bodyweight")] {
+        for (level, expected) in [(FitnessLevel.intermediate, "squat_burpee"), (.beginner, "squat_bodyweight")] {
             let analytics = ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
             let squat = try XCTUnwrap(analytics.chainPositions.first { $0.pattern == .squat })
             XCTAssertEqual(squat.currentExercise?.id, expected, "\(level): Progress shows the rung they are served")

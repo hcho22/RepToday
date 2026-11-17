@@ -5,7 +5,7 @@ import UIKit
 
 /// Reviewer-visible evidence for US-AN01, the premium strength-journey analytics: a premium user sees,
 /// on the Progress tab's deep layer, analytics anchored on their climb over time - the dated
-/// tier-advancement timeline ("Wall Push-Up -> Standard Push-Up, over 6 weeks") read from real history,
+/// tier-advancement timeline ("Standard Push-Up -> One-Legged Push-Up, over 6 weeks") read from real history,
 /// plus the current phase-earning progress (US-SP04's signals) - while a free user sees only the free
 /// layers and the upsell in its place.
 ///
@@ -61,14 +61,14 @@ final class StrengthJourneyEvidenceTests: XCTestCase {
         )
     }
 
-    /// The PRD Validation Test history: the push chain climbed a tier across weeks - Wall Push-Up six
-    /// weeks ago, Knee Push-Up three weeks ago, Standard Push-Up this week - so the journey shows a
+    /// The PRD Validation Test history: the push chain climbed a tier across weeks - Standard Push-Up six
+    /// weeks ago, Wide Push-Up three weeks ago, One-Legged Push-Up this week - so the journey shows a
     /// dated, multi-week advancement. Squat gets a single token tier so a second foundation renders.
     private func validationLogs() -> [WorkoutLog] {
         [
-            workLog(exerciseId: "push_wall", pattern: .push, reps: 15, weeksAgo: 6),
-            workLog(exerciseId: "push_knee", pattern: .push, reps: 12, weeksAgo: 3),
-            workLog(exerciseId: "push_standard", pattern: .push, reps: 10, weeksAgo: 0),
+            workLog(exerciseId: "push_standard", pattern: .push, reps: 15, weeksAgo: 6),
+            workLog(exerciseId: "push_wide", pattern: .push, reps: 12, weeksAgo: 3),
+            workLog(exerciseId: "push_one_leg", pattern: .push, reps: 10, weeksAgo: 0),
             workLog(exerciseId: "squat_bodyweight", pattern: .squat, reps: 15, weeksAgo: 0, dayOffset: 1),
         ]
     }
@@ -134,8 +134,8 @@ final class StrengthJourneyEvidenceTests: XCTestCase {
         // Sanity: the view model derived the multi-week push climb through the deep layer.
         XCTAssertTrue(viewModel.isPremium)
         let push = viewModel.analytics?.deep.strengthJourney.chains.first { $0.pattern == .push }
-        XCTAssertEqual(push?.startMilestone?.displayName, "Wall Push-Up")
-        XCTAssertEqual(push?.currentMilestone?.displayName, "Standard Push-Up")
+        XCTAssertEqual(push?.startMilestone?.displayName, "Standard Push-Up")
+        XCTAssertEqual(push?.currentMilestone?.displayName, "One-Legged Push-Up")
         XCTAssertEqual(push?.weeksClimbed, 6)
 
         let layoutSize = CGSize(width: 393, height: 4600)
@@ -146,14 +146,14 @@ final class StrengthJourneyEvidenceTests: XCTestCase {
         XCTAssertTrue(labelsContain("Your strength journey"),
                       "the deep layer should carry the strength-journey section; tree reads \(labels())")
         // The dated advancement: from -> to over the measured span.
-        XCTAssertTrue(labelsContain("Advanced from Wall Push-Up to Standard Push-Up"),
+        XCTAssertTrue(labelsContain("Advanced from Standard Push-Up to One-Legged Push-Up"),
                       "the push journey should read the dated advancement; tree reads \(labels())")
         XCTAssertTrue(labelsContain("over 6 weeks"),
                       "the advancement should state the six-week duration; tree reads \(labels())")
         // The per-tier timeline carries the reached-on dates and marks the current frontier.
-        XCTAssertTrue(labelsContain("Wall Push-Up, reached"),
+        XCTAssertTrue(labelsContain("Standard Push-Up, reached"),
                       "the timeline should date the entry tier; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Standard Push-Up, reached") && labelsContain("you're here"),
+        XCTAssertTrue(labelsContain("One-Legged Push-Up, reached") && labelsContain("you're here"),
                       "the frontier tier should be dated and marked current; tree reads \(labels())")
         // Phase-earning progress reused from US-SP04's signals.
         XCTAssertTrue(labelsContain("Earning the Strength Phase"),
@@ -177,7 +177,7 @@ final class StrengthJourneyEvidenceTests: XCTestCase {
         // The deep-only strength journey is absent for a free user.
         XCTAssertFalse(labelsContain("Your strength journey"),
                        "a free user must not see the premium strength journey; tree reads \(labels())")
-        XCTAssertFalse(labelsContain("Advanced from Wall Push-Up"),
+        XCTAssertFalse(labelsContain("Advanced from Standard Push-Up"),
                        "a free user must not see the dated advancement; tree reads \(labels())")
         // The upsell stands in its place, and the free chain-position layer still renders.
         XCTAssertTrue(labelsContain("Go deeper with Premium"),

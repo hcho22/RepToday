@@ -7,7 +7,7 @@ import Foundation
 /// intermediate user is offered **staple movements** only - the ones most people already know by name
 /// (push-ups, squats, planks, bridges) - and an advanced user keeps the full variety. Earning the
 /// Strength Phase lifts the restriction for everyone: every movement opens at once. A movement marked
-/// `.version2` (until version 2) or `.retired` (ADR-0014) is withdrawn for every user in every phase.
+/// `.version2` (until version 2) or `.retired` (ADR-0014, ADR-0020) is withdrawn for every user in every phase.
 ///
 /// Three rules, applied in this order, and nothing else decides eligibility by movement:
 /// 1. **Withdrawn** - a `.version2` or `.retired` movement is never available (`isWithdrawn`).
@@ -61,7 +61,8 @@ enum MovementAccess {
     }
 
     /// Whether `exercise` is withdrawn from the app for everyone: held back until version 2, or retired
-    /// with its training family (ADR-0014). The catalog keeps both so history still resolves.
+    /// with its training family (ADR-0014) or from its ladder (ADR-0020). The catalog keeps both so history
+    /// still resolves.
     static func isWithdrawn(_ exercise: Exercise) -> Bool {
         exercise.audience == .version2 || exercise.audience == .retired
     }

@@ -27,6 +27,29 @@ final class ExerciseSwapTests: XCTestCase {
         try await MockExerciseService().exercises()
     }
 
+    /// A two-rung push ladder for the swap-sizing tests: Knee Push-Up, retired from the catalog by ADR-0020
+    /// but kept in the file, offered again as a beginner rung directly under Standard Push-Up. Its quicker
+    /// pace keeps a substitute served a few steps above the slot inside the slot's time budget - a pair no
+    /// two neighbouring catalog rungs make now that the push ladder starts at Standard - and the step down
+    /// from Standard lands on it.
+    private func kneeUnderStandard() throws -> (standard: Exercise, knee: Exercise) {
+        let url = try XCTUnwrap(Bundle(for: MockExerciseService.self).url(forResource: "Exercises", withExtension: "json"))
+        let file = try JSONDecoder().decode([Exercise].self, from: Data(contentsOf: url))
+        var knee = try XCTUnwrap(file.first { $0.id == "push_knee" })
+        var standard = try XCTUnwrap(file.first { $0.id == "push_standard" })
+        knee.audience = .beginner
+        knee.progressionChainId = "push_swap_fixture"
+        knee.progressionOrder = 0
+        knee.regressionId = nil
+        knee.progressionId = standard.id
+        standard.progressionChainId = knee.progressionChainId
+        standard.progressionOrder = 1
+        standard.regressionId = knee.id
+        standard.progressionId = nil
+        standard.replaces = nil
+        return (standard, knee)
+    }
+
     private func user(
         level: FitnessLevel = .intermediate,
         phase: Phase = .discipline,
@@ -260,7 +283,7 @@ final class ExerciseSwapTests: XCTestCase {
         let user = user(level: .advanced)
         let strength = library.filter { $0.pillar == .strength }
 
-        for (point, expectedSwapped) in [("bottom", 35), ("middle", 25), ("top", 15)] {
+        for (point, expectedSwapped) in [("bottom", 40), ("middle", 27), ("top", 14)] {
             var swapped = 0
             var declined: [String] = []
             for movement in strength {
@@ -467,9 +490,7 @@ final class ExerciseSwapTests: XCTestCase {
     /// substitute is served the same number of steps above *its own* Earned Reps, and records those - so
     /// the session stays as long as it was fitted and Padding still never moves progression.
     func testPaddedMainSlotHandsItsPaddingToTheSubstitute() async throws {
-        let library = try await library()
-        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let knee = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        let (standard, knee) = try kneeUnderStandard()
         let padded = prescription(for: standard, perSet: 25, earned: 15)
 
         let result = try substitute(
@@ -482,9 +503,7 @@ final class ExerciseSwapTests: XCTestCase {
 
     /// A short session's cut carries over the same way, never below the short-session floor.
     func testCutMainSlotHandsItsCutToTheSubstitute() async throws {
-        let library = try await library()
-        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let knee = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        let (standard, knee) = try kneeUnderStandard()
         let cut = prescription(for: standard, perSet: 10, earned: 20)
 
         let result = try substitute(
@@ -508,9 +527,7 @@ final class ExerciseSwapTests: XCTestCase {
     /// The substitute's padding stops at the top of the *user's* level range: the same padded slot serves
     /// an intermediate substitute at most 30 and an advanced one up to 50.
     func testSubstitutePaddingStopsAtTheTopOfTheUsersLevelRange() async throws {
-        let library = try await library()
-        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let knee = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        let (standard, knee) = try kneeUnderStandard()
         let history = [log(knee, value: 25, earned: 25, daysAgo: 2)]
 
         func served(level: FitnessLevel) throws -> Int {
@@ -611,13 +628,12 @@ final class ExerciseSwapTests: XCTestCase {
 
     // MARK: - The substitute is sized by the same Step 6 levers as the slot it replaces
 
-    /// A push slot whose only in-band peer (`push_knee`) already has Earned Reps, so every Step 6 lever
+    /// A push slot whose only in-band peer (Knee Push-Up, `kneeUnderStandard`) already has Earned Reps, so every Step 6 lever
     /// has something to act on: 15 performed at 15 earned, which climbs to 20.
     private func leveredSwapFixture(
         library: [Exercise]
     ) throws -> (slot: PrescribedExercise, peer: Exercise, logs: [WorkoutLog]) {
-        let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let peer = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        let (target, peer) = try kneeUnderStandard()
         return (prescription(for: target), peer, [log(peer, value: 15, daysAgo: 10)])
     }
 
@@ -722,9 +738,7 @@ final class ExerciseSwapTests: XCTestCase {
     /// target is 20, and the double ease takes it to 10 - which then lands outside the slot's budget, so the
     /// swap declines and a returning user gets no alternative at all.
     func testSwapOnAReturnEasesTheSubstituteOnlyOnce() async throws {
-        let library = try await library()
-        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let knee = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        let (standard, knee) = try kneeUnderStandard()
         let logs = [log(standard, value: 30, daysAgo: 12), log(knee, value: 30, daysAgo: 11)]
         let slot = servedSlot(for: standard, recentLogs: logs, wasReturn: true)
         XCTAssertEqual(slot.reps, 20, "30 earned, held at 0.7 on the Return")

@@ -102,7 +102,7 @@ The foundation rules and related surfaces in this dated plan are amended by [ADR
 **Acceptance Criteria:**
 
 - [x] Add at least one `phase == .strength` hinge skill (e.g. a single-leg / advanced hinge progression) to `Resources/Exercises.json` on a valid hinge `progressionChainId`, zero-equipment, load-validated, with mid-tier and top-tier rungs consistent with US-SP02.
-- [x] Hinge competence remains covered by `HingeStrengthSkillTests`; current foundation membership is defined in [Foundation](../../../CONTEXT.md#foundation).
+- [x] Hinge competence was covered by `HingeStrengthSkillTests` until ADR-0020 retired both Nordic curls and that suite with them; current foundation membership is defined in [Foundation](../../../CONTEXT.md#foundation).
 - [x] Test asserts a hinge skill is reachable by a Strength-Phase user. `docs/test-coverage.md` row added.
 - [x] Build and unit suite pass.
 

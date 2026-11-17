@@ -77,7 +77,7 @@ The owning code is `Models/SessionVariation.swift`, `SessionAssembly.assemble(va
 A movement most people already know by name - a push-up, a squat, a plank, a glute bridge - and the only kind a beginner or intermediate user is offered while they are in the **Discipline Phase**.
 Every catalog movement says who it is a staple for: beginners and up, intermediates and up, or advanced users only.
 An advanced user keeps the full variety; earning the **Strength Phase** lifts the restriction for everyone, so every movement opens at once.
-A few movements are withdrawn until version 2 and are offered to nobody.
+A few movements are withdrawn until version 2, and a few are retired for good (the primal crawls, and Wall, Incline and Knee Push-Up and both Nordic curls, [ADR-0020](docs/adr/0020-push-ladder-from-standard-burpee-no-nordic.md)); neither is offered to anybody.
 The gate is the self-reported fitness level picked at onboarding, there is no setting to change it, and it is decided in one place for every session, swap, progression map and Coach surface.
 A user partway up a progression on a movement they no longer get is served the closest movement they do get on the same progression; their logged history is never rewritten.
 It supersedes the **Effective Difficulty Cap** (US-SP01), which gated the pool by a difficulty band from the same fitness level; that term is retired.
@@ -98,7 +98,8 @@ Push, Pull and Core have one line each.
 A line is cleared when a logged, non-skipped performance of the entry rung (lowest progression order) of any one of its counting chains meets that rung's advancement criteria.
 Each foundation's counting ladder:
 
-- **Push** - either push chain (horizontal or vertical).
+- **Push** - either push chain: the horizontal chain from Standard Push-Up, or the vertical chain from Floor Tricep Dips.
+  Wall, Incline and Knee Push-Up left the ladder ([ADR-0020](docs/adr/0020-push-ladder-from-standard-burpee-no-nordic.md)) and appear only on the Standard Push-Up's card, as easier ways to do it until a full push-up comes.
 - **Pull** - the **horizontal chain only** (Wall Scapular Pull, Supine Floor Row, Single-Arm Supine Floor Row).
   The postural chain (Superman Hold, Reverse Snow Angel) stays in sessions as accessory and prehab work but never counts toward clearing Pull.
 - **Legs** - Squat side: either squat-family chain (squat or lunge).
@@ -107,6 +108,8 @@ Each foundation's counting ladder:
 
 The Strength Phase is earned when all four foundations are cleared and the Consistency Score has been sustained above 80 for about eight weeks; an earned Strength Phase is never revoked, so a change to the foundations can only change what a Discipline user still has to clear.
 Pull's ladder ends at Single-Arm Supine Floor Row with no locked Strength-Phase rung, because a Pull top rung needs equipment and the zero-equipment rule stands until the planned Phase 2 equipment work.
+The bridge ladder likewise ends at Long-Lever Single-Leg Bridge, since the Nordic curls above it needed something to hold the feet down ([ADR-0020](docs/adr/0020-push-ladder-from-standard-burpee-no-nordic.md)).
+A user who was on a removed rung stands on the closest rung they still get on the same ladder (Standard Push-Up, or Long-Lever Single-Leg Bridge) and clears it on its own logs.
 The rationale, presentation, Coach behavior and existing-user recalculation are recorded in [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md).
 
 Since M1 a line is cleared by four clean sets at the top of the user's range on the entry rung, at earned reps, in a session not rated too hard ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md), `RepGrammar.isAdvancementMet`), so a Discipline user may need to re-clear a foundation after the update.
@@ -185,7 +188,7 @@ With no harder rung the slot takes the rung below at volume reps; with neither, 
 
 ## Variation
 
-A same-difficulty alternative to a rung (Standard -> Wide or One-legged push-up) that fills a 60-minute Push or Pull Day's fifth slot once its Trainer art exists for both Trainers, rotating among a rung's Variations, least recently done first.
+A same-difficulty alternative to a rung (another hand or foot position of the same movement) that fills a 60-minute Push or Pull Day's fifth slot once its Trainer art exists for both Trainers, rotating among a rung's Variations, least recently done first.
 It unlocks with its parent rung (a catalog entry's `variationOf`), sits alone in its own chain, and never advances the ladder, Earned Reps or a Foundation (`StationRole.variation`); with none eligible the slot stays empty.
 Landing a Variation's catalog entry and its art is the only step that makes it live ([ADR-0018](docs/adr/0018-session-sizing-and-day-matched-bookends.md)); the catalog carries none yet.
 

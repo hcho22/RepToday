@@ -566,7 +566,7 @@ final class StartSeedTests: XCTestCase {
         let withheld = ColdStartOverride.withheldByStartSeed(
             library: library, user: warm, sessionPolicy: .default, recentLogs: []
         )
-        XCTAssertTrue(withheld.contains("push_wall"), "difficulty 1 sits under the recorded floor of 3")
+        XCTAssertTrue(withheld.contains("squat_wall_sit"), "difficulty 1 sits under the recorded floor of 3")
         XCTAssertTrue(withheld.contains("squat_sumo"), "difficulty 2 sits under the recorded floor of 3")
         XCTAssertFalse(withheld.contains("push_diamond"), "difficulty 3 is the recorded floor itself")
 
@@ -576,7 +576,7 @@ final class StartSeedTests: XCTestCase {
         let eased = ColdStartOverride.withheldByStartSeed(
             library: library, user: warm, sessionPolicy: .default, recentLogs: []
         )
-        XCTAssertTrue(eased.contains("push_wall"))
+        XCTAssertTrue(eased.contains("squat_wall_sit"))
         XCTAssertFalse(eased.contains("squat_sumo"), "the eased floor of 2 keeps difficulty 2 on offer")
     }
 
@@ -1456,7 +1456,7 @@ final class StartSeedTests: XCTestCase {
         let advanced = try lead(advancedPlan)
 
         // Tier: the advanced user starts above the ladder's entry rung, the beginner at it.
-        XCTAssertEqual(beginner.exercise.difficulty, 1, "a beginner still starts at the entry rung")
+        XCTAssertEqual(beginner.exercise.progressionOrder, 0, "a beginner still starts at the entry rung")
         XCTAssertGreaterThan(
             advanced.exercise.difficulty, beginner.exercise.difficulty,
             "an advanced user's first push must be a harder rung than a beginner's "

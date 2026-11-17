@@ -1075,7 +1075,7 @@ private struct DeepAnalyticsSection: View {
 
 /// The strength journey (US-AN01): analytics anchored on the user's climb over time rather than this
 /// week's numbers. For each foundation line the user has trained it shows the dated tier
-/// advancement ("Knee Push-Up -> Standard Push-Up, over 6 weeks") read straight from real history,
+/// advancement ("Standard Push-Up -> Diamond Push-Up, over 6 weeks") read straight from real history,
 /// then the current phase-earning progress (US-SP04's signals, reused). Premium-only: it renders only
 /// inside `DeepAnalyticsSection`, which is gated at the render boundary.
 ///
@@ -1178,7 +1178,7 @@ private struct ChainJourneyView: View {
         }
     }
 
-    /// The seen advancement headline: "Knee Push-Up -> Standard Push-Up, 6 weeks" when climbed, a
+    /// The seen advancement headline: "Standard Push-Up -> Diamond Push-Up, 6 weeks" when climbed, a
     /// gentle "just started" note on a single reached tier, and the rung the user is on when they have
     /// not worked it yet.
     private var headline: String {
@@ -2087,7 +2087,7 @@ private enum PreviewProgressViewModel {
         let calendar = Calendar.current
         let today = Date()
         let pillars: [(Pillar, MovementPattern, String)] = [
-            (.strength, .push, "push_knee"),
+            (.strength, .push, "push_standard"),
             (.mobility, .mobility, "mobility_cat_cow"),
             (.primal, .locomotion, "primal_bear_crawl"),
         ]

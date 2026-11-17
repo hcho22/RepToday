@@ -170,7 +170,7 @@ export function stubCoachModel(request: ModelRequest): ModelOutcome {
           title: "Desk Reset",
           note: "A short full-body circuit to undo a long day of sitting.",
           steps: [
-            { name: "Incline Push-Up", catalog_id: "push_incline", sets: 3, reps: 10, seconds: null, per_side: false, rest_seconds: 30 },
+            { name: "Standard Push-Up", catalog_id: "push_standard", sets: 3, reps: 10, seconds: null, per_side: false, rest_seconds: 30 },
             { name: "Bodyweight Squat", catalog_id: "squat_bodyweight", sets: 3, reps: 15, seconds: null, per_side: false, rest_seconds: 30 },
             { name: "Doorway Chest Opener", catalog_id: null, sets: 2, reps: null, seconds: 30, per_side: false, rest_seconds: 15 },
           ],

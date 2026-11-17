@@ -159,7 +159,7 @@ final class ProgressViewModelTests: XCTestCase {
             shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
             exercises: [
                 LoggedExercise(
-                    id: UUID(), exerciseId: "push_knee", pillar: .strength, movementPattern: .push,
+                    id: UUID(), exerciseId: "push_standard", pillar: .strength, movementPattern: .push,
                     completedSets: [CompletedSet(reps: reps, durationSeconds: nil)], skipped: false
                 )
             ]
@@ -181,7 +181,7 @@ final class ProgressViewModelTests: XCTestCase {
         XCTAssertEqual(strength?.fraction ?? 0, 1.0, accuracy: 0.0001)
         // The push foundation reports the worked movement; the untrained ones are "not started".
         let push = analytics?.chainPositions.first { $0.pattern == .push }
-        XCTAssertEqual(push?.currentExercise?.id, "push_knee")
+        XCTAssertEqual(push?.currentExercise?.id, "push_standard")
         let squat = analytics?.chainPositions.first { $0.pattern == .squat }
         XCTAssertEqual(squat?.hasStarted, false)
         // The best single set is the 15-rep set.
@@ -214,7 +214,7 @@ final class ProgressViewModelTests: XCTestCase {
     /// A Discipline user who still has the climb card is eligible for the one-time note; whether it
     /// was already shown is `AppState`'s flag, not this.
     func testDisciplineUserIsEligibleForTheFoundationsNote() async {
-        let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)])
+        let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_standard", pattern: .push, isHold: false)])
 
         await vm.load()
 
@@ -225,7 +225,7 @@ final class ProgressViewModelTests: XCTestCase {
     /// Skipped work does not exclude a Discipline user; a Strength user has no climb card to host the
     /// note.
     func testSkippedWorkIsEligibleButStrengthUsersAreNotEligibleForTheFoundationsNote() async {
-        var skipped = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)
+        var skipped = clearingLog(exerciseId: "push_standard", pattern: .push, isHold: false)
         skipped.exercises[0].skipped = true
         let skippedVM = makeViewModel(user: onboardedUser(), logs: [skipped])
         await skippedVM.load()
@@ -235,7 +235,7 @@ final class ProgressViewModelTests: XCTestCase {
         strengthUser.phase = .strength
         let strengthVM = makeViewModel(
             user: strengthUser,
-            logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false)]
+            logs: [clearingLog(exerciseId: "push_standard", pattern: .push, isHold: false)]
         )
         await strengthVM.load()
         XCTAssertFalse(strengthVM.showsClimbCard)
@@ -268,7 +268,7 @@ final class ProgressViewModelTests: XCTestCase {
     /// agrees with the gate that Strength is not yet earned.
     func testLoadPopulatesPhaseProgressMatchingTheGate() async {
         var logs = (0..<5).flatMap { week(weeksAgo: $0, count: 3) }
-        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false))
+        logs.append(clearingLog(exerciseId: "push_standard", pattern: .push, isHold: false))
         logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false))
         logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true))
         let vm = makeViewModel(user: onboardedUser(), logs: logs)
@@ -366,7 +366,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
             let reps: Int?, seconds: Int?, difficulty: PerceivedDifficulty
         }
         let specs: [Spec] = [
-            Spec(exerciseId: "push_knee", pillar: .strength, pattern: .push, reps: 14, seconds: nil, difficulty: .justRight),
+            Spec(exerciseId: "push_standard", pillar: .strength, pattern: .push, reps: 14, seconds: nil, difficulty: .justRight),
             Spec(exerciseId: "squat_bodyweight", pillar: .strength, pattern: .squat, reps: 22, seconds: nil, difficulty: .tooEasy),
             Spec(exerciseId: "hinge_glute_bridge", pillar: .strength, pattern: .hinge, reps: 18, seconds: nil, difficulty: .justRight),
             Spec(exerciseId: "core_forearm_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 55, difficulty: .tooHard),
