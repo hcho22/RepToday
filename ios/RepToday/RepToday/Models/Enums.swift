@@ -129,9 +129,10 @@ enum FitnessLevel: String, Codable, CaseIterable, Identifiable, Hashable {
 /// `.beginner` movements go to every level, `.intermediate` to intermediate and advanced users, and
 /// `.advanced` ones to advanced users only. `.version2` marks a movement withdrawn from the app for
 /// every user until version 2 - it stays in the catalog file so it is recoverable, and is never offered,
-/// whatever the level or earned phase. `.retired` marks a movement whose whole training family left the
-/// program (ADR-0014 retired the primal crawls for home and hotel rooms); it too stays in the file so old
-/// logs and paused sessions still resolve, and is never offered. Earning the Strength Phase lifts the
+/// whatever the level or earned phase. `.retired` marks a movement that left the program for good - its whole
+/// training family (ADR-0014 retired the primal crawls for home and hotel rooms) or its ladder (ADR-0020
+/// removed Wall, Incline and Knee Push-Up and both Nordic curls); it too stays in the file so old logs and
+/// paused sessions still resolve, and is never offered. Earning the Strength Phase lifts the
 /// level restriction entirely (see `MovementAccess`), but never a withdrawal.
 enum MovementAudience: String, Codable, CaseIterable, Hashable {
     case beginner

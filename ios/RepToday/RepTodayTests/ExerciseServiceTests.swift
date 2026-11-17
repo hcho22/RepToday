@@ -72,8 +72,8 @@ final class ExerciseServiceTests: XCTestCase {
         let service = try MockExerciseService()
         let all = try await service.exercises()
         XCTAssertEqual(
-            all.count, 68,
-            "the offered library is the bundled 76 minus the 7 retired primal movements and Prone Y-T-W Raises (version 2)"
+            all.count, 70,
+            "the offered library is the bundled 83 minus the 12 retired movements (7 primal, 5 ADR-0020 rungs) and Prone Y-T-W Raises (version 2)"
         )
         XCTAssertFalse(all.contains(where: MovementAccess.isWithdrawn), "no withdrawn movement is ever served")
     }
@@ -110,7 +110,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testExercisesByMovementPattern() async throws {
         let service = try MockExerciseService()
         let push = try await service.exercises(for: .push)
-        XCTAssertEqual(push.count, 10)
+        XCTAssertEqual(push.count, 13, "16 push movements in the file minus the 3 ADR-0020 retired")
         XCTAssertTrue(push.allSatisfy { $0.movementPattern == .push })
     }
 
@@ -122,10 +122,9 @@ final class ExerciseServiceTests: XCTestCase {
             "push_one_arm_assisted", "push_one_arm",
             "squat_pistol_assisted", "squat_pistol",
             "core_one_leg_l_sit", "core_l_sit",
-            "hinge_nordic_assisted", "hinge_nordic",
-        ])
+        ], "the retired Nordic curls are never served (ADR-0020)")
         let discipline = try await service.exercises(for: Phase.discipline)
-        XCTAssertEqual(discipline.count, 60, "68 discipline movements minus the 8 withdrawn (7 retired, 1 version 2)")
+        XCTAssertEqual(discipline.count, 64, "75 discipline movements minus the 11 withdrawn (10 retired, 1 version 2)")
     }
 
     func testExercisesByDifficultyRange() async throws {
@@ -140,8 +139,10 @@ final class ExerciseServiceTests: XCTestCase {
 
     func testNextInChainResolvesProgression() async throws {
         let service = try MockExerciseService()
-        let next = try await service.nextInChain(after: "push_wall")
-        XCTAssertEqual(next?.id, "push_incline", "next up the push_horizontal chain")
+        let next = try await service.nextInChain(after: "push_standard")
+        XCTAssertEqual(next?.id, "push_wide", "next up the push_horizontal chain")
+        let retired = try await service.nextInChain(after: "push_wall")
+        XCTAssertNil(retired, "a retired movement is not an offered rung (ADR-0020)")
     }
 
     func testNextInChainReturnsNilAtTopOfChain() async throws {

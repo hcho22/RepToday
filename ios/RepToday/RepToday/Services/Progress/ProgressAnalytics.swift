@@ -149,13 +149,19 @@ struct ProgressAnalytics: Equatable {
     ) -> [ChainPositionSummary] {
         // Chain -> its tiers, for reachable-length and next-tier lookups.
         let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
+        // A log of a removed movement stands on the rung that took its place (ADR-0020), the same reading
+        // the engine's chain selection makes, so the tab reports the rung the user is actually served.
+        let placementById = exercisesById.values.reduce(into: [String: Exercise]()) { placement, exercise in
+            for replacedId in exercise.replaces ?? [] { placement[replacedId] = exercise }
+        }
 
         return StrengthFoundation.allLines.map { line in
             // Only movements on the line's counting chains: Pull is its horizontal chain alone, so
             // postural pull work never becomes Pull's "current movement". Chains this user gets nothing
             // from are set aside.
             let inPattern = worked.compactMap { instance -> (WorkedInstance, Exercise)? in
-                guard let exercise = exercisesById[instance.logged.exerciseId],
+                let id = instance.logged.exerciseId
+                guard let exercise = exercisesById[id] ?? placementById[id],
                       line.counts(exercise),
                       (tiersByChain[exercise.progressionChainId] ?? []).contains(where: access.allows) else { return nil }
                 return (instance, exercise)
@@ -420,7 +426,7 @@ struct ProgressAnalytics: Equatable {
 
     /// The dated climb through each foundation line's active chain (US-AN01): per-line
     /// tier-advancement milestones read straight from the real `WorkoutLog` history, so the surface
-    /// tells the "Knee Push-Up -> Standard Push-Up in 6 weeks" story anchored on actual dates rather
+    /// tells the "Standard Push-Up -> Diamond Push-Up in 6 weeks" story anchored on actual dates rather
     /// than this week's numbers.
     ///
     /// The chain shown for a pattern is the **active** one exactly as `makeChainPositions` already

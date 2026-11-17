@@ -34,7 +34,7 @@ const TODAY = {
   trainingDay: "push",
   minutes: 20,
   movements: [
-    { id: "push_incline", name: "Incline Push-Up" },
+    { id: "push_standard", name: "Standard Push-Up" },
     { id: "push_pike", name: "Pike Push-Up" },
     { id: "core_dead_bug", name: "Dead Bug" },
   ],

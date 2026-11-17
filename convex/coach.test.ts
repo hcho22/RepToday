@@ -101,6 +101,7 @@ async function seedUser(t: ReturnType<typeof convexTest>, who: typeof ALICE, opt
         durationMinutes: 20,
         perceivedDifficulty: "just_right",
         exercises: [
+          // Incline Push-Up left the catalog (ADR-0020); its history still reads by name.
           { exerciseId: "push_incline", movementPattern: "push", role: "main", skipped: false, completedSets: [{ reps: 15 }, { reps: 15 }, { reps: 15 }, { reps: 15 }] },
         ],
       }),
@@ -131,7 +132,7 @@ const TODAY = {
   trainingDay: "push" as const,
   minutes: 20,
   movements: [
-    { id: "push_incline", name: "Incline Push-Up" },
+    { id: "push_standard", name: "Standard Push-Up" },
     { id: "core_dead_bug", name: "Dead Bug" },
   ],
 };
@@ -261,12 +262,12 @@ describe("tools become proposals; safety-owned moves are unreachable", () => {
       modelReply("Here you go.", [
         { name: "log_outside_activity", arguments: { type: "run", minutes: 30, distance_km: 5, day: "today" } },
         { name: "change_today_length", arguments: { minutes: 10 } },
-        { name: "swap_movement", arguments: { movement_id: "push_incline" } },
+        { name: "swap_movement", arguments: { movement_id: "push_standard" } },
       ]);
     const result = await send(t, ALICE, "I ran 5k, keep today short and swap the push-ups");
     expect(result.coach.proposals.map((proposal) => proposal.kind)).toEqual(["outsideActivity", "todayLength", "swapMovement"]);
     expect(result.coach.proposals[0]).toMatchObject({ activityType: "run", minutes: 30, distanceMeters: 5000, day: "today", status: "proposed" });
-    expect(result.coach.proposals[2]).toMatchObject({ exerciseId: "push_incline", exerciseName: "Incline Push-Up" });
+    expect(result.coach.proposals[2]).toMatchObject({ exerciseId: "push_standard", exerciseName: "Standard Push-Up" });
 
     nextResponse = () =>
       modelReply("", [
@@ -319,7 +320,7 @@ describe("tools become proposals; safety-owned moves are unreachable", () => {
             title: "Knee-Friendly Upper Body",
             note: "Easy on the knees.",
             steps: [
-              { name: "push ups", catalog_id: "push_incline", sets: 40, reps: 500, seconds: null, per_side: true, rest_seconds: 900 },
+              { name: "push ups", catalog_id: "push_standard", sets: 40, reps: 500, seconds: null, per_side: true, rest_seconds: 900 },
               { name: "Wall Angels", catalog_id: null, sets: 2, reps: null, seconds: 45, per_side: false, rest_seconds: 20 },
               { name: "Retired Crawl", catalog_id: "primal_bear_crawl", sets: 2, reps: 10, seconds: null, per_side: false, rest_seconds: 30 },
             ],
@@ -330,7 +331,7 @@ describe("tools become proposals; safety-owned moves are unreachable", () => {
     expect(proposal.kind).toBe("customWorkout");
     if (proposal.kind !== "customWorkout") throw new Error("unreachable");
     expect(proposal.workout.steps).toEqual([
-      { name: "Incline Push-Up", exerciseId: "push_incline", sets: 6, reps: 100, perSide: false, restSeconds: 180 },
+      { name: "Standard Push-Up", exerciseId: "push_standard", sets: 6, reps: 100, perSide: false, restSeconds: 180 },
       { name: "Wall Angels", sets: 2, seconds: 45, perSide: false, restSeconds: 20 },
       { name: "Retired Crawl", sets: 2, reps: 10, perSide: false, restSeconds: 30 },
     ]);

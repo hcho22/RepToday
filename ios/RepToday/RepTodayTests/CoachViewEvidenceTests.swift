@@ -88,7 +88,7 @@ final class CoachViewEvidenceTests: XCTestCase {
             XCTAssertTrue(spoken.contains("Make today 10 minutes"), spoken)
             XCTAssertTrue(spoken.contains("Remind me at"), spoken)
             XCTAssertTrue(spoken.contains("Desk Reset"), spoken)
-            XCTAssertTrue(spoken.contains("Incline Push-Up, 3 sets of 10 reps"), spoken)
+            XCTAssertTrue(spoken.contains("Standard Push-Up, 3 sets of 10 reps"), spoken)
             XCTAssertTrue(spoken.contains("Doorway Chest Opener") && spoken.contains("text only, no picture"), spoken)
             XCTAssertNotNil(AccessibilityTree.element(labeled: CoachProposalCopy.confirm, in: root))
             XCTAssertNotNil(AccessibilityTree.element(labeled: "Review and accept", in: root))

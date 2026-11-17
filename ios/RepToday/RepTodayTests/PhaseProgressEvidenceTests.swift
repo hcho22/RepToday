@@ -79,7 +79,7 @@ final class PhaseProgressEvidenceTests: XCTestCase {
     /// pull entry tiers cleared and the squat side of Legs, hinge and core untouched.
     private func validationLogs() -> [WorkoutLog] {
         var logs = (0..<5).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
-        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false))
+        logs.append(clearingLog(exerciseId: "push_standard", pattern: .push, isHold: false))
         logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false))
         logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true))
         return logs

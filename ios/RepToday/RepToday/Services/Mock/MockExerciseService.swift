@@ -39,6 +39,10 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     /// A Variation sits in a ladder: it must be the only member of its chain, with no rung above or below,
     /// so no ladder ever serves it as a current rung.
     case variationInLadder(exerciseId: String)
+    /// A rung's `replaces` (ADR-0020) names something other than a withdrawn movement of its own pattern,
+    /// names a movement another rung already takes over, or sits on a withdrawn rung itself - so a log of
+    /// the removed movement would place the user on no ladder, or on two.
+    case replacementInvalid(exerciseId: String, replacedId: String)
 
     var errorDescription: String? {
         switch self {
@@ -66,6 +70,8 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
             return "Variation '\(id)' names parent '\(parentId)', which is not a strength rung of the same pattern (ADR-0018)."
         case .variationInLadder(let id):
             return "Variation '\(id)' must sit alone in its own chain with no regression or progression (ADR-0018)."
+        case .replacementInvalid(let id, let replacedId):
+            return "Exercise '\(id)' replaces '\(replacedId)', which must be a withdrawn movement of the same pattern that no other rung replaces, on an offered rung (ADR-0020)."
         }
     }
 }
@@ -82,7 +88,7 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
 /// through), making a malformed library a loud startup failure rather than a silent one.
 ///
 /// The file also carries **withdrawn** movements - held back until version 2 (`audience == .version2`,
-/// ADR-0007) or retired with the primal family (`.retired`, ADR-0014). They are validated with everything else so they stay recoverable in the file, but the
+/// ADR-0007) or retired with the primal family or from a ladder (`.retired`, ADR-0014, ADR-0020). They are validated with everything else so they stay recoverable in the file, but the
 /// service never serves them: `exercises()` and every query below read the *offered* library only.
 /// That is what keeps them out of every session, swap, progress surface and Coach context by
 /// construction - nothing downstream has to remember to filter them.
@@ -163,8 +169,8 @@ final class MockExerciseService: ExerciseServiceProtocol {
     // MARK: - Validation
 
     /// Integrity-checks a library, throwing the first violation found. Rules (in order):
-    /// unique ids, the Zero-Equipment Floor, resolvable chain links, contiguous chains, and Variations
-    /// standing outside every ladder.
+    /// unique ids, the Zero-Equipment Floor, resolvable chain links, contiguous chains, Variations
+    /// standing outside every ladder, and each removed movement taken over by at most one offered rung.
     private static func validate(_ library: [Exercise]) throws {
         // Unique ids - checked first because every later rule relies on an id-keyed lookup.
         var seen = Set<String>()
@@ -263,6 +269,21 @@ final class MockExerciseService: ExerciseServiceProtocol {
             guard chains[exercise.progressionChainId]?.count == 1,
                   exercise.regressionId == nil, exercise.progressionId == nil else {
                 throw ExerciseLibraryError.variationInLadder(exerciseId: exercise.id)
+            }
+        }
+
+        // A rung that takes a removed movement's place on a user's progression (ADR-0020) is an offered
+        // rung, and what it takes over is a withdrawn movement of the same pattern that no other rung
+        // claims, so every log of a removed movement places the user on at most one ladder rung.
+        var replacedBy: [String: String] = [:]
+        for exercise in library.sorted(by: { $0.id < $1.id }) {
+            for replacedId in exercise.replaces ?? [] {
+                guard !MovementAccess.isWithdrawn(exercise),
+                      let replaced = byId[replacedId], MovementAccess.isWithdrawn(replaced),
+                      replaced.movementPattern == exercise.movementPattern,
+                      replacedBy.updateValue(exercise.id, forKey: replacedId) == nil else {
+                    throw ExerciseLibraryError.replacementInvalid(exerciseId: exercise.id, replacedId: replacedId)
+                }
             }
         }
     }

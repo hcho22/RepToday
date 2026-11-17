@@ -34,9 +34,10 @@ final class ExerciseLibraryTests: XCTestCase {
 
     /// The exact count is pinned so an accidental add/drop is caught and has to be made
     /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
-    /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
+    /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate` - and to 83 when
+    /// ADR-0020 added seven push and squat movements while retiring five it keeps for history.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 76, "expected the authored 76-movement library")
+        XCTAssertEqual(exercises.count, 83, "expected the authored 83-movement library")
     }
 
     func testIdsAreUnique() {
@@ -48,9 +49,9 @@ final class ExerciseLibraryTests: XCTestCase {
     /// Every movement-pattern group from v5 5.1 is represented with the authored counts.
     func testMovementPatternCounts() {
         let counts = Dictionary(grouping: exercises, by: \.movementPattern).mapValues(\.count)
-        XCTAssertEqual(counts[.push], 10, "push group")
-        XCTAssertEqual(counts[.squat], 9, "squat group")
-        XCTAssertEqual(counts[.hinge], 8, "hinge group")
+        XCTAssertEqual(counts[.push], 16, "push group, three retired by ADR-0020")
+        XCTAssertEqual(counts[.squat], 10, "squat group")
+        XCTAssertEqual(counts[.hinge], 8, "hinge group, two retired by ADR-0020")
         XCTAssertEqual(counts[.core], 10, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 26, "mobility group (warm-up + cooldown bookends)")
@@ -58,10 +59,10 @@ final class ExerciseLibraryTests: XCTestCase {
     }
 
     /// Strength and mobility carry the offered movements, and the retired primal pillar's movements stay
-    /// in the file so logged history still resolves (ADR-0014).
+    /// in the file so logged history still resolves (ADR-0014), as do the strength movements ADR-0020 retired.
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
-        XCTAssertEqual(counts[.strength], 43)
+        XCTAssertEqual(counts[.strength], 50)
         XCTAssertEqual(counts[.mobility], 26)
         XCTAssertEqual(counts[.primal], 7)
     }
@@ -80,12 +81,20 @@ final class ExerciseLibraryTests: XCTestCase {
 
     // MARK: - Withdrawn movements
 
-    /// Every primal movement is retired with its pillar (ADR-0014), nothing else is, and the one movement
-    /// held for version 2 - Prone Y-T-W Raises - is the withdrawn tail at the top of the postural chain.
-    func testWithdrawnMovementsAreThePrimalPillarAndProneYTWRaises() throws {
+    /// Every primal movement is retired with its pillar (ADR-0014), and Wall, Incline and Knee Push-Up and
+    /// both Nordic curls left their ladders (ADR-0020), each in its own retired chain so no live ladder links
+    /// to one. Nothing else is retired, and the one movement held for version 2 - Prone Y-T-W Raises - is
+    /// the withdrawn tail at the top of the postural chain.
+    func testWithdrawnMovementsAreThePrimalPillarTheRemovedRungsAndProneYTWRaises() throws {
         let retired = Set(exercises.filter { $0.audience == .retired }.map(\.id))
-        XCTAssertEqual(retired, Set(exercises.filter { $0.pillar == .primal }.map(\.id)))
-        XCTAssertEqual(retired.count, 7)
+        let removedRungs: Set<String> = ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic"]
+        XCTAssertEqual(retired, Set(exercises.filter { $0.pillar == .primal }.map(\.id)).union(removedRungs))
+        XCTAssertEqual(retired.count, 12)
+        for id in removedRungs {
+            let chain = try XCTUnwrap(byId[id]).progressionChainId
+            XCTAssertTrue(exercises.filter { $0.progressionChainId == chain }.allSatisfy(MovementAccess.isWithdrawn),
+                          "\(id) sits in a chain withdrawn whole")
+        }
         XCTAssertEqual(exercises.filter { $0.audience == .version2 }.map(\.id), ["pull_ytw"])
 
         let postural = exercises.filter { $0.progressionChainId == "pull_postural" }

@@ -262,18 +262,18 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selectInChain(threeTierChain(), logs: logs)?.exercise.id, "c1")
     }
 
-    /// On the real catalog: an intermediate climbs push_standard 15, 20, 25, 30, clearing it at the top
+    /// On the real catalog: an intermediate climbs push_one_leg 15, 20, 25, 30, clearing it at the top
     /// of the range and reaching push_diamond at 15, which they rate too hard. The step down serves
-    /// push_standard at the bottom of the range, not at the 30 it last logged - that 30 would clear it
-    /// again and send them straight back to diamond every other session. The user holds on standard and
+    /// push_one_leg at the bottom of the range, not at the 30 it last logged - that 30 would clear it
+    /// again and send them straight back to diamond every other session. The user holds on the one-legged push-up and
     /// climbs back by the normal rules, one step a session, until a session at 30 clears it again.
     func testTheOldClearOfTheLowerRungDoesNotClimbStraightBack() async throws {
         let library = try await MockExerciseService().exercises()
         let level = FitnessLevel.intermediate
-        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let chain = library.filter { $0.progressionChainId == standard.progressionChainId }
+        let oneLegged = try XCTUnwrap(library.first { $0.id == "push_one_leg" })
+        let chain = library.filter { $0.progressionChainId == oneLegged.progressionChainId }
         var logs = [15, 20, 25, 30].enumerated().map { index, reps in
-            repsLog(id: "push_standard", reps: Array(repeating: reps, count: 4), daysAgo: 20 - index)
+            repsLog(id: "push_one_leg", reps: Array(repeating: reps, count: 4), daysAgo: 20 - index)
         }
 
         // What Step 5 serves and the prescription Step 6 serves it at, the way every caller sizes a station.
@@ -308,7 +308,7 @@ final class ProgressionChainSelectionTests: XCTestCase {
             trace.append((session.id, session.target.value))
             record(session, daysAgo: daysAgo, .justRight)
         }
-        XCTAssertEqual(trace.map(\.id), Array(repeating: "push_standard", count: 4),
+        XCTAssertEqual(trace.map(\.id), Array(repeating: "push_one_leg", count: 4),
                        "the user holds on the easier rung instead of alternating")
         XCTAssertEqual(trace.map(\.reps), [15, 20, 25, 30], "served at the bottom, then the normal climb")
         XCTAssertEqual(try served().id, "push_diamond", "a later clear of the lower rung earns the way back")
@@ -373,7 +373,7 @@ final class ProgressionChainSelectionTests: XCTestCase {
     }
 
     /// "Too hard" with nothing tapped eases every move off, as the completion screen says: `push_standard`
-    /// logged at four sets of 30 eases to 25 next session and does not move up to `push_diamond`. A "too
+    /// logged at four sets of 30 eases to 25 next session and does not move up to `push_wide`. A "too
     /// hard" session that tapped a different move holds the untapped one where it is: no step back, and -
     /// since no session rated too hard clears a rung (decision 15) - no advancement either.
     func testTooHardWithNothingTappedNeverAdvances() async throws {
@@ -736,40 +736,43 @@ final class ProgressionChainSelectionTests: XCTestCase {
 
     /// The PRD's own validation test, run end-to-end over the real bundled `Exercises.json`:
     ///
-    ///   Setup:  Logs show the user cleared knee push-ups (push_knee, chain order 2): four sets at the
-    ///           top of a beginner's range, at earned reps
+    ///   Setup:  Logs show the user cleared standard push-ups (push_standard, chain order 0): four sets
+    ///           at the top of a beginner's range, at earned reps
     ///   Steps:  Generate a push-focused session (resolve the push pattern through Step 5)
-    ///   Expect: The engine offers the next chain exercise (push_standard) rather than repeating
-    ///           knee push-ups.
+    ///   Expect: The engine offers the next chain exercise (push_wide) rather than repeating
+    ///           standard push-ups.
     ///   Fail:   It repeats the cleared exercise or skips ahead past an un-cleared tier.
-    func testPRDValidationAdvancesPastClearedKneePushUps() async throws {
+    ///
+    /// The PRD wrote it on knee push-ups, the rung below Standard until ADR-0020 removed it.
+    func testPRDValidationAdvancesPastClearedStandardPushUps() async throws {
         let library = try await MockExerciseService().exercises()
         let user = beginnerDisciplineUser()
 
         // Cleared the way the rep grammar clears a rung: four sets at the top of a beginner's range.
-        let logs = [clearingLog(id: "push_knee", daysAgo: 1)]
+        let logs = [clearingLog(id: "push_standard", daysAgo: 1)]
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: logs)
 
         let selection = ProgressionChainSelection.select(
             pattern: .push, library: library, pool: pool, recentLogs: logs, level: .beginner
         )
-        XCTAssertEqual(selection?.exercise.id, "push_standard", "offers the next tier, not the cleared one")
-        XCTAssertNotEqual(selection?.exercise.id, "push_knee", "must not repeat the cleared exercise")
-        XCTAssertEqual(selection?.order, 3)
+        XCTAssertEqual(selection?.exercise.id, "push_wide", "offers the next tier, not the cleared one")
+        XCTAssertNotEqual(selection?.exercise.id, "push_standard", "must not repeat the cleared exercise")
+        XCTAssertEqual(selection?.order, 1)
         XCTAssertEqual(selection?.didAdvance, true)
     }
 
-    /// A brand-new beginner gets the chain entry for push over the real library: push_wall
-    /// (push_horizontal order 0, difficulty 1).
+    /// A brand-new beginner gets the chain entry for push over the real library: push_standard
+    /// (push_horizontal order 0, difficulty 2, since ADR-0020 removed the wall, incline and knee rungs).
     func testPRDFreshBeginnerGetsPushEntryOverRealLibrary() async throws {
         let library = try await MockExerciseService().exercises()
         let user = beginnerDisciplineUser()
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: [])
 
-        let selection = ProgressionChainSelection.select(
-            pattern: .push, library: library, pool: pool, recentLogs: [], level: .beginner
+        let selection = ProgressionChainSelection.selectInChain(
+            library.filter { $0.progressionChainId == "push_horizontal" },
+            eligibleIds: Set(pool.map(\.id)), recentLogs: [], level: .beginner
         )
-        XCTAssertEqual(selection?.exercise.id, "push_wall")
+        XCTAssertEqual(selection?.exercise.id, "push_standard")
         XCTAssertEqual(selection?.order, 0)
         XCTAssertEqual(selection?.didAdvance, false)
     }

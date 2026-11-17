@@ -284,9 +284,9 @@ final class CoachViewModelTests: XCTestCase {
     }
 
     func testSwappingAMovementIsTodaysChoiceAndUndoes() async throws {
-        let (fixture, message, proposal) = try await proposing(.swapMovement(exerciseId: "push_incline", exerciseName: "Incline Push-Up"))
+        let (fixture, message, proposal) = try await proposing(.swapMovement(exerciseId: "push_standard", exerciseName: "Standard Push-Up"))
         await fixture.viewModel.apply(proposal, in: message)
-        XCTAssertEqual(fixture.todayChoices.choices(on: CoachFixture.today).swappedOut, ["push_incline"])
+        XCTAssertEqual(fixture.todayChoices.choices(on: CoachFixture.today).swappedOut, ["push_standard"])
         await fixture.viewModel.undo(try XCTUnwrap(fixture.viewModel.messages.last?.proposals.first), in: message)
         XCTAssertEqual(fixture.todayChoices.choices(on: CoachFixture.today).swappedOut, [])
     }
@@ -453,7 +453,7 @@ final class CoachViewModelTests: XCTestCase {
           {"id":"p2","kind":"startDeload","status":"proposed"},
           {"id":"p3","kind":"focusAreas","status":"applied","areas":["glutes","abs","tail"]},
           {"id":"p4","kind":"customWorkout","status":"proposed","workout":{"title":"Desk Reset","note":"","steps":[
-            {"name":"Incline Push-Up","exerciseId":"push_incline","sets":3,"reps":10,"perSide":false,"restSeconds":30}]}}
+            {"name":"Standard Push-Up","exerciseId":"push_standard","sets":3,"reps":10,"perSide":false,"restSeconds":30}]}}
         ]}
         """#
         let message = try JSONDecoder().decode(CoachMessage.self, from: Data(json.utf8))
@@ -483,7 +483,7 @@ final class CoachViewModelTests: XCTestCase {
         let (fixture, message, proposal) = try await proposing(.customWorkout(CoachFixture.draft))
         let maybeEdited = await fixture.viewModel.reviewableWorkout(for: proposal, in: message)
         var edited = try XCTUnwrap(maybeEdited)
-        XCTAssertEqual(edited.steps.map(\.exerciseId), ["push_incline", nil], "catalog steps resolve; others stay text only")
+        XCTAssertEqual(edited.steps.map(\.exerciseId), ["push_standard", nil], "catalog steps resolve; others stay text only")
         edited.steps.reverse()
         edited.steps[1].reps = 12
         edited.steps[1].sets = 4
@@ -493,15 +493,15 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertTrue(accepted.isAccepted)
         XCTAssertEqual(status(fixture, proposal), .applied)
         let saved = try await fixture.customWorkouts.workouts()
-        XCTAssertEqual(saved.first?.steps.map(\.name), ["Doorway Chest Opener", "Incline Push-Up"])
+        XCTAssertEqual(saved.first?.steps.map(\.name), ["Doorway Chest Opener", "Standard Push-Up"])
         XCTAssertEqual(saved.first?.proposalId, proposal.id)
 
         let maybePlayback = await fixture.viewModel.playback(of: accepted)
         let playback = try XCTUnwrap(maybePlayback)
         let stations = playback.playable.blocks.flatMap(\.exercises)
-        XCTAssertEqual(stations.map(\.exercise.displayName), ["Doorway Chest Opener", "Incline Push-Up"])
+        XCTAssertEqual(stations.map(\.exercise.displayName), ["Doorway Chest Opener", "Standard Push-Up"])
         XCTAssertTrue(CustomWorkout.isTextOnly(exerciseId: stations[0].exercise.id))
-        XCTAssertEqual(stations[1].exercise.id, "push_incline", "a catalog step plays as its catalog movement, with its art")
+        XCTAssertEqual(stations[1].exercise.id, "push_standard", "a catalog step plays as its catalog movement, with its art")
         XCTAssertEqual(stations[1].sets, 4)
         XCTAssertEqual(stations[1].reps, 12)
         XCTAssertNil(playback.playable.trainingDay, "a Custom Workout is never a Training Day")
@@ -569,15 +569,15 @@ final class CoachViewModelTests: XCTestCase {
 
     func testTheGroupWithTheMostCatalogSetsGetsTheDayOff() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(workout([("push_incline", 3), ("squat_bodyweight", 2)], library: library).trainedGroup(library: library), .push)
+        XCTAssertEqual(workout([("push_standard", 3), ("squat_bodyweight", 2)], library: library).trainedGroup(library: library), .push)
         XCTAssertEqual(workout([("pull_floor_row", 3), ("hinge_glute_bridge", 4)], library: library).trainedGroup(library: library), .legs)
-        XCTAssertEqual(workout([("squat_bodyweight", 2), ("hinge_glute_bridge", 2), ("push_incline", 3)], library: library).trainedGroup(library: library), .legs,
+        XCTAssertEqual(workout([("squat_bodyweight", 2), ("hinge_glute_bridge", 2), ("push_standard", 3)], library: library).trainedGroup(library: library), .legs,
                        "squat and hinge both count toward Legs")
     }
 
     func testATieCoreMobilityOrTextOnlyStepsNameNoGroup() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertNil(workout([("push_incline", 3), ("pull_floor_row", 3)], library: library).trainedGroup(library: library), "an even split names no group")
+        XCTAssertNil(workout([("push_standard", 3), ("pull_floor_row", 3)], library: library).trainedGroup(library: library), "an even split names no group")
         XCTAssertNil(workout([("core_dead_bug", 4), ("mobility_cat_cow", 2)], library: library).trainedGroup(library: library))
         XCTAssertNil(workout([(nil, 5)], library: library).trainedGroup(library: library), "text-only steps are never tracked")
     }

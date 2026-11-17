@@ -107,9 +107,13 @@ describe("contextMessage", () => {
 
   test("the catalog lists only served movements, with their ids", () => {
     const catalog = catalogMessage();
-    expect(catalog).toContain("- push_incline: Incline Push-Up (push");
+    expect(catalog).toContain("- push_standard: Standard Push-Up (push");
+    expect(catalog).toContain("- squat_burpee: Burpee (squat");
     expect(catalog).not.toContain("pull_ytw");
-    expect(SERVED_CATALOG.length).toBe(68);
+    for (const removed of ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic"]) {
+      expect(catalog).not.toContain(`- ${removed}:`);
+    }
+    expect(SERVED_CATALOG.length).toBe(70);
   });
 });
 

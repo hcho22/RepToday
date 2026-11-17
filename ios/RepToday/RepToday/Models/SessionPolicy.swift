@@ -473,8 +473,8 @@ extension SessionPolicy.ColdStartContract {
     ///
     /// Together with `cappedMaxDifficulty` this bands the strength/primal training pool to
     /// `[floor, cap]`, so Step 5's lowest-eligible selection for a no-history user starts at the *band
-    /// entry* rather than the chain's absolute entry tier - an active user's first push is a standard
-    /// or diamond push-up, not a wall push-up. A beginner's floor is `1`, so the beginner experience is
+    /// entry* rather than the chain's absolute entry tier - an active user's first squat is a sumo
+    /// or Cossack squat, not a wall sit. A beginner's floor is `1`, so the beginner experience is
     /// unchanged.
     ///
     /// The floor is tuned against the library the user can actually *reach*, not the nominal 1-5

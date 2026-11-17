@@ -14,13 +14,13 @@ final class CustomWorkoutTests: XCTestCase {
 
     func testADraftResolvesCatalogStepsAndKeepsOthersTextOnly() async throws {
         let draft = CustomWorkoutDraft(title: "T", note: "", steps: [
-            .init(name: "push ups", exerciseId: "push_incline", sets: 9, reps: 500, seconds: nil, perSide: true, restSeconds: 999),
+            .init(name: "push ups", exerciseId: "push_standard", sets: 9, reps: 500, seconds: nil, perSide: true, restSeconds: 999),
             .init(name: "Forearm Plank", exerciseId: "core_forearm_plank", sets: 2, reps: 12, seconds: nil, perSide: false, restSeconds: 20),
             .init(name: "Wall Angels", exerciseId: "not_a_movement", sets: 2, reps: nil, seconds: 45, perSide: false, restSeconds: 20),
         ])
         let workout = CustomWorkout(draft: draft, messageId: "m", proposalId: "p", library: try await library(), now: Date())
         XCTAssertFalse(workout.isAccepted)
-        XCTAssertEqual(workout.steps[0].name, "Incline Push-Up", "a catalog step takes the catalog's name")
+        XCTAssertEqual(workout.steps[0].name, "Standard Push-Up", "a catalog step takes the catalog's name")
         XCTAssertEqual(workout.steps[0].sets, CustomWorkout.setRange.upperBound)
         XCTAssertEqual(workout.steps[0].reps, CustomWorkout.repRange.upperBound)
         XCTAssertEqual(workout.steps[0].restSeconds, CustomWorkout.restRange.upperBound)
@@ -47,7 +47,7 @@ final class CustomWorkoutTests: XCTestCase {
     func testSwappingAStepFollowsTheNewMovementsShape() async throws {
         let movements = try await library()
         let plank = try XCTUnwrap(movements.first { $0.id == "core_forearm_plank" })
-        let step = CustomWorkoutStep(id: UUID(), name: "Push", exerciseId: "push_incline", sets: 3, reps: 10, seconds: nil, perSide: false, restSeconds: 30)
+        let step = CustomWorkoutStep(id: UUID(), name: "Push", exerciseId: "push_standard", sets: 3, reps: 10, seconds: nil, perSide: false, restSeconds: 30)
         let swapped = step.swapped(to: plank)
         XCTAssertEqual(swapped.exerciseId, "core_forearm_plank")
         XCTAssertEqual(swapped.name, plank.displayName)

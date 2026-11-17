@@ -79,18 +79,18 @@ final class FoundationsEvidenceTests: XCTestCase {
     }
 
     private var freshLogs: [WorkoutLog] {
-        [work("push_wall", .push, value: 15, weeksAgo: 0)]
+        [work("push_standard", .push, value: 15, weeksAgo: 0)]
     }
 
-    /// Eight steady weeks. Push climbs wall (cleared at 30) -> knee -> standard, the squat side climbs
+    /// Eight steady weeks. Push climbs standard (cleared at 30) -> wide -> one-legged, the squat side climbs
     /// from the wall sit (cleared at 60 seconds) to the bodyweight squat, core clears its forearm plank,
     /// and hinge sits short of the top of its range for weeks. Pull has only postural work, which never
     /// counts.
     private var midClimbLogs: [WorkoutLog] {
         showUps(weeks: 8) + [
-            work("push_wall", .push, value: 30, weeksAgo: 7, day: 1),
-            work("push_knee", .push, value: 20, weeksAgo: 4, day: 1),
-            work("push_standard", .push, value: 20, weeksAgo: 1, day: 1),
+            work("push_standard", .push, value: 30, weeksAgo: 7, day: 1),
+            work("push_wide", .push, value: 20, weeksAgo: 4, day: 1),
+            work("push_one_leg", .push, value: 20, weeksAgo: 1, day: 1),
             work("squat_wall_sit", .squat, hold: true, value: 60, weeksAgo: 6, day: 1),
             work("squat_bodyweight", .squat, value: 20, weeksAgo: 2, day: 1),
             work("hinge_glute_bridge", .hinge, value: 15, weeksAgo: 5, day: 1),
@@ -104,7 +104,7 @@ final class FoundationsEvidenceTests: XCTestCase {
     /// Everything cleared except Pull's horizontal chain, with a Strength-Phase rung already in use.
     private var strengthLogs: [WorkoutLog] {
         showUps(weeks: 10) + [
-            work("push_wall", .push, value: 30, weeksAgo: 9, day: 1),
+            work("push_standard", .push, value: 30, weeksAgo: 9, day: 1),
             work("push_archer", .push, value: 10, weeksAgo: 3, day: 1),
             work("push_one_arm_assisted", .push, value: 5, weeksAgo: 0, day: 1),
             work("squat_wall_sit", .squat, hold: true, value: 60, weeksAgo: 8, day: 1),
