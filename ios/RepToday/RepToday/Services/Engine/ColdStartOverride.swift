@@ -238,7 +238,7 @@ enum ColdStartOverride {
     /// primal training movements to `[startingDifficultyFloor, cappedMaxDifficulty]` (the cap having
     /// already been applied by `cappedPool`). Step 5 starts a no-history user at the *lowest eligible*
     /// tier, so raising the floor is exactly what makes an active user's first session open at the band
-    /// entry - a standard or diamond push-up rather than a wall push-up - while a beginner (floor `1`)
+    /// entry - a sumo or Cossack squat rather than a wall sit - while a beginner (floor `1`)
     /// is untouched. A no-op when Step 0 is inactive or the resolved seed is neutral.
     ///
     /// Two things are deliberately never floored:
@@ -302,7 +302,7 @@ enum ColdStartOverride {
     /// This is what closes the post-handoff difficulty cliff. Banding withholds whole progression
     /// chains for five sessions, so they accrue no history; the moment the band lifts their untouched
     /// entry tiers are the only movements the variety window has never seen, and freshness alone
-    /// hands an advanced user a wall push-up. `ProgressionChainSelection` skips these when entering a
+    /// hands an advanced user a wall sit. `ProgressionChainSelection` skips these when entering a
     /// chain with no history and does not count them as fresh - it never filters them out, so a
     /// narrower pool (a Return, an injury) simply makes the band unreachable and every movement
     /// eligible again.

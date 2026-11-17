@@ -41,7 +41,7 @@ final class FoundationsUITests: XCTestCase {
         let pulls = ["Superman Hold", "Reverse Snow Angel",
                      "Wall Scapular Pull", "Supine Floor Row", "Single-Arm Supine Floor Row"]
         let hinges = ["Glute Bridge", "Single-Leg Glute Bridge", "Marching Glute Bridge",
-                      "Long-Lever Single-Leg Bridge", "Assisted Nordic Curl", "Nordic Curl",
+                      "Long-Lever Single-Leg Bridge",
                       "Bodyweight Good Morning", "Single-Leg Romanian Deadlift"]
         let otherStrength = ["Wall Sit", "Bodyweight Squat", "Sumo Squat", "Reverse Lunge", "Split Squat"]
         func planned(_ names: [String]) -> [String] {

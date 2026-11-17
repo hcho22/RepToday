@@ -37,7 +37,7 @@ import Foundation
 /// Seed band (US-O02) does exactly the second thing - for the whole cold-start week it holds the
 /// gentle chains of every banded pattern out of the pool, so they accrue no history at all. The
 /// moment the band lifts, those untouched entry tiers are the only movements the variety window has
-/// never seen, and novelty alone hands an advanced user a wall push-up.
+/// never seen, and novelty alone hands an advanced user a wall sit.
 ///
 /// So Step 5 is told which movements were *withheld* rather than outgrown
 /// (`ColdStartOverride.withheldByStartSeed`) and simply does not count them as new: they are skipped
@@ -303,13 +303,15 @@ enum ProgressionChainSelection {
     // MARK: Helpers
 
     /// The user's frontier in a chain: the highest-order tier worked (non-skipped) in `recentLogs`,
-    /// or `nil` when the chain has no worked tier.
+    /// or `nil` when the chain has no worked tier. A log of a removed movement counts as work on the rung
+    /// that takes its place (`Exercise.placementIds`, ADR-0020), so a user who was on a removed rung stands
+    /// on its replacement rather than re-entering the ladder.
     private static func frontierTier(
         in sorted: [Exercise],
         recentLogs: [WorkoutLog]
     ) -> Exercise? {
         let workedIds = workedExerciseIds(recentLogs: recentLogs)
-        return sorted.last { workedIds.contains($0.id) }
+        return sorted.last { $0.placementIds.contains(where: workedIds.contains) }
     }
 
     /// When `exercise` is the rung a step back at the floor moved the user down onto (the rung directly
@@ -398,8 +400,10 @@ enum ProgressionChainSelection {
         recentLogs: [WorkoutLog],
         library: [Exercise]
     ) -> [String: Date] {
+        // A removed movement's log counts toward the chain of the rung that took its place (ADR-0020).
         let chainByExerciseId = Dictionary(
-            uniqueKeysWithValues: library.map { ($0.id, $0.progressionChainId) }
+            library.flatMap { exercise in exercise.placementIds.map { ($0, exercise.progressionChainId) } },
+            uniquingKeysWith: { first, _ in first }
         )
         var lastWorked: [String: Date] = [:]
         for log in recentLogs {

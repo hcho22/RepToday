@@ -108,7 +108,7 @@ struct CoachFixture {
         title: "Desk Reset",
         note: "A short circuit to undo a day of sitting.",
         steps: [
-            .init(name: "Incline Push-Up", exerciseId: "push_incline", sets: 3, reps: 10, seconds: nil, perSide: false, restSeconds: 30),
+            .init(name: "Standard Push-Up", exerciseId: "push_standard", sets: 3, reps: 10, seconds: nil, perSide: false, restSeconds: 30),
             .init(name: "Doorway Chest Opener", exerciseId: nil, sets: 2, reps: nil, seconds: 30, perSide: false, restSeconds: 15),
         ]
     )

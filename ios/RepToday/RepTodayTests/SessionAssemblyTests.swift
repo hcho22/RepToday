@@ -503,17 +503,17 @@ final class SessionAssemblyTests: XCTestCase {
     }
 
     /// `progressionRate` paces the climb end-to-end: after one qualifying session at 15, the neutral pace
-    /// climbs Wall Push-Up's Earned Reps to 20, while the slowest pace (0.5) needs a second session first.
+    /// climbs Standard Push-Up's Earned Reps to 20, while the slowest pace (0.5) needs a second session first.
     func testProgressionRatePacesTheClimbInAssembly() throws {
         let logs = [TrainingDayFixtures.log(
-            [TrainingDayFixtures.station("push_wall", pattern: .push, value: 15, earned: 15)],
+            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 15, earned: 15)],
             completedAt: TrainingDayFixtures.date(daysAgo: 2)
         )]
         func earned(rate: Double) throws -> Int? {
             var policy = SessionPolicy.default
             policy.progressionRate = rate
             let workout = assemble(minutes: 30, user: user(level: .beginner), logs: logs, policy: policy, day: .push)
-            return try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_wall" }, "Wall Push-Up is the current rung").earnedReps
+            return try XCTUnwrap(circuit(workout).first { $0.exercise.id == "push_standard" }, "Standard Push-Up is the current rung").earnedReps
         }
         XCTAssertEqual(try earned(rate: 1.0), 20)
         XCTAssertEqual(try earned(rate: SessionPolicy.minProgressionRate), 15)
@@ -533,10 +533,10 @@ final class SessionAssemblyTests: XCTestCase {
         return policy
     }
 
-    /// An advanced user who cleared Standard Push-Up: their frontier is the next rung.
-    private var clearedStandardPushUp: [WorkoutLog] {
+    /// An advanced user who cleared One-Legged Push-Up: their frontier is the next rung, Diamond Push-Up.
+    private var clearedOneLeggedPushUp: [WorkoutLog] {
         [TrainingDayFixtures.log(
-            [TrainingDayFixtures.station("push_standard", pattern: .push, value: 50, earned: 50)],
+            [TrainingDayFixtures.station("push_one_leg", pattern: .push, value: 50, earned: 50)],
             completedAt: TrainingDayFixtures.date(daysAgo: 2)
         )]
     }
@@ -557,15 +557,15 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(ColdStartOverride.cappedPool(library, user: active, sessionPolicy: .default).count, library.count)
     }
 
-    /// End-to-end difficulty cap: an advanced user who cleared Standard Push-Up is served Diamond Push-Up
+    /// End-to-end difficulty cap: an advanced user who cleared One-Legged Push-Up is served Diamond Push-Up
     /// (difficulty 3) by the plain engine, but the cold-start cap keeps every main station, Core Sprinkle
     /// and stretch at or below it.
     func testColdStartSessionRespectsTheDifficultyCap() {
         let advanced = coldStartUser(level: .advanced)
-        let baseline = assemble(minutes: 30, user: advanced, logs: clearedStandardPushUp, day: .push)
+        let baseline = assemble(minutes: 30, user: advanced, logs: clearedOneLeggedPushUp, day: .push)
         XCTAssertTrue(circuit(baseline).contains { $0.exercise.id == "push_diamond" }, "without the cap the frontier is Diamond Push-Up")
 
-        let capped = assemble(minutes: 30, user: advanced, logs: clearedStandardPushUp, policy: coldStartPolicy(cappedMaxDifficulty: 2), day: .push)
+        let capped = assemble(minutes: 30, user: advanced, logs: clearedOneLeggedPushUp, policy: coldStartPolicy(cappedMaxDifficulty: 2), day: .push)
         XCTAssertTrue(capped.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= 2 }, "\(capped.blocks.flatMap(\.exercises).map(\.exercise.id))")
         XCTAssertFalse(circuit(capped).contains { $0.exercise.id == "push_diamond" })
     }
@@ -587,7 +587,7 @@ final class SessionAssemblyTests: XCTestCase {
     /// A Return caps the eligible difficulty at the gentle end: the same strong history that serves
     /// Diamond Push-Up to a present user serves nothing above `returnMaxDifficulty` after a gap.
     func testReturnCapsDifficultyBelowThePreGapTier() {
-        let present = assemble(minutes: 30, user: user(level: .advanced), logs: clearedStandardPushUp, day: .push)
+        let present = assemble(minutes: 30, user: user(level: .advanced), logs: clearedOneLeggedPushUp, day: .push)
         XCTAssertFalse(present.wasReturn)
         XCTAssertTrue(circuit(present).contains { $0.exercise.id == "push_diamond" })
 

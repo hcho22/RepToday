@@ -4,6 +4,7 @@
 - Date: 2026-09-30
 - Story: captain request, "update the foundation for reptoday to Push, Pull, Legs, and Core"
 - Supersedes / amends: the four-foundation gate of US-H02 (push / squat / hinge / core); the surfaces built on it (US-SP04, US-SP05, US-AN01, US-AN02, the US-AC07 emphasis vocabulary)
+- Amended by [ADR-0020](0020-push-ladder-from-standard-burpee-no-nordic.md) (2026-11-16): the horizontal push ladder's entry rung is now Standard Push-Up.
 
 ## Context
 

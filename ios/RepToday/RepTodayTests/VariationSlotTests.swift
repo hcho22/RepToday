@@ -25,6 +25,9 @@ final class VariationSlotTests: XCTestCase {
         copy.progressionId = nil
         copy.variationOf = parentId
         copy.audience = audience
+        // Only the parent rung takes a removed movement's place, or carries its card line (ADR-0020).
+        copy.replaces = nil
+        copy.cue = nil
         return copy
     }
 
@@ -108,7 +111,7 @@ final class VariationSlotTests: XCTestCase {
         // The default asks the app's own asset catalog through the Trainer resolver, which holds no art
         // for the fixture - and does for a real rung.
         XCTAssertFalse(SessionAssembly.hasBundledTrainerArt(fixture))
-        XCTAssertTrue(SessionAssembly.hasBundledTrainerArt(try XCTUnwrap(library.first { $0.id == "push_wall" })))
+        XCTAssertTrue(SessionAssembly.hasBundledTrainerArt(try XCTUnwrap(library.first { $0.id == "push_standard" })))
         let bundled = SessionAssembly.planSession(
             requestedMinutes: 60,
             user: TrainingDayFixtures.user(level: .beginner),

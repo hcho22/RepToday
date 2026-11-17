@@ -4,6 +4,7 @@
 - Date: 2026-10-01
 - Story: captain request, "update the list of exercises for reptoday for beginner/intermediate users"
 - Supersedes / amends: the fitness-level difficulty band as the engine's "too hard" gate (the Effective Difficulty Cap of US-SP01), ADR-0004's bound on the accessory depth mismatch (now bounded by staples instead of the band)
+- Amended by [ADR-0020](0020-push-ladder-from-standard-burpee-no-nordic.md) (2026-11-16): Wall, Incline and Knee Push-Up are retired, so the staple list and the "Push (Wall Push-Up)" clearability below record this ADR's landing state; the push staples and the Push entry rung are now owned by ADR-0020.
 
 ## Context
 

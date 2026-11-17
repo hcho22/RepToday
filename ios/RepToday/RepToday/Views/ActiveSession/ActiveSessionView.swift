@@ -425,6 +425,9 @@ struct ActiveSessionView: View {
                                 animatesGlyph: !(viewModel.isHolding || viewModel.currentStepAutoAdvances)
                             )
                             exerciseHeadline(step)
+                            if let cue = step.prescription.exercise.cue {
+                                exerciseCue(cue)
+                            }
                             setTracker(step)
                         }
                         .dynamicTypeSize(...Self.columnTypeCap)
@@ -558,6 +561,17 @@ struct ActiveSessionView: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
+    }
+
+    /// The movement's one coaching line (`Exercise.cue`), quiet under its name - the Standard Push-Up's
+    /// easier options for someone who cannot yet do a full push-up. It sits inside the measured column, so
+    /// the Trainer card shrinks to make room for it rather than pushing the timer under the controls.
+    private func exerciseCue(_ cue: String) -> some View {
+        Text(cue)
+            .font(Theme.Typography.callout)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Set tracking, with a pip per set: done pips filled in the session's color, the current one a ring,

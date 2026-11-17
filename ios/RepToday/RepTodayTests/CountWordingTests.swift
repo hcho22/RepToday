@@ -54,7 +54,7 @@ final class CountWordingTests: XCTestCase {
             requestedMinutes: minutes, durationMinutes: minutes, wasReturn: false,
             shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil,
             exercises: [
-                LoggedExercise(id: UUID(), exerciseId: "push_wall", pillar: .strength, movementPattern: .push,
+                LoggedExercise(id: UUID(), exerciseId: "push_standard", pillar: .strength, movementPattern: .push,
                                completedSets: [CompletedSet(reps: reps, durationSeconds: nil)], skipped: false)
             ]
         )

@@ -145,7 +145,7 @@ final class TrainingDaySessionTests: XCTestCase {
         )
         let circuit = stations(session(.push, minutes: 60, level: .advanced, logs: [atArcher]))
         XCTAssertFalse(circuit.contains { $0.exercise.phase == .strength })
-        XCTAssertEqual(circuit.first { $0.role == .practice && $0.exercise.progressionChainId == "push_horizontal" }?.exercise.id, "push_diamond")
+        XCTAssertEqual(circuit.first { $0.role == .practice && $0.exercise.progressionChainId == "push_horizontal" }?.exercise.id, "push_burpee")
     }
 
     func testALegsDayLeadsWithOneSquatSideAndOneHingeSideLadder() {
@@ -249,9 +249,9 @@ final class TrainingDaySessionTests: XCTestCase {
     func testPrimalIsRetiredAndPullYTWSitsWithdrawnAtTheTopOfThePosturalChain() throws {
         let data = try Data(contentsOf: Bundle.main.url(forResource: "Exercises", withExtension: "json")!)
         let catalog = try JSONDecoder().decode([Exercise].self, from: data)
-        XCTAssertEqual(catalog.count, 76)
+        XCTAssertEqual(catalog.count, 83)
         XCTAssertTrue(catalog.filter { $0.pillar == .primal }.allSatisfy { $0.audience == .retired })
-        XCTAssertEqual(library.count, 68)
+        XCTAssertEqual(library.count, 70)
         XCTAssertFalse(library.contains { MovementAccess.isWithdrawn($0) })
         let ytw = try XCTUnwrap(catalog.first { $0.id == "pull_ytw" })
         XCTAssertEqual(ytw.progressionChainId, "pull_postural")

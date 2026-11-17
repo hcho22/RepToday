@@ -374,7 +374,7 @@ final class ExercisePoolFilterTests: XCTestCase {
     /// reviewable as a product-level artifact, not just an assertion.
     func testPRDValidationOverRealBundledLibrary() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(library.count, 68, "should run over the full offered library (76 minus the 7 retired primal movements and the 1 held for version 2)")
+        XCTAssertEqual(library.count, 70, "should run over the full offered library (83 minus the 12 retired movements and the 1 held for version 2)")
 
         let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])
@@ -518,7 +518,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         }
         let history =
             (0..<8).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
-            + (try ["push_wall", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"].map(clearing))
+            + (try ["push_standard", "pull_wall_scapular_pull", "squat_wall_sit", "hinge_glute_bridge", "core_forearm_plank"].map(clearing))
 
         // Step 1: evaluate phase - the earned phase must be Strength.
         let earned = PhaseEvaluator.evaluate(

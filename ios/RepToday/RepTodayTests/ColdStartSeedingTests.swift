@@ -112,9 +112,11 @@ final class ColdStartSeedingTests: XCTestCase {
     ///
     /// US-O02 raised the band's floor from a flat `1` to a fitness-level Start Seed, so "the gentle end"
     /// is now the gentle end of `[startingDifficultyFloor, cappedMaxDifficulty]` rather than the
-    /// library's absolute entry tier: a beginner still opens at difficulty 1, while an active user opens
-    /// at their seeded floor (clamped down to the hardest movement a pattern actually offers, since
-    /// banding never empties a pattern). The cap half of the contract is unchanged.
+    /// library's absolute entry tier: a beginner opens at the gentlest movement the first Training Day
+    /// offers (difficulty 2 on a Push Day, whose ladders start at Standard Push-Up and Floor Tricep Dips
+    /// since ADR-0020), while an active user opens at their seeded floor (clamped down to the hardest
+    /// movement a pattern actually offers, since banding never empties a pattern). The cap half of the
+    /// contract is unchanged.
     func testFirstSessionCapsDifficultyAndOpensAtTheBandEntry() async throws {
         let library = try await library()
 
@@ -153,7 +155,15 @@ final class ColdStartSeedingTests: XCTestCase {
             // re-read from the pool the assembler drew from, so this can actually fail. Equality in
             // both directions is the point: `>=` alone would pass on a session that opened at the
             // top of the cap, and `<=` alone on one that ignored the floor.
-            let bandEntry = SessionPolicy.ColdStartContract.startingDifficultyFloor(for: level)
+            // The floor is raised to the gentlest movement the day's ladders offer this user, so a
+            // beginner's Push Day opens at difficulty 2 when no push movement sits at 1.
+            let floor = SessionPolicy.ColdStartContract.startingDifficultyFloor(for: level)
+            let day = try XCTUnwrap(workout.trainingDay)
+            let bandEntry = try XCTUnwrap(library
+                .filter { day.ladders.contains($0.progressionChainId) && MovementAccess.isAvailable($0, for: user) }
+                .map(\.difficulty)
+                .filter { $0 >= floor }
+                .min())
             let easiest = trainingDifficulties.min()!
             XCTAssertEqual(
                 easiest, bandEntry,
