@@ -2,6 +2,7 @@ import AVFoundation
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The user's profile photo in a circle, or - with none set - the `sun` disc with the profile icon the
 /// Profile header has always shown. Decorative: the control or row around it carries the words.
@@ -45,7 +46,8 @@ struct ProfilePhotoButton: View {
     @State private var isChoosingSource = false
     @State private var camera = CameraAvailability.unavailable
     @State private var isPickingFromLibrary = false
-    @State private var librarySelection: PhotosPickerItem?
+    /// A photo chosen in the library, read and cropped once the picker's sheet has gone.
+    @State private var libraryPick: NSItemProvider?
     @State private var cover: Cover?
     /// A photo the camera just took, cropped once the camera's cover has gone.
     @State private var capturedPhoto: UIImage?
@@ -94,11 +96,15 @@ struct ProfilePhotoButton: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .photosPicker(isPresented: $isPickingFromLibrary, selection: $librarySelection, matching: .images, preferredItemEncoding: .compatible)
-        .onChange(of: librarySelection) { _, item in
-            guard let item else { return }
-            librarySelection = nil
-            Task { await loadFromLibrary(item) }
+        // The crop opens from the sheet's `onDismiss`, as it does from the camera's cover: a cover
+        // presented while the picker is still sliding away gets no safe area, which put the crop's
+        // header under the status bar and its buttons over the home indicator.
+        .sheet(isPresented: $isPickingFromLibrary, onDismiss: cropLibraryPick) {
+            LibraryPhotoPicker { provider in
+                libraryPick = provider
+                isPickingFromLibrary = false
+            }
+            .ignoresSafeArea()
         }
         .fullScreenCover(item: $cover, onDismiss: cropCapturedPhoto) { cover in
             switch cover {
@@ -166,8 +172,20 @@ struct ProfilePhotoButton: View {
         }
     }
 
-    private func loadFromLibrary(_ item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+    /// After the picker's sheet has gone, the photo chosen in it goes to the crop.
+    private func cropLibraryPick() {
+        guard let provider = libraryPick else { return }
+        libraryPick = nil
+        Task { await loadFromLibrary(provider) }
+    }
+
+    private func loadFromLibrary(_ provider: NSItemProvider) async {
+        let data = await withCheckedContinuation { continuation in
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                continuation.resume(returning: data)
+            }
+        }
+        guard let data, let image = UIImage(data: data) else {
             isUnreadablePhotoAlertPresented = true
             return
         }
@@ -324,6 +342,40 @@ private struct CropScrim: Shape {
             x: rect.midX - frameSide / 2, y: rect.midY - frameSide / 2, width: frameSide, height: frameSide
         ))
         return path
+    }
+}
+
+/// The system photo picker, for one photo. It needs no photo-library permission; `onFinish` gets the
+/// chosen photo, or nil when the user cancels.
+struct LibraryPhotoPicker: UIViewControllerRepresentable {
+    let onFinish: (NSItemProvider?) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        configuration.preferredAssetRepresentationMode = .compatible
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onFinish: onFinish)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let onFinish: (NSItemProvider?) -> Void
+
+        init(onFinish: @escaping (NSItemProvider?) -> Void) {
+            self.onFinish = onFinish
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            onFinish(results.first?.itemProvider)
+        }
     }
 }
 
