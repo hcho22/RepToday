@@ -12,8 +12,8 @@ struct ProfilePhotoRecord: Codable, Equatable, Sendable {
     }
 
     var pendingChange: AccountChange?
-    /// Moves on every change made on the phone, so an upload that finishes after a newer change does
-    /// not mark the newer one as saved.
+    /// Moves on every change made on the phone and on every erase, so an upload that finishes after a
+    /// newer change or an erase does not write anything on top of it.
     var revision: UUID
     /// The account whose own image has been looked at (and adopted, if there was one and the phone had
     /// none). A fresh sign-in on a phone with no photo adopts the account's image once, never again.
@@ -43,13 +43,14 @@ protocol ProfilePhotoStoring: Sendable {
     @discardableResult
     func removePhoto() throws -> UUID
 
-    /// Saves the account's image as the photo, only when the phone has no photo and no change waiting
-    /// for the account. Owes the account nothing. Returns whether it was saved.
+    /// Saves the account's image as the photo, only when the phone has no photo, no change waiting for
+    /// the account and is still at `revision`. Owes the account nothing. Returns whether it was saved.
     @discardableResult
-    func adopt(_ jpeg: Data, from account: String) throws -> Bool
+    func adopt(_ jpeg: Data, from account: String, ifRevision revision: UUID) throws -> Bool
 
-    /// Records that `account`'s own image has been looked at.
-    func markAdoptionChecked(for account: String) throws
+    /// Records that `account`'s own image has been looked at, only when the phone is still at
+    /// `revision`.
+    func markAdoptionChecked(for account: String, ifRevision revision: UUID) throws
 
     /// Marks the change at `revision` as taken by the account. A newer change stays owed.
     func completeChange(revision: UUID) throws
@@ -58,7 +59,8 @@ protocol ProfilePhotoStoring: Sendable {
     /// removed but the account itself stayed (account deletion that stopped before deleting anything).
     func requeueUpload() throws
 
-    /// Deletes the photo and its record: signing out, erasing the phone, and account deletion.
+    /// Deletes the photo and its record and moves the revision: signing out, erasing the phone, and
+    /// account deletion.
     func erase() throws
 }
 
@@ -71,6 +73,8 @@ final class FileProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable {
     /// Where the photo and its record live.
     let directory: URL
     private let fileManager = FileManager.default
+    /// The revision of a phone with no readable record, moved by `erase()`.
+    private var emptyRevision = UUID()
 
     private var photoURL: URL { directory.appendingPathComponent("photo.jpg") }
     private var recordURL: URL { directory.appendingPathComponent("record.json") }
@@ -121,10 +125,11 @@ final class FileProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable {
         }
     }
 
-    func adopt(_ jpeg: Data, from account: String) throws -> Bool {
+    func adopt(_ jpeg: Data, from account: String, ifRevision revision: UUID) throws -> Bool {
         try lock.withLock {
             var record = readRecord()
-            guard record.pendingChange == nil, !fileManager.fileExists(atPath: photoURL.path) else { return false }
+            guard record.revision == revision, record.pendingChange == nil,
+                  !fileManager.fileExists(atPath: photoURL.path) else { return false }
             try prepareDirectory()
             try jpeg.write(to: photoURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             record.adoptionCheckedFor = account
@@ -134,10 +139,10 @@ final class FileProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable {
         }
     }
 
-    func markAdoptionChecked(for account: String) throws {
+    func markAdoptionChecked(for account: String, ifRevision revision: UUID) throws {
         try lock.withLock {
             var record = readRecord()
-            guard record.adoptionCheckedFor != account else { return }
+            guard record.revision == revision, record.adoptionCheckedFor != account else { return }
             record.adoptionCheckedFor = account
             try prepareDirectory()
             try write(record)
@@ -165,6 +170,7 @@ final class FileProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable {
 
     func erase() throws {
         try lock.withLock {
+            emptyRevision = UUID()
             guard fileManager.fileExists(atPath: directory.path) else { return }
             try fileManager.removeItem(at: directory)
         }
@@ -177,7 +183,7 @@ final class FileProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable {
               let record = try? JSONDecoder().decode(ProfilePhotoRecord.self, from: data) else {
             // No record (nothing ever saved, or erased). A photo with no readable record is owed to the
             // account, so a damaged record can never strand a photo the account never got.
-            var record = ProfilePhotoRecord.empty()
+            var record = ProfilePhotoRecord(pendingChange: nil, revision: emptyRevision, adoptionCheckedFor: nil)
             if fileManager.fileExists(atPath: photoURL.path) {
                 record.pendingChange = .upload
             }
@@ -232,9 +238,11 @@ final class InMemoryProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable 
         }
     }
 
-    func adopt(_ jpeg: Data, from account: String) throws -> Bool {
+    func adopt(_ jpeg: Data, from account: String, ifRevision revision: UUID) throws -> Bool {
         lock.withLock {
-            guard storedRecord.pendingChange == nil, storedPhoto == nil else { return false }
+            guard storedRecord.revision == revision, storedRecord.pendingChange == nil, storedPhoto == nil else {
+                return false
+            }
             storedPhoto = jpeg
             storedRecord.adoptionCheckedFor = account
             storedRecord.revision = UUID()
@@ -242,8 +250,11 @@ final class InMemoryProfilePhotoStore: ProfilePhotoStoring, @unchecked Sendable 
         }
     }
 
-    func markAdoptionChecked(for account: String) throws {
-        lock.withLock { storedRecord.adoptionCheckedFor = account }
+    func markAdoptionChecked(for account: String, ifRevision revision: UUID) throws {
+        lock.withLock {
+            guard storedRecord.revision == revision else { return }
+            storedRecord.adoptionCheckedFor = account
+        }
     }
 
     func completeChange(revision: UUID) throws {

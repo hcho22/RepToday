@@ -56,18 +56,18 @@ struct ProfilePhotoSync: Sendable {
         let record = store.record()
         guard record.pendingChange == nil, record.adoptionCheckedFor != userId else { return .nothingToDo }
         guard store.photo() == nil else {
-            try store.markAdoptionChecked(for: userId)
+            try store.markAdoptionChecked(for: userId, ifRevision: record.revision)
             return .nothingToDo
         }
         guard let accountImage = try await remote.accountImage(forLinkedAccount: userId),
               let photo = ProfilePhotoProcessing.storedPhoto(fromAccountImage: accountImage) else {
             if await stillLinked() {
-                try store.markAdoptionChecked(for: userId)
+                try store.markAdoptionChecked(for: userId, ifRevision: record.revision)
             }
             return .nothingToDo
         }
         guard await stillLinked() else { return .nothingToDo }
-        return try store.adopt(photo, from: userId) ? .adopted : .nothingToDo
+        return try store.adopt(photo, from: userId, ifRevision: record.revision) ? .adopted : .nothingToDo
     }
 
     /// Takes the phone's waiting change, if any, to the account.
@@ -93,8 +93,9 @@ struct ProfilePhotoSync: Sendable {
 
     private func finish(_ record: ProfilePhotoRecord, as outcome: Outcome, for userId: String) throws -> Outcome {
         try store.completeChange(revision: record.revision)
-        // The account now carries the phone's choice, so there is nothing of its own left to adopt.
-        try store.markAdoptionChecked(for: userId)
+        // The account now carries the phone's choice, so there is nothing of its own left to adopt. A
+        // newer change or an erase since the push moved the revision, so nothing is written over it.
+        try store.markAdoptionChecked(for: userId, ifRevision: record.revision)
         return store.record().pendingChange == nil ? outcome : .newerChangeOwed
     }
 }

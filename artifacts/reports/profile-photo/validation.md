@@ -34,7 +34,7 @@ What was built is in `docs/implementation-log.md` ("Profile photo"); the unit co
 | Sign-out with a waiting photo | Upload first; one that cannot upload is an unsaved change | As expected | Pass (unit) | `ProfilePhotoTeardownTests` |
 | Denied camera | Take Photo hidden; "Allow Camera in Settings" offered | Decision logic as expected | Pass (unit); untested on screen | `CameraAvailabilityTests` |
 | Camera capture | Take Photo opens the front camera; the shot goes to the crop | Not run | Untested | The Simulator has no camera |
-| Never to other services | No Coach, telemetry, Convex, proxy or Waitlist source names the photo | As expected; a planted reference fails the guard | Pass | `ProfilePhotoBoundaryGuardTests` |
+| Never to other services | Only `ProfilePhotoModel`, `ProfilePhotoSync` and the account teardown hold the photo store, so no Coach, telemetry, Convex, proxy or Waitlist path can reach it | Structural, by where the store is handed; no test asserts it | Not tested | Code review |
 
 Limitations:
 

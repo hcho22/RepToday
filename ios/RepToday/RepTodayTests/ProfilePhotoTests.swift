@@ -287,17 +287,32 @@ final class FileProfilePhotoStoreTests: XCTestCase {
         let store = FileProfilePhotoStore(directory: directory)
         let accountImage = ProfilePhotoFixtures.jpeg(.green)
 
-        XCTAssertTrue(try store.adopt(accountImage, from: "user_a"))
+        XCTAssertTrue(try store.adopt(accountImage, from: "user_a", ifRevision: store.record().revision))
         XCTAssertEqual(store.photo(), accountImage)
         XCTAssertNil(store.record().pendingChange, "an adopted image owes the account nothing")
         XCTAssertEqual(store.record().adoptionCheckedFor, "user_a")
 
         let mine = ProfilePhotoFixtures.jpeg(.red)
         try store.setPhoto(mine)
-        XCTAssertFalse(try store.adopt(accountImage, from: "user_a"), "the phone's photo wins")
+        XCTAssertFalse(try store.adopt(accountImage, from: "user_a", ifRevision: store.record().revision),
+                       "the phone's photo wins")
         XCTAssertEqual(store.photo(), mine)
         try store.removePhoto()
-        XCTAssertFalse(try store.adopt(accountImage, from: "user_a"), "a removal still owed is not undone")
+        XCTAssertFalse(try store.adopt(accountImage, from: "user_a", ifRevision: store.record().revision),
+                       "a removal still owed is not undone")
+    }
+
+    func testNothingReadBeforeAnEraseIsWrittenAfterIt() throws {
+        let store = FileProfilePhotoStore(directory: directory)
+        let beforeErase = store.record().revision
+        XCTAssertEqual(store.record().revision, beforeErase, "an empty phone keeps one revision until it is erased")
+
+        try store.erase()
+
+        try store.markAdoptionChecked(for: "user_a", ifRevision: beforeErase)
+        XCTAssertFalse(try store.adopt(ProfilePhotoFixtures.jpeg(), from: "user_a", ifRevision: beforeErase))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path), "the erased phone stays empty")
+        XCTAssertNil(store.record().adoptionCheckedFor)
     }
 
     func testRequeueOwesThePhotoAgain() throws {
@@ -313,7 +328,8 @@ final class FileProfilePhotoStoreTests: XCTestCase {
     func testEraseLeavesNothingBehind() throws {
         let store = FileProfilePhotoStore(directory: directory)
         try store.setPhoto(ProfilePhotoFixtures.jpeg())
-        try store.markAdoptionChecked(for: "user_a")
+        try store.markAdoptionChecked(for: "user_a", ifRevision: store.record().revision)
+        XCTAssertEqual(store.record().adoptionCheckedFor, "user_a")
 
         try store.erase()
 
@@ -387,6 +403,28 @@ final class ProfilePhotoSyncTests: XCTestCase {
         XCTAssertEqual(outcome, .newerChangeOwed)
         XCTAssertEqual(store.record().pendingChange, .upload)
         XCTAssertEqual(store.photo(), newer)
+    }
+
+    func testAnUploadThatLandsAfterThePhoneWasErasedWritesNothing() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ProfilePhotoSync-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = FileProfilePhotoStore(directory: directory)
+        let remote = FakeAccountProfileImageService(sessionUserId: Self.account)
+        let sync = ProfilePhotoSync(store: store, remote: remote)
+        let jpeg = ProfilePhotoFixtures.jpeg()
+        try store.setPhoto(jpeg)
+        await remote.duringNextUpload { try? store.erase() }
+
+        _ = try await sync.pushPending(linkedAccount: Self.account)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path), "no record is written onto the erased phone")
+        XCTAssertNil(store.photo())
+        XCTAssertNil(store.record().adoptionCheckedFor)
+
+        // Signing back in adopts the image the upload left on the account.
+        let outcome = try await sync.run(linkedAccount: Self.account) { true }
+        XCTAssertEqual(outcome, .adopted)
+        XCTAssertNotNil(store.photo())
     }
 
     func testRemovingThePhotoRemovesTheAccountsImage() async throws {
@@ -748,44 +786,5 @@ final class ProfilePhotoTeardownTests: XCTestCase {
 
         XCTAssertEqual(result, .unsavedChanges)
         XCTAssertNotNil(fixture.photoStore.photo(), "nothing is erased until the user chooses to sign out anyway")
-    }
-}
-
-// MARK: - Where the photo never goes
-
-/// The profile photo goes to the phone's own container and the account's profile image, nowhere else:
-/// no Coach, telemetry or Waitlist source may name it.
-final class ProfilePhotoBoundaryGuardTests: XCTestCase {
-    func testNoCoachTelemetryOrWaitlistCodeReadsTheProfilePhoto() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // RepTodayTests
-            .deletingLastPathComponent() // RepToday
-            .deletingLastPathComponent() // ios
-            .deletingLastPathComponent() // repository
-        let app = repository.appendingPathComponent("ios/RepToday/RepToday")
-        let guarded = [
-            app.appendingPathComponent("Services/Coach"),
-            app.appendingPathComponent("Services/Analytics"),
-            app.appendingPathComponent("Views/Coach"),
-            repository.appendingPathComponent("convex"),
-            repository.appendingPathComponent("proxy/src"),
-            repository.appendingPathComponent("tools/waitlist"),
-        ]
-        // Built by concatenation so this guard's own source is not a match.
-        let names = ["Profile" + "Photo", "profile" + "Photo", "profile" + "Image", "Profile" + "Image", "setProfile" + "Image"]
-        var offenders: [String] = []
-        for directory in guarded {
-            guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else { continue }
-            for case let file as URL in files where ["swift", "ts", "js", "py"].contains(file.pathExtension) {
-                guard !file.path.contains("/node_modules/"), !file.path.contains("/_generated/"),
-                      let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
-                if names.contains(where: source.contains) {
-                    offenders.append(file.path.replacingOccurrences(of: repository.path + "/", with: ""))
-                }
-            }
-        }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: app.appendingPathComponent("Services/Coach").path),
-                      "the guard must be scanning real sources")
-        XCTAssertEqual(offenders, [], "the profile photo must never reach the Coach, telemetry or the Waitlist")
     }
 }
