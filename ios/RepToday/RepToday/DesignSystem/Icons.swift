@@ -7,7 +7,7 @@ enum AppIcon: String, CaseIterable {
     case today, coach, progress, profile, close, pause, play, check, plus, minus
     case chevr, chevl, swap, skip, moretime, lock, bell, shield, clock, refresh
     case undo, send, spark, trash, signout, external, health, sound, focus, settings
-    case mail, calendar, chart, map, arrowup, run, bike, hike, swim, rowing, climb, other
+    case mail, calendar, chart, map, arrowup, run, bike, hike, swim, rowing, climb, other, camera
 
     /// The icon as a resizable template image.
     var image: Image {

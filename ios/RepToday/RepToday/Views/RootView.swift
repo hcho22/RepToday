@@ -290,17 +290,21 @@ private struct MainTabsView: View {
     }
 }
 
-/// The Profile tab: its header, plus navigation rows to Account and the real Settings screen. (The Coach
-/// has its own tab since M4.)
+/// The Profile tab: its header with the profile photo, plus navigation rows to Account and the real
+/// Settings screen. (The Coach has its own tab since M4.)
 ///
 /// Settings is a plain, prominent row rather than a toolbar gear, because the one control behind it - the
 /// anonymous-usage-data opt-out - has to be *found* to be worth anything.
 struct ProfileTabView: View {
+    /// The profile photo. Optional so hosted test surfaces that build the tab without one still render
+    /// (with the placeholder, not a button); the app always provides it.
+    @Environment(ProfilePhotoModel.self) private var profilePhoto: ProfilePhotoModel?
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    ProfileHeader(title: "Profile", subtitle: "Keep your movement basics current.")
+                    ProfileHeader(title: "Profile", subtitle: "Keep your movement basics current.", photo: profilePhoto)
 
                     RowGroup {
                         VStack(spacing: 0) {
@@ -335,15 +339,18 @@ struct ProfileTabView: View {
             .background(Theme.Colors.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .statusBarBacking()
+            .onAppear { profilePhoto?.reload() }
         }
     }
 }
 
-/// The Profile tab's header: the `sun` disc with the profile icon, the screen title in Display M and its
-/// subtitle. At accessibility text sizes the title moves under the disc so it keeps the full width.
+/// The Profile tab's header: the profile photo (or, with none set, the `sun` disc with the profile icon),
+/// the screen title in Display M and its subtitle. At accessibility text sizes the title moves under the
+/// photo so it keeps the full width.
 private struct ProfileHeader: View {
     let title: String
     let subtitle: String
+    let photo: ProfilePhotoModel?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -352,13 +359,11 @@ private struct ProfileHeader: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.md))
             : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.mlg))
         layout {
-            ZStack {
-                Circle().fill(Theme.Colors.sun)
-                IconView(icon: .profile, size: 40)
-                    .foregroundStyle(Theme.Colors.onAccent)
+            if let photo {
+                ProfilePhotoButton(model: photo, diameter: 84)
+            } else {
+                ProfileAvatar(image: nil, diameter: 84)
             }
-            .frame(width: 84, height: 84)
-            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(title)

@@ -36,7 +36,9 @@ struct ServiceContainer {
     /// Signs the user out (US-SO01/US-SO02): uploads what is waiting, then erases the phone's copy of
     /// the account through the same device teardown `accountDeletionService` runs.
     var accountSignOutService: any AccountSignOutServiceProtocol {
-        AccountSignOutService(engine: syncEngine, syncStore: syncStore, eraser: accountDeletionService)
+        AccountSignOutService(
+            engine: syncEngine, syncStore: syncStore, eraser: accountDeletionService, profilePhotoSync: profilePhotoSync
+        )
     }
     /// The Coach agent on the account backend (M4, US-CA01, ADR-0017), `nil` when this build has no
     /// account backend: the Coach tab then says the Coach is not available, and nothing else is
@@ -66,6 +68,16 @@ struct ServiceContainer {
     let syncEngine: SyncEngine?
     /// Reports when a migrating user's iCloud import has settled (US-AU04).
     let legacyICloudImport: any LegacyICloudImporting
+    /// The phone's copy of the user's profile photo, in the app's own container.
+    let profilePhotoStore: any ProfilePhotoStoring
+    /// The account's profile image (Clerk's), or `nil` when this build has no account provider: the
+    /// photo then stays on the phone.
+    let accountProfileImageService: (any AccountProfileImageServiceProtocol)?
+    /// Copies the phone's profile photo to the account's profile image; `nil` exactly when
+    /// `accountProfileImageService` is.
+    var profilePhotoSync: ProfilePhotoSync? {
+        accountProfileImageService.map { ProfilePhotoSync(store: profilePhotoStore, remote: $0) }
+    }
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -97,7 +109,9 @@ struct ServiceContainer {
         syncCursorStore: any SyncCursorStore = InMemorySyncCursorStore(),
         syncRemote: (any SyncRemote)? = nil,
         syncEngine: SyncEngine? = nil,
-        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport)
+        legacyICloudImport: any LegacyICloudImporting = LegacyICloudImportMonitor(settled: .nothingToImport),
+        profilePhotoStore: any ProfilePhotoStoring = InMemoryProfilePhotoStore(),
+        accountProfileImageService: (any AccountProfileImageServiceProtocol)? = nil
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -126,6 +140,8 @@ struct ServiceContainer {
         self.syncRemote = syncRemote
         self.syncEngine = syncEngine
         self.legacyICloudImport = legacyICloudImport
+        self.profilePhotoStore = profilePhotoStore
+        self.accountProfileImageService = accountProfileImageService
     }
 
     static func mock() -> ServiceContainer {
@@ -167,6 +183,8 @@ struct ServiceContainer {
             defaults: UserDefaults(suiteName: "RepToday.mockReminders") ?? .standard,
             scheduler: RecordingReminderNotificationScheduler()
         )
+        // The profile photo, in memory and never copied to an account, torn down with the rest.
+        let profilePhotoStore = InMemoryProfilePhotoStore()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: OnDeviceWorkoutEngine(exerciseService: exerciseService),
@@ -226,7 +244,8 @@ struct ServiceContainer {
                     auth: accountAuthService,
                     syncStore: NoOpSyncStore(),
                     cursorStore: syncCursorStore
-                )
+                ),
+                profilePhotoStore: profilePhotoStore
             ),
             // A scripted Coach and a free account for previews and tests: no network, no model.
             coachService: MockCoachService(),
@@ -236,7 +255,8 @@ struct ServiceContainer {
             reminders: reminders,
             outsideActivityService: outsideActivityService,
             accountAuthService: accountAuthService,
-            syncCursorStore: syncCursorStore
+            syncCursorStore: syncCursorStore,
+            profilePhotoStore: profilePhotoStore
         )
     }
 
@@ -377,6 +397,10 @@ struct ServiceContainer {
         let customWorkoutService = CoreDataCustomWorkoutService(context: context)
         let todayChoices = DefaultsTodayChoicesStore()
         let reminders = CoachReminderService()
+        // The profile photo (in the app's own container) and, with Clerk sign-in, the account's
+        // profile image it is copied to.
+        let profilePhotoStore = FileProfilePhotoStore.live()
+        let accountProfileImageService = accountAuthService as? any AccountProfileImageServiceProtocol
         // The telemetry transport keeps its own session and durable outbox in every ordinary build.
         // Debug probe launches use the counting in-process interceptor; an in-process XCTest host uses
         // a silent interceptor. Both pair interception with volatile storage and no UIKit background
@@ -489,8 +513,10 @@ struct ServiceContainer {
                     auth: accountAuthService,
                     syncStore: syncStore,
                     cursorStore: syncCursorStore,
-                    engine: syncEngine
+                    engine: syncEngine,
+                    profileImage: accountProfileImageService
                 ),
+                profilePhotoStore: profilePhotoStore,
                 legacyICloud: legacyICloudErasure
             ),
             // The Coach agent and the Premium entitlement on the account backend (M4); nil without one.
@@ -505,7 +531,9 @@ struct ServiceContainer {
             syncCursorStore: syncCursorStore,
             syncRemote: syncRemote,
             syncEngine: syncEngine,
-            legacyICloudImport: legacyICloudImport
+            legacyICloudImport: legacyICloudImport,
+            profilePhotoStore: profilePhotoStore,
+            accountProfileImageService: accountProfileImageService
         )
     }
 

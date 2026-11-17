@@ -10,10 +10,13 @@ import Foundation
 /// ships in the app. A build without one gets no instance of this type and uses
 /// `StubAccountAuthService` instead (`ServiceContainer.live`).
 ///
+/// It also keeps the account's profile image a copy of the phone's profile photo
+/// (`AccountProfileImageServiceProtocol`, through `User.setProfileImage`/`deleteProfileImage`).
+///
 /// Clerk keeps the session in the Keychain and refreshes its short-lived session token itself;
 /// `sessionToken()` hands the current one to the account backend, which verifies it against the
 /// Clerk instance (`convex/auth.config.ts`). Clerk's SDK telemetry is switched off.
-final class ClerkAccountAuthService: AccountAuthServiceProtocol, @unchecked Sendable {
+final class ClerkAccountAuthService: AccountAuthServiceProtocol, AccountProfileImageServiceProtocol, @unchecked Sendable {
     // Safe: the only mutable state is main-actor isolated; `publishableKey` is immutable.
     let isConfigured = true
     private let publishableKey: String
@@ -145,6 +148,84 @@ final class ClerkAccountAuthService: AccountAuthServiceProtocol, @unchecked Send
         // A deleted account's session is already gone on the server; the local session is cleared
         // either way.
         try? await Clerk.shared.auth.signOut()
+    }
+
+    // MARK: - The account's profile image (AccountProfileImageServiceProtocol)
+
+    @MainActor
+    func accountImage(forLinkedAccount userId: String) async throws -> Data? {
+        let user = try await reloadedLinkedUser(userId)
+        // `hasImage` is false while Clerk shows its generated avatar, which is not the user's photo.
+        guard user.hasImage, let url = URL(string: user.imageUrl) else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                throw AccountProfileImageError.failed("The account's image could not be read.")
+            }
+            return data
+        } catch {
+            throw Self.profileImageError(error)
+        }
+    }
+
+    @MainActor
+    func setAccountImage(_ jpeg: Data, forLinkedAccount userId: String) async throws {
+        let user = try linkedUser(userId)
+        do {
+            try await user.setProfileImage(imageData: jpeg)
+        } catch {
+            throw Self.profileImageError(error)
+        }
+    }
+
+    @MainActor
+    func removeAccountImage(forLinkedAccount userId: String) async throws {
+        let user = try await reloadedLinkedUser(userId)
+        guard user.hasImage else { return }
+        do {
+            try await user.deleteProfileImage()
+        } catch {
+            throw Self.profileImageError(error)
+        }
+    }
+
+    /// The signed-in Clerk user, only when it is the account this phone is linked to.
+    @MainActor
+    private func linkedUser(_ userId: String) throws -> ClerkKit.User {
+        start()
+        guard Clerk.shared.session?.status == .active, let user = Clerk.shared.user, user.id == userId else {
+            throw AccountProfileImageError.notSignedIn
+        }
+        return user
+    }
+
+    /// `linkedUser`, read fresh from Clerk so its image fields are current.
+    @MainActor
+    private func reloadedLinkedUser(_ userId: String) async throws -> ClerkKit.User {
+        let user = try linkedUser(userId)
+        do {
+            let reloaded = try await user.reload()
+            guard reloaded.id == userId else { throw AccountProfileImageError.notSignedIn }
+            return reloaded
+        } catch {
+            throw Self.profileImageError(error)
+        }
+    }
+
+    private static func profileImageError(_ error: Error) -> AccountProfileImageError {
+        if let error = error as? AccountProfileImageError {
+            return error
+        }
+        if error is URLError {
+            return .unreachable
+        }
+        if let error = error as? ClerkAPIError {
+            if error.code.hasPrefix("authentication_") || error.code.hasPrefix("session_") {
+                return .notSignedIn
+            }
+            return .failed(error.longMessage ?? error.message ?? error.code)
+        }
+        return .failed(error.localizedDescription)
     }
 
     // MARK: - Mapping

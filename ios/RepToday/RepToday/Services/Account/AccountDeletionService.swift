@@ -21,10 +21,14 @@ protocol AccountDeletionServiceProtocol {
     ///    retry of a request already sent) runs the device teardown, and unless the server confirmed
     ///    the deletion complete, `AppState.showAccountDeletionUnderWay` says it is under way and
     ///    finishes on its own. A persisted marker makes a retry after this step skip it, and
-    ///    `resumeRequestedDeletion` finishes a deletion the app was closed during.
+    ///    `resumeRequestedDeletion` finishes a deletion the app was closed during. Just before the
+    ///    request, the account's profile image is removed through Clerk, so no photo is left behind on
+    ///    the server whatever Clerk keeps of a deleted user; when the deletion then stops with nothing
+    ///    deleted, the phone's photo is owed to the account again.
     /// 1. Delete every durable record on the device - the `CDUser`/`CDWorkoutLog`/`CDSessionPolicy`
     ///    rows in the Cloud store and the `CDActiveSession`/`CDOutsideActivity` rows in the Local
-    ///    store - each saved as it goes, then empty the sync outbox and forget the sync cursor. Then
+    ///    store - each saved as it goes, then empty the sync outbox, forget the sync cursor and delete
+    ///    the profile photo kept on the phone. Then
     ///    delete the Rep Today data kept in the user's iCloud from before accounts
     ///    (`LegacyICloudErasure`); when iCloud cannot take it, the deletion is recorded as owed and
     ///    retried on a later launch, and the rest of the teardown carries on.
@@ -90,6 +94,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     /// iCloud. Optional so a caller that predates them still composes the teardown.
     private let outsideActivityService: (any OutsideActivityServiceProtocol)?
     private let account: AccountTeardown?
+    /// The phone's copy of the profile photo. Optional so a caller that predates it still composes the
+    /// teardown.
+    private let profilePhotoStore: (any ProfilePhotoStoring)?
     /// The Rep Today data in the user's iCloud from before accounts, or `nil` where there is none to
     /// reach (tests, previews).
     private let legacyICloud: LegacyICloudErasure?
@@ -103,6 +110,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         let cursorStore: any SyncCursorStore
         var engine: SyncEngine?
         var defaults: UserDefaults = .standard
+        /// The account's profile image, removed before the account is deleted; `nil` when this build
+        /// has no account provider (no photo ever reached an account).
+        var profileImage: (any AccountProfileImageServiceProtocol)?
 
         /// The account whose server data is already deleted, so a retry skips the server step.
         static let remoteDeletionMarkerKey = "Account.remoteDeletionCompletedFor"
@@ -122,6 +132,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         coachState: CoachDeviceTeardown? = nil,
         outsideActivityService: (any OutsideActivityServiceProtocol)? = nil,
         account: AccountTeardown? = nil,
+        profilePhotoStore: (any ProfilePhotoStoring)? = nil,
         legacyICloud: LegacyICloudErasure? = nil
     ) {
         self.userService = userService
@@ -132,6 +143,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         self.coachState = coachState
         self.outsideActivityService = outsideActivityService
         self.account = account
+        self.profilePhotoStore = profilePhotoStore
         self.legacyICloud = legacyICloud
     }
 
@@ -188,18 +200,25 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             }
             await account.engine?.waitForIdle()
             let sentBefore = account.defaults.string(forKey: AccountTeardown.remoteDeletionRequestedKey) == linkedAccount.userId
+            // The profile image goes first, while the session can still reach it. Best-effort: Clerk
+            // deletes the user's data with the user, and a failure here (offline, signed out) is the
+            // same failure the deletion request itself is about to meet.
+            let removedProfileImage = await removeProfileImage(of: linkedAccount, through: account)
             account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionRequestedKey)
             let outcome: RemoteAccountDeletion
             do {
                 outcome = try await remote.deleteAccount()
             } catch SyncRemoteError.unreachable where !sentBefore {
                 account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                restoreProfileImage(ifRemoved: removedProfileImage)
                 throw AccountDeletionError.needsConnection
             } catch SyncRemoteError.notSignedIn where !sentBefore, SyncRemoteError.unauthenticated where !sentBefore {
                 account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                restoreProfileImage(ifRemoved: removedProfileImage)
                 throw AccountDeletionError.needsSignIn
             } catch SyncRemoteError.rejected(code: "deletion_unavailable"?, message: _) where !sentBefore {
                 account.defaults.removeObject(forKey: AccountTeardown.remoteDeletionRequestedKey)
+                restoreProfileImage(ifRemoved: removedProfileImage)
                 throw AccountDeletionError.unavailable
             } catch {
                 outcome = .underWay
@@ -207,6 +226,24 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             account.defaults.set(outcome == .underWay, forKey: AccountTeardown.deletionUnderWayKey)
             account.defaults.set(linkedAccount.userId, forKey: AccountTeardown.remoteDeletionMarkerKey)
         }
+    }
+
+    /// Removes the account's profile image ahead of the deletion request, reporting whether it did.
+    private func removeProfileImage(of linkedAccount: AccountIdentity, through account: AccountTeardown) async -> Bool {
+        guard let profileImage = account.profileImage else { return false }
+        do {
+            try await profileImage.removeAccountImage(forLinkedAccount: linkedAccount.userId)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// The deletion stopped with nothing deleted: the account stays, so it is owed the phone's photo
+    /// again, and the next profile photo sync puts it back.
+    private func restoreProfileImage(ifRemoved removed: Bool) {
+        guard removed else { return }
+        try? profilePhotoStore?.requeueUpload()
     }
 
     /// Steps 1 to 3: everything on the device, the legacy iCloud copy when `deletesICloud`, then routing.
@@ -225,6 +262,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         // The outbox would otherwise upload the deleted records to the next account signed in here.
         try await account?.syncStore.clearOutbox()
         account?.cursorStore.reset()
+        // The profile photo kept on the phone. The account's copy goes with the account, or - when
+        // signing out or erasing - stays with it, as the rest of the account's data does.
+        try profilePhotoStore?.erase()
         // The Rep Today data in the user's iCloud from before accounts. Never throws: a deletion iCloud
         // cannot take now is owed and retried on a later launch.
         if deletesICloud {
