@@ -97,10 +97,10 @@ extension CustomWorkout {
     /// the Rotation is left alone, exactly as an "other" Outside Activity leaves it. Like every Outside
     /// Activity it never completes a group.
     func trainedGroup(library: [Exercise]) -> TrainingDay? {
-        let byId = Self.catalog(library)
+        let patterns = Dictionary(library.map { ($0.id, $0.movementPattern) }, uniquingKeysWith: { first, _ in first })
         var sets: [TrainingDay: Int] = [:]
         for step in steps {
-            guard let id = step.exerciseId, let pattern = byId[id]?.movementPattern,
+            guard let id = step.exerciseId, let pattern = patterns[id],
                   let day = TrainingDay.allCases.first(where: { $0.patterns.contains(pattern) }) else { continue }
             sets[day, default: 0] += step.sets
         }
@@ -153,7 +153,7 @@ extension CustomWorkout {
     /// (`ActiveSessionView.targetText`) and the Trainer art read, so the card, the editor and the player
     /// describe a step the same way.
     func prescriptions(library: [Exercise]) -> [PrescribedExercise] {
-        let byId = Self.catalog(library)
+        let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return steps.map { step in
             let exercise = step.exerciseId.flatMap { byId[$0] } ?? Self.textOnlyExercise(for: step)
             return PrescribedExercise(
@@ -167,9 +167,22 @@ extension CustomWorkout {
         }
     }
 
-    /// The served movement each step id plays as: its own, or for a retired movement the rung that
-    /// replaces it (`Exercise.replaces`, ADR-0020/ADR-0021), so a saved step never plays a movement the
+    /// The workout with every step that names a retired movement swapped to the rung that replaces it
+    /// (`Exercise.replaces`, ADR-0020/ADR-0021), so a saved workout never shows or plays a movement the
     /// app no longer serves.
+    func servingReplacements(library: [Exercise]) -> CustomWorkout {
+        let served = Set(library.map(\.id))
+        let byId = Self.catalog(library)
+        var workout = self
+        workout.steps = steps.map { step in
+            guard let id = step.exerciseId, !served.contains(id), let replacement = byId[id] else { return step }
+            return step.swapped(to: replacement)
+        }
+        return workout
+    }
+
+    /// The served movement each step id resolves to: its own, or for a retired movement the rung that
+    /// replaces it.
     private static func catalog(_ library: [Exercise]) -> [String: Exercise] {
         var byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for exercise in library {

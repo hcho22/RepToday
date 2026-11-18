@@ -31,7 +31,7 @@ The captain asked for the movement to be removed from the app entirely.
 - An intermediate's Practice Movement after Diamond is Spider Push-Up.
 - A user who was on Side-to-Side Push-Up moves to Diamond Push-Up at the bottom of its range, and climbs to Spider when they clear Diamond. This move is not undone if the change is reverted.
 - The Progress tab's strength journey reads only movements the app still serves, so time on Side-to-Side does not appear as a milestone; it still counts toward balance, weekly volume and sessions, and the Coach still reads it by name.
-- A saved Custom Workout step that names Side-to-Side Push-Up plays Diamond Push-Up, through the same `replaces` link (`CustomWorkout.prescriptions`), so a Custom Workout never plays the retired movement; the step keeps its saved sets, reps and rest.
+- A saved Custom Workout step that names Side-to-Side Push-Up becomes Diamond Push-Up when the Coach loads it, through the same `replaces` link (`CustomWorkout.servingReplacements`): its name, per-side counting and estimate follow Diamond in the card, the editor and the player, so a Custom Workout never shows or plays the retired movement; the step keeps its saved sets, reps and rest.
 - A session already paused on Side-to-Side Push-Up before the update still resumes and plays it as saved, with the card's icon in place of Trainer art; nothing rewrites a paused snapshot.
 - The catalog still has 83 movements; the app serves 69.
 

@@ -31,20 +31,30 @@ final class CustomWorkoutTests: XCTestCase {
         XCTAssertEqual(workout.steps[2].seconds, 45)
     }
 
-    func testASavedStepNamingSideToSidePushUpPlaysDiamondPushUp() async throws {
+    func testASavedStepNamingSideToSidePushUpBecomesDiamondPushUp() async throws {
         let movements = try await library()
-        let workout = CustomWorkout(
+        let saved = CustomWorkout(
             id: UUID(), title: "T", note: "",
             steps: [
                 CustomWorkoutStep(id: UUID(), name: "Side-to-Side Push-Up", exerciseId: "push_side_to_side", sets: 3, reps: 8, seconds: nil, perSide: true, restSeconds: 30),
+                CustomWorkoutStep(id: UUID(), name: "Free step", exerciseId: nil, sets: 2, reps: 10, seconds: nil, perSide: false, restSeconds: 30),
             ],
             messageId: nil, proposalId: nil, createdAt: Date(), acceptedAt: Date()
         )
+        let workout = saved.servingReplacements(library: movements)
+        let step = workout.steps[0]
+        XCTAssertEqual(step.exerciseId, "push_diamond", "a retired movement becomes the rung that replaces it")
+        XCTAssertEqual(step.name, "Diamond Push-Up")
+        XCTAssertFalse(step.perSide, "per side follows the replacement")
+        XCTAssertEqual(step.sets, 3)
+        XCTAssertEqual(step.reps, 8)
+        XCTAssertEqual(step.restSeconds, 30)
+        XCTAssertEqual(workout.steps[1], saved.steps[1], "a text-only step is untouched")
+        // 3 x (24 + 30) + 2 x (30 + 30) = 282 seconds: the step is no longer counted on both sides.
+        XCTAssertEqual(workout.estimatedMinutes, 5)
+
         let played = try XCTUnwrap(workout.playableWorkout(library: movements, now: Date()).blocks.first?.exercises.first)
-        XCTAssertEqual(played.exercise.id, "push_diamond", "a retired movement plays as the rung that replaces it")
-        XCTAssertEqual(played.exercise.displayName, "Diamond Push-Up")
-        XCTAssertEqual(played.sets, 3)
-        XCTAssertEqual(played.reps, 8)
+        XCTAssertEqual(played.exercise.id, "push_diamond")
         XCTAssertEqual(workout.trainedGroup(library: movements), .push)
     }
 
