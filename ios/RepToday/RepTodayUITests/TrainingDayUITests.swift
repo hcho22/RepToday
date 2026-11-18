@@ -85,7 +85,7 @@ final class TrainingDayUITests: XCTestCase {
         // The movements ADR-0020 added ship with the card's icon until their art lands; every other one
         // shows the Trainer.
         let awaitingArt: Set<String> = [
-            "Wide Push-Up", "One-Legged Push-Up", "Side-to-Side Push-Up", "Spider Push-Up",
+            "Wide Push-Up", "One-Legged Push-Up", "Spider Push-Up",
             "Explosive Push-Up", "Burpee with Push-Up", "Burpee",
         ]
         for (name, label) in illustrations where !awaitingArt.contains(name) {

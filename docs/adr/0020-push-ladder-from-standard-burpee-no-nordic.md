@@ -4,6 +4,7 @@
 - Date: 2026-11-16
 - Deciders: captain, via the movement change request and the details settled with it (2026-11-16)
 - Amends: [ADR-0006](0006-foundations-push-pull-legs-core.md) - the Push foundation's horizontal entry rung is now Standard Push-Up; [ADR-0007](0007-staple-movements-for-beginner-and-intermediate.md) - its staple lists and its "every foundation stays clearable from Wall Push-Up" consequence.
+- Amended by [ADR-0021](0021-retire-side-to-side-push-up.md) (2026-11-17): Side-to-Side Push-Up is retired and Diamond Push-Up replaces it, so the ladder, staple and per-side lists, the Practice Movement after Diamond and the served count below record this ADR's landing state.
 - Relates to: `CONTEXT.md` -> "Foundation", "Staple movement", "Variation"; [ADR-0014](0014-retire-primal-pillar.md) (the retired audience); [ADR-0015](0015-practice-movement-bypasses-staple-gate.md); [ADR-0018](0018-session-sizing-and-day-matched-bookends.md).
 
 ## Context

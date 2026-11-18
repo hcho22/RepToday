@@ -81,15 +81,15 @@ final class ExerciseLibraryTests: XCTestCase {
 
     // MARK: - Withdrawn movements
 
-    /// Every primal movement is retired with its pillar (ADR-0014), and Wall, Incline and Knee Push-Up and
-    /// both Nordic curls left their ladders (ADR-0020), each in its own retired chain so no live ladder links
-    /// to one. Nothing else is retired, and the one movement held for version 2 - Prone Y-T-W Raises - is
+    /// Every primal movement is retired with its pillar (ADR-0014), Wall, Incline and Knee Push-Up and
+    /// both Nordic curls left their ladders (ADR-0020) and Side-to-Side Push-Up left its ladder (ADR-0021),
+    /// each in its own retired chain so no live ladder links to one. Nothing else is retired, and the one movement held for version 2 - Prone Y-T-W Raises - is
     /// the withdrawn tail at the top of the postural chain.
     func testWithdrawnMovementsAreThePrimalPillarTheRemovedRungsAndProneYTWRaises() throws {
         let retired = Set(exercises.filter { $0.audience == .retired }.map(\.id))
-        let removedRungs: Set<String> = ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic"]
+        let removedRungs: Set<String> = ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic", "push_side_to_side"]
         XCTAssertEqual(retired, Set(exercises.filter { $0.pillar == .primal }.map(\.id)).union(removedRungs))
-        XCTAssertEqual(retired.count, 12)
+        XCTAssertEqual(retired.count, 13)
         for id in removedRungs {
             let chain = try XCTUnwrap(byId[id]).progressionChainId
             XCTAssertTrue(exercises.filter { $0.progressionChainId == chain }.allSatisfy(MovementAccess.isWithdrawn),

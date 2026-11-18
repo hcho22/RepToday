@@ -1,11 +1,12 @@
 import XCTest
 @testable import RepToday
 
-/// ADR-0020: the horizontal push ladder starts at Standard Push-Up and runs through eleven rungs, Burpee
-/// (no push-up) joins the squat ladder after Sumo Squat, and both Nordic curls leave, so the bridge ladder
-/// ends at Long-Lever Single-Leg Bridge. Wall, Incline and Knee Push-Up and the Nordic curls are retired:
-/// they stay in the file so history resolves, are never served, and a user who was on one stands on the
-/// rung that replaces it (`Exercise.replaces`).
+/// ADR-0020: the horizontal push ladder starts at Standard Push-Up, Burpee (no push-up) joins the squat
+/// ladder after Sumo Squat, and both Nordic curls leave, so the bridge ladder ends at Long-Lever Single-Leg
+/// Bridge. ADR-0021 then took Side-to-Side Push-Up off the push ladder, which now runs through ten rungs
+/// with Diamond climbing straight to Spider. Wall, Incline and Knee Push-Up, the Nordic curls and
+/// Side-to-Side Push-Up are retired: they stay in the file so history resolves, are never served, and a
+/// user who was on one stands on the rung that replaces it (`Exercise.replaces`).
 ///
 /// Everything runs over the real bundled `Exercises.json`, so the ladders below are the captain's decision
 /// as shipped data.
@@ -19,7 +20,6 @@ final class PushLegsLadderTests: XCTestCase {
         ("push_wide", .beginner),
         ("push_one_leg", .beginner),
         ("push_diamond", .intermediate),
-        ("push_side_to_side", .intermediate),
         ("push_spider", .intermediate),
         ("push_explosive", .intermediate),
         ("push_burpee", .intermediate),
@@ -36,11 +36,13 @@ final class PushLegsLadderTests: XCTestCase {
     /// The movements this change retired, and the rung each user on one now stands on.
     private let removedPush = ["push_wall", "push_incline", "push_knee"]
     private let removedNordic = ["hinge_nordic_assisted", "hinge_nordic"]
-    private var removed: [String] { removedPush + removedNordic }
+    /// ADR-0021 retired Side-to-Side Push-Up, which ADR-0020 had added; Diamond Push-Up replaces it.
+    private let removedSideToSide = ["push_side_to_side"]
+    private var removed: [String] { removedPush + removedNordic + removedSideToSide }
 
-    /// The seven movements this change added, all without Trainer art for now.
+    /// The six movements ADR-0020 added that the app still serves, all without Trainer art for now.
     private let added = [
-        "push_wide", "push_one_leg", "push_side_to_side", "push_spider", "push_explosive", "push_burpee", "squat_burpee",
+        "push_wide", "push_one_leg", "push_spider", "push_explosive", "push_burpee", "squat_burpee",
     ]
 
     // MARK: - Fixtures
@@ -104,7 +106,7 @@ final class PushLegsLadderTests: XCTestCase {
 
     // MARK: - Ladders
 
-    func testThePushLadderStartsAtStandardAndRunsThroughElevenRungs() async throws {
+    func testThePushLadderStartsAtStandardAndRunsThroughTenRungs() async throws {
         let library = try await offeredLibrary()
         let push = ladder("push_horizontal", in: library)
         XCTAssertEqual(push.map(\.id), pushLadder.map(\.id))
@@ -116,7 +118,7 @@ final class PushLegsLadderTests: XCTestCase {
             XCTAssertFalse(rung.isHold, rung.id)
         }
         XCTAssertEqual(push.filter { $0.isPerSide == true }.map(\.id),
-                       ["push_side_to_side", "push_spider", "push_archer", "push_one_arm_assisted", "push_one_arm"])
+                       ["push_spider", "push_archer", "push_one_arm_assisted", "push_one_arm"])
         XCTAssertEqual(push.map(\.difficulty), push.map(\.difficulty).sorted(), "difficulty never drops up the ladder")
     }
 
@@ -127,7 +129,7 @@ final class PushLegsLadderTests: XCTestCase {
         }
         XCTAssertEqual(available(.beginner), ["push_standard", "push_wide", "push_one_leg"])
         XCTAssertEqual(available(.intermediate), [
-            "push_standard", "push_wide", "push_one_leg", "push_diamond", "push_side_to_side",
+            "push_standard", "push_wide", "push_one_leg", "push_diamond",
             "push_spider", "push_explosive", "push_burpee",
         ])
         XCTAssertEqual(available(.advanced), Array(pushLadder.map(\.id).dropLast(2)), "Assisted One-Arm and One-Arm keep their lock")
@@ -159,7 +161,7 @@ final class PushLegsLadderTests: XCTestCase {
         XCTAssertFalse(hinge.contains { $0.phase == .strength }, "hinge has no Strength-Phase skill, like Pull")
     }
 
-    /// An intermediate user who clears Diamond Push-Up now climbs to Side-to-Side, an intermediate rung,
+    /// An intermediate user who clears Diamond Push-Up now climbs to Spider (ADR-0021), an intermediate rung,
     /// where before Archer's advanced audience held them on Diamond; one who clears Sumo Squat climbs to
     /// Burpee.
     func testIntermediatesClimbPastDiamondAndSumoSquat() async throws {
@@ -168,7 +170,7 @@ final class PushLegsLadderTests: XCTestCase {
         let sumo = try XCTUnwrap(library.first { $0.id == "squat_sumo" })
         let fromDiamond = selection(chain: "push_horizontal", level: .intermediate,
                                     logs: [clearingLog(diamond, level: .intermediate, daysAgo: 1)], library: library)
-        XCTAssertEqual(fromDiamond?.exercise.id, "push_side_to_side")
+        XCTAssertEqual(fromDiamond?.exercise.id, "push_spider")
         XCTAssertEqual(fromDiamond?.didAdvance, true)
         let fromSumo = selection(chain: "squat", level: .intermediate,
                                  logs: [clearingLog(sumo, level: .intermediate, daysAgo: 1)], library: library)
@@ -187,13 +189,14 @@ final class PushLegsLadderTests: XCTestCase {
         }
         XCTAssertEqual(ladder("push_horizontal_retired", in: file).map(\.id), removedPush)
         XCTAssertEqual(ladder("hinge_nordic", in: file).map(\.id), removedNordic)
+        XCTAssertEqual(ladder("push_side_to_side_retired", in: file).map(\.id), removedSideToSide)
         XCTAssertEqual(file.count, 83)
     }
 
     func testTheServiceNeverServesARemovedMovement() async throws {
         let service = try MockExerciseService()
         let offered = Set(try await service.exercises().map(\.id))
-        XCTAssertEqual(offered.count, 70)
+        XCTAssertEqual(offered.count, 69)
         XCTAssertTrue(offered.isDisjoint(with: removed))
         XCTAssertTrue(offered.isSuperset(of: added))
         for id in removed {
@@ -249,11 +252,50 @@ final class PushLegsLadderTests: XCTestCase {
 
     // MARK: - A user on a removed rung keeps their place
 
-    func testStandardAndLongLeverReplaceTheRemovedRungs() async throws {
+    func testStandardLongLeverAndDiamondReplaceTheRemovedRungs() async throws {
         let library = try await offeredLibrary()
         XCTAssertEqual(library.first { $0.id == "push_standard" }?.replaces, removedPush)
         XCTAssertEqual(library.first { $0.id == "hinge_long_lever_bridge" }?.replaces, removedNordic)
-        XCTAssertEqual(library.filter { $0.replaces != nil }.map(\.id).sorted(), ["hinge_long_lever_bridge", "push_standard"])
+        XCTAssertEqual(library.first { $0.id == "push_diamond" }?.replaces, removedSideToSide)
+        XCTAssertEqual(library.filter { $0.replaces != nil }.map(\.id).sorted(),
+                       ["hinge_long_lever_bridge", "push_diamond", "push_standard"])
+    }
+
+    /// ADR-0021: a user whose history is on Side-to-Side Push-Up is served Diamond Push-Up, the highest rung
+    /// they still get at or below it, at the bottom of its range; the Side-to-Side clear never carries over
+    /// to move them past Diamond. A beginner who somehow carries that history gets the closest push rung
+    /// they get, and a user who later worked Spider stands on Spider.
+    func testAUserOnSideToSideIsServedDiamondAtTheBottomOfItsRange() async throws {
+        let library = try await offeredLibrary()
+        let diamond = try XCTUnwrap(library.first { $0.id == "push_diamond" })
+        let sideToSide = try XCTUnwrap(try fullFileLibrary().first { $0.id == "push_side_to_side" })
+        for level in [FitnessLevel.intermediate, .advanced] {
+            let logs = [clearingLog(sideToSide, level: level, daysAgo: 2)]
+            let original = logs
+            let served = selection(chain: "push_horizontal", level: level, logs: logs, library: library)
+            XCTAssertEqual(served?.exercise.id, "push_diamond", "\(level)")
+            XCTAssertEqual(served?.didAdvance, false, "\(level)")
+            let target = AdaptiveOverload.target(for: diamond, level: level, recentLogs: logs)
+            XCTAssertEqual(target.earned, RepGrammar.earnedRange(for: diamond, level: level).lowerBound,
+                           "\(level): Diamond Push-Up opens at the bottom of its range")
+            XCTAssertEqual(logs, original, "history is read, never rewritten")
+        }
+        let logs = [workLog("push_side_to_side", pattern: .push, daysAgo: 2)]
+        XCTAssertEqual(selection(chain: "push_horizontal", level: .beginner, logs: logs, library: library)?.exercise.id,
+                       "push_one_leg")
+        let later = logs + [workLog("push_spider", pattern: .push, value: 5, daysAgo: 1)]
+        XCTAssertEqual(selection(chain: "push_horizontal", level: .intermediate, logs: later, library: library)?.exercise.id,
+                       "push_spider")
+    }
+
+    /// The re-linked ladder runs both ways: Diamond climbs to Spider and Spider regresses to Diamond.
+    func testDiamondAndSpiderAreAdjacentRungs() async throws {
+        let library = try await offeredLibrary()
+        let diamond = try XCTUnwrap(library.first { $0.id == "push_diamond" })
+        let spider = try XCTUnwrap(library.first { $0.id == "push_spider" })
+        XCTAssertEqual(diamond.progressionId, "push_spider")
+        XCTAssertEqual(spider.regressionId, "push_diamond")
+        XCTAssertEqual(spider.progressionOrder, diamond.progressionOrder + 1)
     }
 
     /// A beginner whose history is only on Wall, Incline or Knee Push-Up is served Standard Push-Up, at
@@ -319,13 +361,14 @@ final class PushLegsLadderTests: XCTestCase {
     }
 
     /// The Progress tab reports the rung the user is served: Standard for a Knee Push-Up history, Long-Lever
-    /// for a Nordic one, and names no removed movement anywhere, while the old sessions still count.
+    /// for a Nordic one, Diamond for a Side-to-Side one, and names no removed movement anywhere, while the old sessions still count.
     func testProgressReportsTheReplacementAndNamesNoRemovedMovement() async throws {
         let library = try await offeredLibrary()
         let cases: [(logs: [WorkoutLog], pattern: MovementPattern, expected: String, phase: Phase)] = [
             ([workLog("push_wall", pattern: .push, daysAgo: 9), workLog("push_knee", pattern: .push, daysAgo: 2)],
              .push, "push_standard", .discipline),
             ([workLog("hinge_nordic", pattern: .hinge, value: 10, daysAgo: 2)], .hinge, "hinge_long_lever_bridge", .strength),
+            ([workLog("push_side_to_side", pattern: .push, daysAgo: 2)], .push, "push_diamond", .discipline),
         ]
         for (logs, pattern, expected, phase) in cases {
             let analytics = ProgressAnalytics.from(logs: logs, library: library, level: .advanced, phase: phase, asOf: asOf, calendar: calendar)

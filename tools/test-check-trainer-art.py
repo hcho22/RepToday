@@ -15,11 +15,10 @@ CHECKER = ROOT / 'tools/check-trainer-art.py'
 CATALOG = ROOT / 'ios/RepToday/RepToday/Resources/Exercises.json'
 TRAINER_ART = ROOT / 'ios/RepToday/RepToday/Resources/Assets.xcassets/Trainer'
 
-# The seven movements ADR-0020 added ship with the card's icon fallback; their art is a later task.
+# The six movements ADR-0020 added and kept (ADR-0021 retired Side-to-Side Push-Up) ship with the card's icon fallback; their art is a later task.
 NEW_MOVEMENTS = [
     ('push_wide', 'Wide Push-Up'),
     ('push_one_leg', 'One-Legged Push-Up'),
-    ('push_side_to_side', 'Side-to-Side Push-Up'),
     ('push_spider', 'Spider Push-Up'),
     ('push_explosive', 'Explosive Push-Up'),
     ('push_burpee', 'Burpee with Push-Up'),

@@ -110,10 +110,10 @@ describe("contextMessage", () => {
     expect(catalog).toContain("- push_standard: Standard Push-Up (push");
     expect(catalog).toContain("- squat_burpee: Burpee (squat");
     expect(catalog).not.toContain("pull_ytw");
-    for (const removed of ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic"]) {
+    for (const removed of ["push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic", "push_side_to_side"]) {
       expect(catalog).not.toContain(`- ${removed}:`);
     }
-    expect(SERVED_CATALOG.length).toBe(70);
+    expect(SERVED_CATALOG.length).toBe(69);
   });
 });
 
