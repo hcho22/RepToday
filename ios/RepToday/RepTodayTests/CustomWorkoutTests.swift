@@ -31,6 +31,23 @@ final class CustomWorkoutTests: XCTestCase {
         XCTAssertEqual(workout.steps[2].seconds, 45)
     }
 
+    func testASavedStepNamingSideToSidePushUpPlaysDiamondPushUp() async throws {
+        let movements = try await library()
+        let workout = CustomWorkout(
+            id: UUID(), title: "T", note: "",
+            steps: [
+                CustomWorkoutStep(id: UUID(), name: "Side-to-Side Push-Up", exerciseId: "push_side_to_side", sets: 3, reps: 8, seconds: nil, perSide: true, restSeconds: 30),
+            ],
+            messageId: nil, proposalId: nil, createdAt: Date(), acceptedAt: Date()
+        )
+        let played = try XCTUnwrap(workout.playableWorkout(library: movements, now: Date()).blocks.first?.exercises.first)
+        XCTAssertEqual(played.exercise.id, "push_diamond", "a retired movement plays as the rung that replaces it")
+        XCTAssertEqual(played.exercise.displayName, "Diamond Push-Up")
+        XCTAssertEqual(played.sets, 3)
+        XCTAssertEqual(played.reps, 8)
+        XCTAssertEqual(workout.trainedGroup(library: movements), .push)
+    }
+
     func testTheEstimateCountsWorkBothSidesAndRest() {
         let workout = CustomWorkout(
             id: UUID(), title: "T", note: "",

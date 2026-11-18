@@ -61,7 +61,7 @@ extension CustomWorkout {
 
     /// Builds the reviewable workout from the Coach's draft. Not yet accepted.
     init(draft: CustomWorkoutDraft, messageId: String?, proposalId: String?, library: [Exercise], now: Date) {
-        let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let byId = Self.catalog(library)
         self.init(
             id: UUID(),
             title: draft.title,
@@ -97,10 +97,10 @@ extension CustomWorkout {
     /// the Rotation is left alone, exactly as an "other" Outside Activity leaves it. Like every Outside
     /// Activity it never completes a group.
     func trainedGroup(library: [Exercise]) -> TrainingDay? {
-        let patterns = Dictionary(library.map { ($0.id, $0.movementPattern) }, uniquingKeysWith: { first, _ in first })
+        let byId = Self.catalog(library)
         var sets: [TrainingDay: Int] = [:]
         for step in steps {
-            guard let id = step.exerciseId, let pattern = patterns[id],
+            guard let id = step.exerciseId, let pattern = byId[id]?.movementPattern,
                   let day = TrainingDay.allCases.first(where: { $0.patterns.contains(pattern) }) else { continue }
             sets[day, default: 0] += step.sets
         }
@@ -153,7 +153,7 @@ extension CustomWorkout {
     /// (`ActiveSessionView.targetText`) and the Trainer art read, so the card, the editor and the player
     /// describe a step the same way.
     func prescriptions(library: [Exercise]) -> [PrescribedExercise] {
-        let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let byId = Self.catalog(library)
         return steps.map { step in
             let exercise = step.exerciseId.flatMap { byId[$0] } ?? Self.textOnlyExercise(for: step)
             return PrescribedExercise(
@@ -165,6 +165,19 @@ extension CustomWorkout {
                 restSeconds: step.restSeconds
             )
         }
+    }
+
+    /// The served movement each step id plays as: its own, or for a retired movement the rung that
+    /// replaces it (`Exercise.replaces`, ADR-0020/ADR-0021), so a saved step never plays a movement the
+    /// app no longer serves.
+    private static func catalog(_ library: [Exercise]) -> [String: Exercise] {
+        var byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for exercise in library {
+            for replacedId in exercise.replaces ?? [] where byId[replacedId] == nil {
+                byId[replacedId] = exercise
+            }
+        }
+        return byId
     }
 
     private static func textOnlyExercise(for step: CustomWorkoutStep) -> Exercise {
