@@ -29,6 +29,7 @@ final class RestorePurchasesStoreKitTests: XCTestCase {
         session.disableDialogs = true
         session.clearTransactions()
         try await skipUnlessTheSessionServesTheProducts()
+        try await session.waitUntilNoEntitlementRemains()
     }
 
     /// Proves the products come from `RepToday.storekit` by simulating a failed product load: a session
@@ -141,5 +142,27 @@ final class RestorePurchasesStoreKitTests: XCTestCase {
         XCTAssertEqual(grant.subscription.tier, .premium)
         let linked = await entitlements.linked
         XCTAssertEqual(linked.count, 1, "the purchase is linked to the account")
+    }
+}
+
+extension SKTestSession {
+    /// `clearTransactions()` returns before StoreKit's cached `Transaction.currentEntitlements` catches
+    /// up, so a subscription the previous test bought can still read as active. Wait, bounded, until the
+    /// cache agrees the store is empty, so every test starts from the store it names.
+    func waitUntilNoEntitlementRemains(timeout: TimeInterval = 10) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            var remaining = false
+            for await _ in Transaction.currentEntitlements {
+                remaining = true
+                break
+            }
+            if !remaining { return }
+            guard Date() < deadline else {
+                XCTFail("clearTransactions() left an active entitlement after \(timeout)s")
+                return
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 }

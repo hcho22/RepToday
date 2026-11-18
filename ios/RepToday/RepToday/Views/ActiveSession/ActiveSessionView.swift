@@ -392,9 +392,10 @@ struct ActiveSessionView: View {
 
     /// The exercise screen (DESIGN "Session screen layout"): the top bar; the block overline; the
     /// Trainer stage; the movement name with its target on the same baseline; the round tracker; then,
-    /// pushed to the bottom of the column, the workout timer - with Done and the quiet actions pinned
-    /// below. On a short screen or at large text the column scrolls beneath the pinned actions, the stage
-    /// first shrinking to fit; the timer is never drawn under the art or the controls.
+    /// one column gap below, the workout timer - with Done and the quiet actions pinned below. A roomy
+    /// phone leaves its spare height under the timer, above the pinned actions. On a short screen or at
+    /// large text the column scrolls beneath the pinned actions, the stage first shrinking to fit; the
+    /// timer is never drawn under the art or the controls.
     private var player: some View {
         VStack(spacing: 0) {
             SessionTopBar(
@@ -436,9 +437,9 @@ struct ActiveSessionView: View {
                             if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
                         }
 
-                        // The flexible space: it pushes the timer to the bottom of a roomy column and
-                        // shrinks to the rhythm where the column has to scroll.
-                        Color.clear.frame(height: timerGap(rhythm: rhythm))
+                        // The timer follows the content above at the column's rhythm; whatever height
+                        // a roomy phone has left over stays below it.
+                        Color.clear.frame(height: rhythm)
 
                         VStack(alignment: .leading, spacing: rhythm) {
                             timer
@@ -480,17 +481,9 @@ struct ActiveSessionView: View {
     private var cardHeight: CGFloat {
         let natural = ExerciseDemoView.naturalHeight(width: playerWidth - 2 * Theme.Spacing.screenMargin)
         let rhythm = isCompactColumn ? Self.compactColumnRhythm : Self.columnRhythm
-        // The column above the card and the least gap above the timer each take one rhythm.
+        // The column above the card and the gap above the timer each take one rhythm.
         let room = scrollHeight - heightAroundCard - heightBelowColumn - 2 * rhythm - Self.columnBottomPadding
         return min(natural, ExerciseDemoView.fittedHeight(room: room))
-    }
-
-    /// The space between the round tracker and the timer: whatever the column leaves over, so the timer
-    /// sits just above Done, but never less than the column's rhythm.
-    private func timerGap(rhythm: CGFloat) -> CGFloat {
-        guard scrollHeight.isFinite else { return rhythm }
-        let used = rhythm + heightAroundCard + cardHeight + heightBelowColumn + Self.columnBottomPadding
-        return max(rhythm, scrollHeight - used)
     }
 
     /// Whether the column runs at its tight rhythm (its gaps and the round tracker's gaps between its

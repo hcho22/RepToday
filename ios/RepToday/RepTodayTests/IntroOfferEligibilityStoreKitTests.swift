@@ -26,6 +26,7 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
         session.disableDialogs = true
         session.clearTransactions()
         try await skipUnlessTheSessionServesTheProducts()
+        try await session.waitUntilNoEntitlementRemains()
     }
 
     /// Proves the products come from `RepToday.storekit` by simulating a failed product load: a session
