@@ -72,8 +72,8 @@ final class ExerciseServiceTests: XCTestCase {
         let service = try MockExerciseService()
         let all = try await service.exercises()
         XCTAssertEqual(
-            all.count, 70,
-            "the offered library is the bundled 83 minus the 12 retired movements (7 primal, 5 ADR-0020 rungs) and Prone Y-T-W Raises (version 2)"
+            all.count, 69,
+            "the offered library is the bundled 83 minus the 13 retired movements (7 primal, 5 ADR-0020 rungs, Side-to-Side Push-Up) and Prone Y-T-W Raises (version 2)"
         )
         XCTAssertFalse(all.contains(where: MovementAccess.isWithdrawn), "no withdrawn movement is ever served")
     }
@@ -110,7 +110,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testExercisesByMovementPattern() async throws {
         let service = try MockExerciseService()
         let push = try await service.exercises(for: .push)
-        XCTAssertEqual(push.count, 13, "16 push movements in the file minus the 3 ADR-0020 retired")
+        XCTAssertEqual(push.count, 12, "16 push movements in the file minus the 3 ADR-0020 retired and Side-to-Side Push-Up (ADR-0021)")
         XCTAssertTrue(push.allSatisfy { $0.movementPattern == .push })
     }
 
@@ -124,7 +124,7 @@ final class ExerciseServiceTests: XCTestCase {
             "core_one_leg_l_sit", "core_l_sit",
         ], "the retired Nordic curls are never served (ADR-0020)")
         let discipline = try await service.exercises(for: Phase.discipline)
-        XCTAssertEqual(discipline.count, 64, "75 discipline movements minus the 11 withdrawn (10 retired, 1 version 2)")
+        XCTAssertEqual(discipline.count, 63, "75 discipline movements minus the 12 withdrawn (11 retired, 1 version 2)")
     }
 
     func testExercisesByDifficultyRange() async throws {

@@ -374,7 +374,7 @@ final class ExercisePoolFilterTests: XCTestCase {
     /// reviewable as a product-level artifact, not just an assertion.
     func testPRDValidationOverRealBundledLibrary() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(library.count, 70, "should run over the full offered library (83 minus the 12 retired movements and the 1 held for version 2)")
+        XCTAssertEqual(library.count, 69, "should run over the full offered library (83 minus the 13 retired movements and the 1 held for version 2)")
 
         let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])

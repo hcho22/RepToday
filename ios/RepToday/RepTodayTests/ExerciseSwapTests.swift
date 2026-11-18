@@ -283,7 +283,7 @@ final class ExerciseSwapTests: XCTestCase {
         let user = user(level: .advanced)
         let strength = library.filter { $0.pillar == .strength }
 
-        for (point, expectedSwapped) in [("bottom", 40), ("middle", 27), ("top", 14)] {
+        for (point, expectedSwapped) in [("bottom", 39), ("middle", 26), ("top", 14)] {
             var swapped = 0
             var declined: [String] = []
             for movement in strength {

@@ -61,7 +61,7 @@ extension CustomWorkout {
 
     /// Builds the reviewable workout from the Coach's draft. Not yet accepted.
     init(draft: CustomWorkoutDraft, messageId: String?, proposalId: String?, library: [Exercise], now: Date) {
-        let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let byId = Self.catalog(library)
         self.init(
             id: UUID(),
             title: draft.title,
@@ -165,6 +165,32 @@ extension CustomWorkout {
                 restSeconds: step.restSeconds
             )
         }
+    }
+
+    /// The workout with every step that names a retired movement swapped to the rung that replaces it
+    /// (`Exercise.replaces`, ADR-0020/ADR-0021), so a saved workout never shows or plays a movement the
+    /// app no longer serves.
+    func servingReplacements(library: [Exercise]) -> CustomWorkout {
+        let served = Set(library.map(\.id))
+        let byId = Self.catalog(library)
+        var workout = self
+        workout.steps = steps.map { step in
+            guard let id = step.exerciseId, !served.contains(id), let replacement = byId[id] else { return step }
+            return step.swapped(to: replacement)
+        }
+        return workout
+    }
+
+    /// The served movement each step id resolves to: its own, or for a retired movement the rung that
+    /// replaces it.
+    private static func catalog(_ library: [Exercise]) -> [String: Exercise] {
+        var byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for exercise in library {
+            for replacedId in exercise.replaces ?? [] where byId[replacedId] == nil {
+                byId[replacedId] = exercise
+            }
+        }
+        return byId
     }
 
     private static func textOnlyExercise(for step: CustomWorkoutStep) -> Exercise {

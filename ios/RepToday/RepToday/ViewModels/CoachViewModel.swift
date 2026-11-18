@@ -268,7 +268,7 @@ final class CoachViewModel {
         }
         if let workouts = try? await customWorkouts.workouts() {
             acceptedWorkouts = Dictionary(
-                workouts.compactMap { workout in workout.proposalId.map { ($0, workout) } },
+                workouts.compactMap { workout in workout.proposalId.map { ($0, workout.servingReplacements(library: library)) } },
                 uniquingKeysWith: { first, _ in first }
             )
         }

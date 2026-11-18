@@ -251,7 +251,7 @@ final class TrainingDaySessionTests: XCTestCase {
         let catalog = try JSONDecoder().decode([Exercise].self, from: data)
         XCTAssertEqual(catalog.count, 83)
         XCTAssertTrue(catalog.filter { $0.pillar == .primal }.allSatisfy { $0.audience == .retired })
-        XCTAssertEqual(library.count, 70)
+        XCTAssertEqual(library.count, 69)
         XCTAssertFalse(library.contains { MovementAccess.isWithdrawn($0) })
         let ytw = try XCTUnwrap(catalog.first { $0.id == "pull_ytw" })
         XCTAssertEqual(ytw.progressionChainId, "pull_postural")

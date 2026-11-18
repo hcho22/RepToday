@@ -25,7 +25,7 @@ final class StapleMovementsTests: XCTestCase {
     ]
     /// Training staples for intermediate users only.
     private let intermediateTraining: Set<String> = [
-        "push_diamond", "push_side_to_side", "push_spider", "push_explosive", "push_burpee",
+        "push_diamond", "push_spider", "push_explosive", "push_burpee",
         "pull_floor_row", "squat_sumo", "squat_burpee", "lunge_split_squat",
         "hinge_bridge_march", "hinge_single_leg_rdl", "core_side_plank", "core_dead_bug",
     ]
@@ -61,9 +61,9 @@ final class StapleMovementsTests: XCTestCase {
         "primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch",
         "primal_bear_crawl", "primal_crab_walk", "primal_ground_to_standing", "primal_bear_shoulder_tap",
     ]
-    /// The rungs that left their ladders for everyone (ADR-0020).
+    /// The rungs that left their ladders for everyone (ADR-0020, ADR-0021).
     private let retiredRungs: Set<String> = [
-        "push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic",
+        "push_wall", "push_incline", "push_knee", "hinge_nordic_assisted", "hinge_nordic", "push_side_to_side",
     ]
     /// Every retired movement.
     private var retired: Set<String> { retiredPrimal.union(retiredRungs) }
@@ -216,9 +216,9 @@ final class StapleMovementsTests: XCTestCase {
         }
         XCTAssertEqual(count(.beginner, training: true), 14)
         XCTAssertEqual(count(.beginner, training: false), 16)
-        XCTAssertEqual(count(.intermediate, training: true), 27)
+        XCTAssertEqual(count(.intermediate, training: true), 26)
         XCTAssertEqual(count(.intermediate, training: false), 16)
-        XCTAssertEqual(count(.advanced, training: true), 38)
+        XCTAssertEqual(count(.advanced, training: true), 37)
         XCTAssertEqual(count(.advanced, training: false), 26)
     }
 
@@ -244,7 +244,7 @@ final class StapleMovementsTests: XCTestCase {
         let service = try MockExerciseService()
         let offered = ids(try await service.exercises())
         XCTAssertTrue(offered.isDisjoint(with: withdrawn), "the service never serves a withdrawn movement")
-        XCTAssertEqual(offered.count, 70)
+        XCTAssertEqual(offered.count, 69)
         for pillar in Pillar.allCases {
             let byPillar = try await service.exercises(for: pillar)
             XCTAssertTrue(ids(byPillar).isDisjoint(with: withdrawn))
