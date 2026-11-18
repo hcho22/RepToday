@@ -446,6 +446,12 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                     timer.maxY, visible.maxY + 0.5,
                     "\(state.name) \(variant.suffix): the timer sits \(timer.maxY - visible.maxY) pt below the fold"
                 )
+                // The timer follows the round tracker at the column's rhythm on every size, so a roomy
+                // phone opens no gap between the exercise and its timer.
+                XCTAssertEqual(
+                    timer.minY - tracker.maxY, rhythm, accuracy: 0.5,
+                    "\(state.name) \(variant.suffix): the timer sits \(timer.minY - tracker.maxY) pt below the round tracker"
+                )
                 if variant.isSmall {
                     XCTAssertGreaterThanOrEqual(card, ExerciseDemoView.minHeight - 0.5,
                                                 "\(state.name) \(variant.suffix): the card shrank below its floor")
