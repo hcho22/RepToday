@@ -202,7 +202,8 @@ Every strength and core movement is on Earned Reps except a **Fixed Target** mov
 ## Fixed Target
 
 A per-level number a movement is served at, set by the user's fitness level alone: **Forearm Plank** 0:30, 1:00 and 3:00 per hold, **Dead Bug** 10, 15 and 20 per side (beginner, intermediate, advanced).
-It never climbs, steps back or pads; "too hard", a skip or "couldn't finish" hold it, never step the user down a rung, and only keep that session from counting toward advancement.
+It never climbs, steps back or pads; "too hard", a skip or "couldn't finish" hold it, never step the user down a rung, and only keep that session from counting toward advancement - which the "couldn't finish" screen says on its card.
+Because it never pads, a beginner session whose other levers are spent can run honestly short of its length.
 A short session may cut it toward the short-session floor and a Return eases it, and neither session counts toward advancement.
 Moving up takes four clean sets at the target, prescribed at the target, in a session not rated too hard and not marked "couldn't finish"; its advancement copy reads "4 clean holds at your target" or "4 clean sets per side at your target".
 A Practice station of such a movement runs at the level target.
