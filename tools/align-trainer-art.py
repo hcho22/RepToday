@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Resize and align one generated Trainer start/end pair to the art set's export format.
 
+An offline art-preparation tool, never run by the app build. It requires Pillow, NumPy, `imagequant`
+and `pyoxipng` (`pip install pillow numpy imagequant pyoxipng`).
+
 Run it in the art folder, before `import-trainer-art.py`, on the original-resolution files an
-image generator delivered. It needs Pillow, NumPy, `imagequant` and `pyoxipng` (`pip install pillow
-numpy imagequant pyoxipng`); the build never runs it.
+image generator delivered.
 
     python3 tools/align-trainer-art.py <start.png> <end.png> <out-dir> <slug>
 
@@ -23,7 +25,7 @@ folder's manifest):
   toes of an airborne pose) moved to y=521; one horizontal offset for the pair, centred on the union
   of both poses, so the two never shift against each other.
 - Colours reduced to 256 (as the shipped files are), kept as truecolor RGBA and recompressed with
-  oxipng, which brings a file to about 40-80 KB.
+  oxipng, targeting about 40-80 KB a file; a simple pose may come out smaller, which is fine.
 """
 import argparse
 import hashlib
