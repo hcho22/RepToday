@@ -40,7 +40,7 @@ Round numbers move in steps of five, so a step is a big change for a small numbe
   A cold-start Start Seed never lifts a move's first number past one step below its criterion (never below 10), so a seeded first session cannot clear it either.
   A criterion that is not a round number (such as 3x12) is still compared as "at least 12", so it is met by the next round number, 15, and a number logged before the grid still meets it.
   No Foundation entry rung had a criterion at or below 10, so no Foundation changes; a Foundation line already cleared stays cleared and an earned Strength Phase is never revoked (ADR-0006).
-- **Warm-up and cooldown stretches** keep their round catalog lengths (30, 40 or 45 seconds) and follow the same grid.
+- **Warm-up and cooldown stretches** keep their round catalog lengths (30, 40 or 45 seconds) and follow the same grid. (Amended by [ADR-0022](0022-fixed-targets-for-forearm-plank-and-dead-bug.md): every held one now runs 0:30.)
 
 ### How the existing levers map onto five-steps
 
