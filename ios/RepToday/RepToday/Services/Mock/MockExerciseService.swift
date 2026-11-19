@@ -43,6 +43,10 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     /// names a movement another rung already takes over, or sits on a withdrawn rung itself - so a log of
     /// the removed movement would place the user on no ladder, or on two.
     case replacementInvalid(exerciseId: String, replacedId: String)
+    /// A movement's Fixed Target (ADR-0022) is malformed: a level is missing, a number is off the grid of
+    /// fives or under the short-session floor, its unit is not how the movement counts, or it sits on a
+    /// movement that is not a strength rung (a stretch or a Variation), which no Fixed Target path reads.
+    case fixedTargetInvalid(exerciseId: String, reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -72,6 +76,8 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
             return "Variation '\(id)' must sit alone in its own chain with no regression or progression (ADR-0018)."
         case .replacementInvalid(let id, let replacedId):
             return "Exercise '\(id)' replaces '\(replacedId)', which must be a withdrawn movement of the same pattern that no other rung replaces, on an offered rung (ADR-0020)."
+        case .fixedTargetInvalid(let id, let reason):
+            return "Exercise '\(id)' has an invalid fixedTarget (ADR-0022): \(reason)."
         }
     }
 }
@@ -170,7 +176,8 @@ final class MockExerciseService: ExerciseServiceProtocol {
 
     /// Integrity-checks a library, throwing the first violation found. Rules (in order):
     /// unique ids, the Zero-Equipment Floor, resolvable chain links, contiguous chains, Variations
-    /// standing outside every ladder, and each removed movement taken over by at most one offered rung.
+    /// standing outside every ladder, each removed movement taken over by at most one offered rung, and
+    /// every Fixed Target well formed.
     private static func validate(_ library: [Exercise]) throws {
         // Unique ids - checked first because every later rule relies on an id-keyed lookup.
         var seen = Set<String>()
@@ -283,6 +290,35 @@ final class MockExerciseService: ExerciseServiceProtocol {
                       replaced.movementPattern == exercise.movementPattern,
                       replacedBy.updateValue(exercise.id, forKey: replacedId) == nil else {
                     throw ExerciseLibraryError.replacementInvalid(exerciseId: exercise.id, replacedId: replacedId)
+                }
+            }
+        }
+
+        // A Fixed Target (ADR-0022) names every level, on the grid of fives and at or above the short-session
+        // floor, in the unit the movement counts in, on a strength rung - so `RepGrammar` can serve it as is.
+        for exercise in library.sorted(by: { $0.id < $1.id }) {
+            guard let target = exercise.fixedTarget else { continue }
+            func invalid(_ reason: String) -> ExerciseLibraryError {
+                .fixedTargetInvalid(exerciseId: exercise.id, reason: reason)
+            }
+            guard exercise.pillar == .strength, exercise.variationOf == nil else {
+                throw invalid("only a strength rung may carry one")
+            }
+            let kind = RepGrammar.kind(of: exercise)
+            let expected: FixedTarget.Unit = switch kind {
+            case .hold: .seconds
+            case .reps: .reps
+            case .repsPerSide: .repsPerSide
+            }
+            guard target.unit == expected else {
+                throw invalid("unit '\(target.unit.rawValue)' does not match how the movement counts ('\(expected.rawValue)')")
+            }
+            for level in FitnessLevel.allCases {
+                guard let value = target.value(for: level) else {
+                    throw invalid("missing the \(level.rawValue) level")
+                }
+                guard value % RepGrammar.step == 0, value >= RepGrammar.shortSessionFloor(for: kind) else {
+                    throw invalid("\(level.rawValue) \(value) is off the grid of \(RepGrammar.step)s or under the short-session floor")
                 }
             }
         }

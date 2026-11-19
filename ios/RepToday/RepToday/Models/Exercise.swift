@@ -101,6 +101,12 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// easier options for someone who cannot yet do the full movement. `nil` for most movements; optional
     /// so an already-persisted `Exercise` decodes unchanged.
     var cue: String? = nil
+    /// The movement's **Fixed Target** (ADR-0022, `CONTEXT.md` "Fixed Target"): the one per-set number each
+    /// fitness level is served, in place of Earned Reps. Never read directly: `RepGrammar.fixedTarget(for:
+    /// level:)` owns it. `nil` for every other movement; optional so the catalog and an already-persisted
+    /// `Exercise` decode unchanged. Load-validated: every level present, on the grid of fives, at or above the
+    /// short-session floor, in the unit the movement counts in, on a strength rung.
+    var fixedTarget: FixedTarget? = nil
 
     /// How many times a set's prescribed per-set value is actually performed: twice for an `isPerSide`
     /// movement, once otherwise (including when the flag is absent). Read by the timing model, which has
@@ -125,4 +131,38 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// takes the place of (`replaces`, ADR-0020). Only "where does the user stand" reads it; what clears
     /// the rung reads this rung's own logs.
     var placementIds: [String] { [id] + (replaces ?? []) }
+}
+
+// MARK: - FixedTarget
+
+/// A per-level **Fixed Target** (ADR-0022): the per-set number a movement is served at for each fitness
+/// level, set by the level alone. It never climbs, steps back or pads; a short session may still cut it and
+/// a Return still eases it (`RepGrammar`, `AdaptiveOverload`). The catalog states the unit it counts in so
+/// load validation can reject a target written in the wrong one.
+struct FixedTarget: Codable, Equatable {
+    /// What the numbers count, which must match how the movement is counted (`RepGrammar.Kind`).
+    enum Unit: String, Codable {
+        /// Seconds per hold (per side when the movement is per side).
+        case seconds
+        /// Reps counted across both sides at once.
+        case reps
+        /// Reps counted per side.
+        case repsPerSide
+    }
+
+    var unit: Unit
+    /// Optional in the type only so a target missing a level reaches load validation's named error rather
+    /// than a decoding failure; a loaded catalog carries all three.
+    var beginner: Int?
+    var intermediate: Int?
+    var advanced: Int?
+
+    /// The number for `level`.
+    func value(for level: FitnessLevel) -> Int? {
+        switch level {
+        case .beginner: return beginner
+        case .intermediate: return intermediate
+        case .advanced: return advanced
+        }
+    }
 }

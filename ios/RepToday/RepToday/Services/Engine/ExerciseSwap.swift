@@ -331,13 +331,14 @@ enum ExerciseSwap {
     ) -> OverloadTarget {
         let level = user.profile.fitnessLevel
         let kind = RepGrammar.kind(of: exercise)
-        // A bookend stretch swaps for a stretch at its catalog length.
+        // A bookend stretch swaps for a stretch at the bookend length (a hold's 0:30, a rep move's reps).
         if exercise.pillar == .mobility {
             return AdaptiveOverload.make(exercise, value: SessionAssembly.bookendValue(for: exercise), earned: 0)
         }
-        // A Practice slot stays a Practice slot (US-TD04): the substitute runs at Practice reps.
+        // A Practice slot stays a Practice slot (US-TD04): the substitute runs at Practice reps - or, with a
+        // Fixed Target, at its level's target (ADR-0022).
         if prescription.role == .practice {
-            return AdaptiveOverload.make(exercise, value: RepGrammar.practiceValue(for: kind), earned: 0)
+            return AdaptiveOverload.make(exercise, value: RepGrammar.practiceValue(for: exercise, level: level), earned: 0)
         }
         let target = AdaptiveOverload.target(
             for: exercise,
@@ -356,12 +357,13 @@ enum ExerciseSwap {
         // A main or core slot the fit padded above (or cut below) its own number hands the substitute the
         // same number of steps, within the substitute's own floor and range. The slot's own number is its
         // recorded Earned Reps held by the same Return or ramp ease the substitute's target carries, so
-        // that ease is applied once, never again as a cut.
+        // that ease is applied once, never again as a cut. A Fixed Target's range is its target, so it takes
+        // a cut but never the padding.
         let slotEarned = prescription.exercise.isHold ? prescription.earnedDurationSeconds : prescription.earnedReps
         guard let slotEarned, let slotValue = prescription.reps ?? prescription.durationSeconds,
               RepGrammar.kind(of: prescription.exercise) == kind else { return target }
         let slotBase = AdaptiveOverload.held(slotEarned, for: kind, reentryScale: reentryScale)
-        let range = RepGrammar.earnedRange(for: kind, level: level)
+        let range = RepGrammar.earnedRange(for: exercise, level: level)
         let shifted = target.value + (slotValue - slotBase)
         let value = min(max(shifted, RepGrammar.shortSessionFloor(for: kind)), max(range.upperBound, target.value))
         return AdaptiveOverload.make(exercise, value: value, earned: target.earned)
@@ -385,10 +387,10 @@ enum ExerciseSwap {
             stretchSeconds: !exercise.isHold && stretch > 0 ? stretch : nil,
             role: prescription.role,
             earnedReps: prescription.role == .main || prescription.role == .core
-                ? (exercise.isHold ? nil : RepGrammar.served(earned: overload.earned, for: RepGrammar.kind(of: exercise), level: level))
+                ? (exercise.isHold ? nil : RepGrammar.served(earned: overload.earned, for: exercise, level: level))
                 : nil,
             earnedDurationSeconds: prescription.role == .main || prescription.role == .core
-                ? (exercise.isHold ? RepGrammar.served(earned: overload.earned, for: RepGrammar.kind(of: exercise), level: level) : nil)
+                ? (exercise.isHold ? RepGrammar.served(earned: overload.earned, for: exercise, level: level) : nil)
                 : nil
         )
     }

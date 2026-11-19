@@ -885,11 +885,15 @@ final class StartSeedTests: XCTestCase {
     }
 
     /// The real catalog at the advanced x1.30 seed: rep moves open at 20, per-side moves stay at 5 a side,
-    /// and holds open at 25 seconds - each at least a step under the top of its range.
+    /// and holds open at 25 seconds - each at least a step under the top of its range. A Fixed Target is
+    /// never seeded: it opens at its level's target (ADR-0022).
     func testSeededFirstPrescriptionsOverTheRealCatalog() async throws {
         let library = try await library()
         let seed = SessionPolicy.ColdStartContract.startingRepMultiplier(for: .advanced)
-        for (id, expected) in [("push_diamond", 20), ("squat_bodyweight", 20), ("push_archer", 5), ("core_forearm_plank", 25)] {
+        for (id, expected) in [
+            ("push_diamond", 20), ("squat_bodyweight", 20), ("push_archer", 5), ("core_bear_hold", 25),
+            ("core_forearm_plank", 180), ("core_dead_bug", 20),
+        ] {
             let movement = try XCTUnwrap(library.first { $0.id == id })
             let target = AdaptiveOverload.target(for: movement, level: .advanced, recentLogs: [], startingRepMultiplier: seed)
             XCTAssertEqual(target.value, expected, id)
@@ -899,10 +903,11 @@ final class StartSeedTests: XCTestCase {
     }
 
     /// No catalog movement's first prescription, at any fitness level's Start Seed, clears its own rung
-    /// when performed exactly as prescribed: every move takes more than one session.
+    /// when performed exactly as prescribed: every move takes more than one session - except a Fixed
+    /// Target, which opens at the target that clears it (ADR-0022).
     func testNoFirstPrescriptionClearsItsMoveInOneSession() async throws {
         for movement in try await library() {
-            for level in FitnessLevel.allCases {
+            for level in FitnessLevel.allCases where RepGrammar.fixedTarget(for: movement, level: level) == nil {
                 let target = AdaptiveOverload.target(
                     for: movement,
                     level: level,
@@ -1130,14 +1135,14 @@ final class StartSeedTests: XCTestCase {
 
     /// A mid-session swap keeps the session's Start Seed: the substitute's opening number is sized by the
     /// same seed the rest of the lineup was, instead of silently reverting to the neutral x1.0. An
-    /// advanced user's hollow-hold core station swaps to the forearm plank, whose seed lifts it from 20 to
-    /// 25 seconds.
+    /// advanced user's hollow-hold core station swaps to the Bear Hold, whose seed lifts it from 20 to
+    /// 25 seconds. (Not the Forearm Plank: a Fixed Target is never seeded, ADR-0022.)
     func testSwapKeepsTheSessionsStartSeed() async throws {
         let library = try await library()
         let user = freshUser(level: .advanced)
         let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
         let original = try XCTUnwrap(library.first { $0.id == "core_hollow_hold" })
-        let plank = try XCTUnwrap(library.first { $0.id == "core_forearm_plank" })
+        let bear = try XCTUnwrap(library.first { $0.id == "core_bear_hold" })
         let seed = ColdStartOverride.volumeSeed(user: user, sessionPolicy: policy, recentLogs: [])
         let opening = AdaptiveOverload.target(
             for: original,
@@ -1168,21 +1173,21 @@ final class StartSeedTests: XCTestCase {
 
         func substitute(_ policy: SessionPolicy) -> PrescribedExercise? {
             let outcome = ExerciseSwap.swap(
-                slot, in: session, user: user, library: [original, plank], recentLogs: [], sessionPolicy: policy
+                slot, in: session, user: user, library: [original, bear], recentLogs: [], sessionPolicy: policy
             )
             guard case .substituted(let substitute) = outcome else { return nil }
             return substitute
         }
 
-        let seeded = try XCTUnwrap(substitute(policy), "the hollow-hold slot must swap to the forearm plank")
-        XCTAssertEqual(seeded.exercise.id, plank.id)
+        let seeded = try XCTUnwrap(substitute(policy), "the hollow-hold slot must swap to the Bear Hold")
+        XCTAssertEqual(seeded.exercise.id, bear.id)
         XCTAssertEqual(seeded.durationSeconds, 25,
                        "the substitute must carry the session's Start Seed: 20 seconds x1.30 lands on 25")
         XCTAssertEqual(seeded.role, .core)
         // Without the policy the same swap falls back to the neutral seed - the exact divergence this
         // seam exists to close.
         let neutral = try XCTUnwrap(substitute(.default), "the unseeded swap must still substitute")
-        XCTAssertEqual(neutral.exercise.id, plank.id)
+        XCTAssertEqual(neutral.exercise.id, bear.id)
         XCTAssertEqual(neutral.durationSeconds, RepGrammar.earnedRange(for: .hold, level: .advanced).lowerBound,
                        "the neutral seed opens at the bottom of the hold range")
     }
@@ -1481,13 +1486,18 @@ final class StartSeedTests: XCTestCase {
             }
         }
         XCTAssertEqual(beginner.value, 15, "the beginner's lead opens at the bottom of the range")
+        // The advanced core station carries the x1.30 seed above the bottom of its range. (The beginner's
+        // is the Forearm Plank, a Fixed Target at its 0:30, which no seed moves - ADR-0022.)
         let advancedCore = try XCTUnwrap(advancedPlan.stations.first { $0.role == .core })
-        let beginnerCore = try XCTUnwrap(beginnerPlan.stations.first { $0.role == .core })
-        XCTAssertGreaterThan(advancedCore.value, beginnerCore.value, "the core hold carries the x1.30 seed")
+        XCTAssertNil(advancedCore.exercise.fixedTarget, "\(advancedCore.exercise.id)")
+        XCTAssertGreaterThan(
+            advancedCore.value, RepGrammar.earnedRange(for: advancedCore.exercise, level: .advanced).lowerBound,
+            "the core hold carries the x1.30 seed"
+        )
 
         // The bookends are never seeded: the same number of stretches for both levels, one set each at
-        // the stretch's own catalog length (which stretches fill them differs by level - ADR-0007 gives
-        // beginners staple stretches only - but the Start Seed never reaches them).
+        // the bookend length (which stretches fill them differs by level - ADR-0007 gives beginners
+        // staple stretches only - but the Start Seed never reaches them).
         XCTAssertEqual(beginnerPlan.warmup.count, advancedPlan.warmup.count, "warm-up must not be seeded")
         XCTAssertEqual(beginnerPlan.cooldown.count, advancedPlan.cooldown.count, "cooldown must not be seeded")
         for item in beginnerPlan.warmup + beginnerPlan.cooldown + advancedPlan.warmup + advancedPlan.cooldown {

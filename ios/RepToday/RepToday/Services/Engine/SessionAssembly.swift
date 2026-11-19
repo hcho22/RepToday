@@ -20,7 +20,9 @@ import Foundation
 ///   appears. The Rotation never changes.
 /// - **Sets and reps** (decisions 13-16). Every main, Practice and core station runs
 ///   `RepGrammar.setsPerStation` (4) rounds. Main and core stations start at the user's served Earned
-///   Reps (`AdaptiveOverload`); a Practice Movement runs at `RepGrammar.practiceValue`.
+///   Reps (`AdaptiveOverload`); a Practice Movement runs at `RepGrammar.practiceValue`. A movement with a
+///   Fixed Target (ADR-0022) starts at its level's target in either role, and its range is that number
+///   alone, so the fit may cut it on a short session but never pads it.
 /// - **Fit** (decisions 16-17). Reps are the fit lever: a session over its length cuts main and core
 ///   reps below Earned Reps, never under the short-session floor; a session under it **Pads** them up
 ///   to the top of the level's range. Padding never moves Earned Reps or a rung - the prescription
@@ -571,11 +573,19 @@ enum SessionAssembly {
         exercise.complements?.contains(where: patterns.contains) == true
     }
 
-    /// A warm-up, cooldown or Recovery stretch's per-set number: its catalog length on the grid of
-    /// fives, never under 10 (ADR-0011).
+    /// The seconds every held warm-up, cooldown and Recovery stretch runs, at every level - per side when
+    /// the stretch is one-sided (ADR-0022, `CONTEXT.md` "Bookend hold").
+    static let bookendHoldSeconds = 30
+
+    /// A warm-up, cooldown or Recovery stretch's per-set number: `bookendHoldSeconds` for a hold, and for a
+    /// rep-based move its catalog reps on the grid of fives, never under 10 (ADR-0011).
+    ///
+    /// The bookend rule, not the catalog, owns a held stretch's length: the 0:30 is a rule about the
+    /// bookends, so a stretch added later with a longer catalog `defaultDurationSeconds` still serves 0:30,
+    /// and that catalog value keeps only its other job, seeding a Custom Workout step.
     static func bookendValue(for exercise: Exercise) -> Int {
-        let base = exercise.isHold ? (exercise.defaultDurationSeconds ?? 30) : (exercise.defaultReps ?? 10)
-        return max(10, RepGrammar.floored(base))
+        guard !exercise.isHold else { return bookendHoldSeconds }
+        return max(10, RepGrammar.floored(exercise.defaultReps ?? 10))
     }
 
     // MARK: - Pillar
@@ -845,7 +855,8 @@ enum SessionAssembly {
 
 /// One station as it is being sized: the movement, its role, its per-set number (`value`: reps, or hold
 /// seconds), the Earned Reps behind it, and the bounds the fit may move the number within - `floor` to
-/// `ceiling`, equal to `value` for a station the fit never touches (a Practice Movement, a stretch).
+/// `ceiling`, equal to `value` for a station the fit never touches (a stretch, or a Practice Movement without
+/// a Fixed Target).
 struct PlannedItem: Equatable {
     let exercise: Exercise
     let role: StationRole?
@@ -1134,7 +1145,7 @@ private struct Builder {
     }
 
     /// The Recovery flow's stretches: two moving stretches then two holds where the pool allows, freshest
-    /// first, each one set at its catalog length.
+    /// first, each one set at the bookend length (`bookendValue`: 0:30 for a hold).
     mutating func recoveryStretches(count: Int) -> [PlannedItem] {
         let ordered = orderedMobility(matching: nil)
         var picked = Array(ordered.filter { !$0.isHold }.prefix(count / 2))
@@ -1250,7 +1261,7 @@ private struct Builder {
             earned: nil,
             sets: RepGrammar.setsPerStation,
             floor: RepGrammar.shortSessionFloor(for: kind),
-            ceiling: isHeld ? value : RepGrammar.earnedRange(for: kind, level: level).upperBound,
+            ceiling: isHeld ? value : RepGrammar.earnedRange(for: variation, level: level).upperBound,
             isFocused: parent.isFocused
         )
     }
@@ -1311,7 +1322,8 @@ private struct Builder {
 
     /// A main or core station for `exercise`: four sets at its served Earned Reps (held under them on a
     /// Return), which the fit may cut to the short-session floor or pad to the top of the range - except
-    /// on a Return or ramp session, which is never padded.
+    /// on a Return or ramp session, which is never padded. A Fixed Target's range is its target alone, so
+    /// it is never padded either.
     private mutating func mainItem(for exercise: Exercise, role: StationRole) -> PlannedItem? {
         guard !usedIds.contains(exercise.id) else { return nil }
         usedIds.insert(exercise.id)
@@ -1335,10 +1347,10 @@ private struct Builder {
             exercise: exercise,
             role: role,
             value: target.value,
-            earned: RepGrammar.served(earned: target.earned, for: kind, level: level),
+            earned: RepGrammar.served(earned: target.earned, for: exercise, level: level),
             sets: RepGrammar.setsPerStation,
             floor: RepGrammar.shortSessionFloor(for: kind),
-            ceiling: isHeld ? target.value : RepGrammar.earnedRange(for: kind, level: level).upperBound,
+            ceiling: isHeld ? target.value : RepGrammar.earnedRange(for: exercise, level: level).upperBound,
             isFocused: focusAreas.covers(exercise)
         )
     }
@@ -1346,17 +1358,25 @@ private struct Builder {
     /// The Practice Movement for `main` (decisions 9-10, ADR-0015): the next harder rung at Practice
     /// reps. It bypasses the staple gate but never an injury, a Strength-Phase lock, a withdrawn rung or
     /// the cold-start difficulty cap, and is not offered on a Return. With no such rung, the rung below at volume reps; with neither,
-    /// no station.
+    /// no station. A Fixed Target rung previews at its level's target (`RepGrammar.practiceValue(for:
+    /// level:)`, ADR-0022), which a short session may cut toward the short-session floor like any station;
+    /// the fit leaves every other Practice value where it is, as it always has.
     private mutating func practiceItem(for main: ChainSelection) -> PlannedItem? {
         let chain = library.filter { $0.progressionChainId == main.chainId }
         if !isReturn, let harder = chain.first(where: { $0.progressionOrder == main.order + 1 }),
            isPracticeEligible(harder), !usedIds.contains(harder.id) {
             usedIds.insert(harder.id)
-            return .fixed(
-                harder,
+            let value = RepGrammar.practiceValue(for: harder, level: level)
+            return PlannedItem(
+                exercise: harder,
                 role: .practice,
-                value: RepGrammar.practiceValue(for: RepGrammar.kind(of: harder)),
+                value: value,
+                earned: nil,
                 sets: RepGrammar.setsPerStation,
+                floor: RepGrammar.fixedTarget(for: harder, level: level) == nil
+                    ? value
+                    : RepGrammar.shortSessionFloor(for: RepGrammar.kind(of: harder)),
+                ceiling: value,
                 isFocused: focusAreas.covers(harder)
             )
         }
@@ -1421,7 +1441,7 @@ private struct Builder {
 
     // MARK: Bookends
 
-    /// One-set stretches at their catalog lengths, claiming each id so no later slot reuses it.
+    /// One-set stretches at the bookend length (`bookendValue`), claiming each id so no later slot reuses it.
     private mutating func mobilityItems(matching patterns: Set<MovementPattern>, holdsFirst: Bool = false, cap: Int) -> [PlannedItem] {
         let picked = orderedMobility(matching: patterns, holdsFirst: holdsFirst).prefix(cap)
         let spent = picked.filter { !offered.contains($0.id) && !SessionAssembly.complements($0, anyOf: patterns) }.count

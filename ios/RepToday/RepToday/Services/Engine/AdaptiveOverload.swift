@@ -22,6 +22,9 @@ import Foundation
 ///   one step; a Practice station never counts at all (`LoggedExercise.countsForProgression`).
 /// - **Return** - a Return or Re-entry Ramp session scales the *prescription*, not Earned Reps: the
 ///   served number sits at least a step under them, never below the short-session floor.
+/// - **Fixed Target** (ADR-0022) - a movement with one is earned at its level's target whatever the
+///   history says: no climb, no step back, and no step down a rung, so a rating only decides whether that
+///   session counts toward advancement. A Return still eases it, and it resumes at the target after.
 ///
 /// Pure over its inputs - no clock, no ids - like the rest of the engine.
 
@@ -123,7 +126,7 @@ enum AdaptiveOverload {
             steppedDownSince: steppedDownSince,
             startingRepMultiplier: startingRepMultiplier
         )
-        let served = held(RepGrammar.served(earned: earned, for: kind, level: level), for: kind, reentryScale: reentryScale)
+        let served = held(RepGrammar.served(earned: earned, for: exercise, level: level), for: kind, reentryScale: reentryScale)
         return make(exercise, value: served, earned: earned)
     }
 
@@ -150,7 +153,8 @@ enum AdaptiveOverload {
     /// Read from the newest session that worked the move (Practice stations never count). With none: the
     /// bottom of the range - lifted by a cold-start multiplier, never to the top, so a seeded first
     /// session cannot clear the rung. `steppedDownSince` (the move was stepped down onto) reads only the
-    /// sessions after the step down, opening at the bottom of the range.
+    /// sessions after the step down, opening at the bottom of the range. A Fixed Target movement is
+    /// earned at its target whatever its history (ADR-0022).
     static func earned(
         for exercise: Exercise,
         level: FitnessLevel,
@@ -159,6 +163,7 @@ enum AdaptiveOverload {
         steppedDownSince: Date? = nil,
         startingRepMultiplier: Double = neutralStartingRepMultiplier
     ) -> Int {
+        if let target = RepGrammar.fixedTarget(for: exercise, level: level) { return target }
         let range = RepGrammar.earnedRange(for: exercise, level: level)
         let history = entries(for: exercise, level: level, recentLogs: recentLogs, since: steppedDownSince)
         guard let latest = history.first else {
@@ -183,9 +188,11 @@ enum AdaptiveOverload {
     }
 
     /// When the newest session on `exercise` stepped it back while it already sat at the bottom of the
-    /// range - the session that steps the user one rung down its chain - else `nil`.
+    /// range - the session that steps the user one rung down its chain - else `nil`. Always `nil` for a
+    /// Fixed Target movement, which a rating never steps down (ADR-0022).
     static func floorStepBackDate(for exercise: Exercise, level: FitnessLevel, recentLogs: [WorkoutLog]) -> Date? {
-        guard let latest = entries(for: exercise, level: level, recentLogs: recentLogs, since: nil).first,
+        guard RepGrammar.fixedTarget(for: exercise, level: level) == nil,
+              let latest = entries(for: exercise, level: level, recentLogs: recentLogs, since: nil).first,
               latest.signal == .stepBack,
               latest.earned <= RepGrammar.earnedRange(for: exercise, level: level).lowerBound
         else { return nil }

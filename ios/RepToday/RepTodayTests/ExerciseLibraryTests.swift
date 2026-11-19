@@ -376,9 +376,9 @@ final class ExerciseLibraryTests: XCTestCase {
         // body, and `push_one_arm` already exists) matches no template and fails loudly; the fix is then
         // a deliberate decision to extend the grammar and the flag together, not a silent default.
         // The training movements read the rep grammar's own copy (US-TD03), with "per side" after the
-        // count; the stretches and the retired primal movements keep their older authored shapes, with
-        // "per side" at the end.
-        let grammar = #"^4 clean (?:sets|holds)(?: per side)? at the top of your (?:rep|hold) range$"#
+        // count - "at your target" for a Fixed Target (ADR-0022); the stretches and the retired primal
+        // movements keep their older authored shapes, with "per side" at the end.
+        let grammar = #"^4 clean (?:sets|holds)(?: per side)? at (?:the top of your (?:rep|hold) range|your target)$"#
         let body = #"(?:\d+x\d+ (?:clean |slow )?reps|\d+x\d+ steps|\d+x\d+s hold"#
             + #"|\d+ reps|hold \d+s(?: comfortably)?|flow \d+ slow reps)"#
         let perSideMarker = #"(?: (?:per|each) (?:side|leg))"#
@@ -411,7 +411,9 @@ final class ExerciseLibraryTests: XCTestCase {
             let unit = ex.isHold ? "holds" : "sets"
             let side = ex.isPerSide == true ? " per side" : ""
             let range = ex.isHold ? "hold" : "rep"
-            XCTAssertEqual(ex.advancementCriteria, "4 clean \(unit)\(side) at the top of your \(range) range", ex.id)
+            // A Fixed Target clears at its target, which is the whole of its range (ADR-0022).
+            let bar = ex.fixedTarget == nil ? "the top of your \(range) range" : "your target"
+            XCTAssertEqual(ex.advancementCriteria, "4 clean \(unit)\(side) at \(bar)", ex.id)
         }
     }
 

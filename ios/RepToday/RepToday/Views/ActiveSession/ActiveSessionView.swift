@@ -1276,7 +1276,7 @@ struct ActiveSessionView: View {
     }
 
     /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds", "1 set of a
-    /// 45 second hold" - carrying the same " per side" suffix, since VoiceOver is the only place a
+    /// 45 second hold", "4 sets of 3 minute holds" - carrying the same " per side" suffix, since VoiceOver is the only place a
     /// non-sighted user meets the prescription and dropping it there would hide exactly half the work.
     ///
     /// Unlike `targetText`, which shows bare numerals, this spells the nouns out, so every count it
@@ -1293,12 +1293,19 @@ struct ActiveSessionView: View {
         }
         if let seconds = prescription.durationSeconds {
             // One set holds once, so the article moves with the noun: "1 set of a 30 second hold".
+            let length = spokenHoldLength(seconds)
             let holdPhrase = CountWording.noun(
-                for: prescription.sets, singular: "a \(seconds) second hold", plural: "\(seconds) second holds"
+                for: prescription.sets, singular: "a \(length) hold", plural: "\(length) holds"
             )
             return "\(setsPhrase(prescription.sets)) of \(holdPhrase)\(suffix)"
         }
         return setsPhrase(prescription.sets)
+    }
+
+    /// "30 second" / "3 minute" - a hold's length as the spoken target names it: whole minutes in minutes,
+    /// so an advanced 3:00 plank (ADR-0022) is read as "3 minute", never "180 second".
+    static func spokenHoldLength(_ seconds: Int) -> String {
+        seconds >= 60 && seconds % 60 == 0 ? "\(seconds / 60) minute" : "\(seconds) second"
     }
 
     /// `"1 set"` / `"3 sets"` - the set count agreeing with its noun.

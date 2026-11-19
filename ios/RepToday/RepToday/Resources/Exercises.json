@@ -742,8 +742,9 @@
     "progressionChainId": "core_plank",
     "progressionOrder": 0,
     "progressionId": "core_side_plank",
-    "advancementCriteria": "4 clean holds at the top of your hold range",
-    "apartmentFriendly": true
+    "advancementCriteria": "4 clean holds at your target",
+    "apartmentFriendly": true,
+    "fixedTarget": { "unit": "seconds", "beginner": 30, "intermediate": 60, "advanced": 180 }
   },
   {
     "id": "core_side_plank",
@@ -806,8 +807,9 @@
     "progressionOrder": 1,
     "regressionId": "core_bird_dog",
     "progressionId": "core_bear_hold",
-    "advancementCriteria": "4 clean sets per side at the top of your rep range",
-    "apartmentFriendly": true
+    "advancementCriteria": "4 clean sets per side at your target",
+    "apartmentFriendly": true,
+    "fixedTarget": { "unit": "repsPerSide", "beginner": 10, "intermediate": 15, "advanced": 20 }
   },
   {
     "id": "core_bear_hold",

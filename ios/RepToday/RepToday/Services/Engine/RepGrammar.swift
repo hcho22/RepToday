@@ -15,6 +15,12 @@ import Foundation
 /// - **Practice** (decision 9): 4 x 10 reps, 4 x 5 per side, 15-second holds.
 /// - **Advancement** (decision 15): four clean sets at the top of the range, at earned reps, in a session
 ///   not rated too hard and not marked "couldn't finish".
+/// - **Fixed Target** (ADR-0022): a movement whose catalog entry carries one (`Exercise.fixedTarget`) is
+///   served its level's one number. Every question asked of a movement - its range, what it is served at,
+///   its Practice value, its advancement bar - treats that number as the whole range, so it never climbs,
+///   steps back or pads, and clears at four clean sets at it. A short session may still cut it toward the
+///   short-session floor, and a Return still eases it (`AdaptiveOverload.held`). Every other movement is
+///   unaffected.
 ///
 /// Pure and clock-free like the rest of the engine.
 enum RepGrammar {
@@ -49,8 +55,17 @@ enum RepGrammar {
         }
     }
 
+    /// The range `exercise`'s number lives in at `level`: its Fixed Target alone when it has one, else the
+    /// earned range for its kind. Every engine caller asks this, never the kind-only form, so a Fixed Target
+    /// can neither climb past its number nor be padded above it.
     static func earnedRange(for exercise: Exercise, level: FitnessLevel) -> ClosedRange<Int> {
-        earnedRange(for: kind(of: exercise), level: level)
+        if let target = fixedTarget(for: exercise, level: level) { return target...target }
+        return earnedRange(for: kind(of: exercise), level: level)
+    }
+
+    /// `exercise`'s Fixed Target at `level` (ADR-0022), or `nil` for a movement on Earned Reps.
+    static func fixedTarget(for exercise: Exercise, level: FitnessLevel) -> Int? {
+        exercise.fixedTarget?.value(for: level)
     }
 
     /// The lowest a short session may serve (decision 16), below the bottom of the earned range.
@@ -71,6 +86,12 @@ enum RepGrammar {
         }
     }
 
+    /// What `exercise` is prescribed at as a Practice Movement: its level's Fixed Target when it has one, so
+    /// the preview matches what the rung will ask (ADR-0022), else the Practice value for its kind.
+    static func practiceValue(for exercise: Exercise, level: FitnessLevel) -> Int {
+        fixedTarget(for: exercise, level: level) ?? practiceValue(for: kind(of: exercise))
+    }
+
     /// `value` floored onto the grid.
     static func floored(_ value: Int) -> Int {
         (max(0, value) / step) * step
@@ -80,8 +101,17 @@ enum RepGrammar {
     /// are stored as the engine computed them; a number logged before the grid (13) serves as 10, and
     /// the range then lifts it to its bottom.
     static func served(earned: Int, for kind: Kind, level: FitnessLevel) -> Int {
-        let range = earnedRange(for: kind, level: level)
-        return min(max(floored(earned), range.lowerBound), range.upperBound)
+        clamped(floored(earned), to: earnedRange(for: kind, level: level))
+    }
+
+    /// `earned` as `exercise` serves it at `level`: its Fixed Target when it has one, else as `served(earned:
+    /// for:level:)` serves its kind.
+    static func served(earned: Int, for exercise: Exercise, level: FitnessLevel) -> Int {
+        clamped(floored(earned), to: earnedRange(for: exercise, level: level))
+    }
+
+    private static func clamped(_ value: Int, to range: ClosedRange<Int>) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 
     // MARK: Advancement
@@ -89,6 +119,8 @@ enum RepGrammar {
     /// Whether `logged` clears its rung (decision 15): it counts toward advancement, the session was not
     /// rated too hard, at least four sets reached the top of the user's range, and the station was
     /// prescribed at earned reps that had themselves reached the top - so Padding can never clear a rung.
+    /// For a Fixed Target the top is the target (ADR-0022): four sets at it, so a session cut below it or
+    /// eased by a Return never clears, and a log is read as written against today's target.
     static func isAdvancementMet(
         by logged: LoggedExercise,
         in log: WorkoutLog,

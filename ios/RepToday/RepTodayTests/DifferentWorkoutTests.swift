@@ -242,7 +242,7 @@ final class DifferentWorkoutTests: XCTestCase {
                             )
                             XCTAssertEqual(
                                 item.earnedReps ?? item.earnedDurationSeconds,
-                                RepGrammar.served(earned: earned, for: RepGrammar.kind(of: exercise), level: level),
+                                RepGrammar.served(earned: earned, for: exercise, level: level),
                                 "\(label): \(exercise.id) does not record its Earned Reps"
                             )
                         }
