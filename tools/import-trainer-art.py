@@ -164,7 +164,7 @@ def main(argv):
 
     families = sorted(p for p in args.art_root.iterdir() if p.is_dir() and FAMILY_FOLDER.match(p.name))
     if not families:
-        print(f'error: no RepToday-<family>-exercise-poses folders under the art root', file=sys.stderr)
+        print('error: no RepToday-<family>-exercise-poses folders under the art root', file=sys.stderr)
         return 1
 
     trainer_root = args.assets / 'Trainer'

@@ -1,7 +1,7 @@
 import XCTest
 
 /// M1 exit criterion: a full 45-minute Training Day plays end to end in the running app, every movement
-/// shows Trainer art (bar those ADR-0020 added, still on the icon), and Today moves on to the next group afterwards.
+/// shows Trainer art, and Today moves on to the next group afterwards.
 ///
 /// Walks the session with the player's own early-advance controls (**Done**, **Skip rest**) so it runs
 /// in minutes, recording each movement's illustration label on the way.

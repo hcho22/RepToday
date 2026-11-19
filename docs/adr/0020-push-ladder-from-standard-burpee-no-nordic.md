@@ -39,6 +39,7 @@ The captain also asked for more push-up variety above Standard, a burpee on Legs
 7. **The Push foundation clears on Standard Push-Up** (the horizontal ladder's new entry rung) or Floor Tricep Dips (the vertical ladder's, unchanged).
    An earned Strength Phase is never revoked.
 8. **New movements ship without Trainer art** and the card shows its icon, as it does for any movement without a pose pair; their art is a separate later task.
+   That art shipped on 2026-11-18 (`docs/implementation-log.md`, "Trainer art for the six new push and leg movements"), so every movement this ADR added and kept now shows the Trainer.
 
 ## Consequences
 
