@@ -1,4 +1,4 @@
-import { movementName, movementPattern, SERVED_CATALOG } from "./coachCatalog";
+import { fitnessLevel, fixedTargetText, movementName, movementPattern, SERVED_CATALOG, type FitnessLevel, type FixedTarget } from "./coachCatalog";
 import type { AgeGroup } from "./coachSafety";
 
 /**
@@ -60,6 +60,7 @@ export const COACH_INSTRUCTIONS = [
   "keep load off any flagged area, match their fitness level, and fit the time they ask for (or 15 to 25 minutes).",
   "Bodyweight only, no equipment. Prefer movements from the catalog below and give their catalog_id; any other bodyweight movement is",
   "allowed with catalog_id null, and the app shows it as text only. 3 to 8 steps, 1 to 6 sets each, reps or seconds per set.",
+  "A catalog movement with a target by fitness level starts at the user's target, given below; the user can change it when they review it.",
   "A Custom Workout is a one-off: it never changes their ladders or their daily sessions, and the user reviews, edits and accepts it before it plays.",
   "",
   "Diet, only if the context says the user is an adult: give practical general nutrition guidance. You may share general published ranges,",
@@ -114,9 +115,15 @@ export function houseStyle(reply: string): string {
 export function catalogMessage(): string {
   const lines = SERVED_CATALOG.map(
     (movement) =>
-      `- ${movement.id}: ${movement.name} (${movement.pattern}${movement.isHold ? ", hold" : ""}${movement.isPerSide ? ", per side" : ""}, difficulty ${movement.difficulty}${movement.strengthPhase ? ", Strength Phase" : ""})`,
+      `- ${movement.id}: ${movement.name} (${movement.pattern}${movement.isHold ? ", hold" : ""}${movement.isPerSide ? ", per side" : ""}, difficulty ${movement.difficulty}${movement.strengthPhase ? ", Strength Phase" : ""}${targetsByLevel(movement.fixedTarget)})`,
   );
   return ["Catalog movements for Custom Workouts (catalog_id: name):", ...lines].join("\n");
+}
+
+/** ", target by fitness level: beginner 0:30 per hold, ..." for a Fixed Target movement, else nothing. */
+function targetsByLevel(target: FixedTarget | undefined): string {
+  if (target === undefined) return "";
+  return `, target by fitness level: ${LEVELS.map((level) => `${level} ${fixedTargetText(target, level)}`).join(", ")}`;
 }
 
 // MARK: - The user's context
@@ -154,8 +161,16 @@ export function contextMessage(records: ContextRecords): string {
         : "- Age group: unknown. Treat as under 18: no food, diet, supplement or weight topics; plain water is fine.",
   );
   const profile = asRecord(records.profile?.profile);
-  const level = typeof profile?.fitnessLevel === "string" ? profile.fitnessLevel : undefined;
-  if (level !== undefined) lines.push(`- Fitness level they chose: ${level}.`);
+  const level = profileFitnessLevel(records.profile);
+  if (level !== undefined) {
+    lines.push(`- Fitness level they chose: ${level}.`);
+    const targets = SERVED_CATALOG.flatMap((movement) =>
+      movement.fixedTarget === undefined ? [] : [`${movement.name} ${fixedTargetText(movement.fixedTarget, level)}`],
+    );
+    if (targets.length > 0) {
+      lines.push(`- Their targets, set by their fitness level rather than climbing; 4 clean sets at a target moves them up its ladder: ${targets.join("; ")}.`);
+    }
+  }
   lines.push(records.profile?.phase === "strength" ? "- They have earned the Strength Phase." : "- They are working toward the Strength Phase.");
   const consistency = asRecord(records.profile?.consistency);
   if (consistency !== undefined && typeof consistency.score === "number") {
@@ -269,6 +284,13 @@ function dateString(value: unknown, offsetMinutes: number): string {
   const ms = number(value);
   if (ms === undefined) return "an earlier day";
   return new Date(ms + offsetMinutes * 60_000).toISOString().slice(0, 10);
+}
+
+const LEVELS: FitnessLevel[] = ["beginner", "intermediate", "advanced"];
+
+/** The fitness level the user's synced profile records, or `undefined`. */
+export function profileFitnessLevel(profile: Record<string, unknown> | null): FitnessLevel | undefined {
+  return fitnessLevel(asRecord(profile?.profile)?.fitnessLevel);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

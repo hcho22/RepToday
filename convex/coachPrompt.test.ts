@@ -99,6 +99,25 @@ describe("contextMessage", () => {
     expect(SAMPLE_CONTEXT).toContain("- Desk Reset: played 1 time.");
   });
 
+  test("the summary gives the user's Fixed Targets at their level (US-FT08)", () => {
+    expect(SAMPLE_CONTEXT).toContain(
+      "- Their targets, set by their fitness level rather than climbing; 4 clean sets at a target moves them up its ladder: " +
+        "Forearm Plank 1:00 per hold; Dead Bug 15 per side.",
+    );
+    const advanced = contextMessage({
+      ageGroup: "adult",
+      profile: { profile: { fitnessLevel: "advanced" } },
+      focusAreas: [],
+      logs: [],
+      activities: [],
+      customWorkouts: [],
+      today: null,
+    });
+    expect(advanced).toContain("Forearm Plank 3:00 per hold; Dead Bug 20 per side.");
+    const noLevel = contextMessage({ ageGroup: "adult", profile: null, focusAreas: [], logs: [], activities: [], customWorkouts: [], today: null });
+    expect(noLevel).not.toContain("Their targets");
+  });
+
   test("an unknown age is treated as under 18", () => {
     const text = contextMessage({ ageGroup: "unknown", profile: null, focusAreas: [], logs: [], activities: [], customWorkouts: [], today: null });
     expect(text).toContain("Age group: unknown. Treat as under 18: no food, diet, supplement or weight topics; plain water is fine.");
@@ -114,6 +133,17 @@ describe("contextMessage", () => {
       expect(catalog).not.toContain(`- ${removed}:`);
     }
     expect(SERVED_CATALOG.length).toBe(69);
+  });
+
+  test("the catalog gives Forearm Plank and Dead Bug their target at each level, and no other movement one (US-FT08)", () => {
+    const catalog = catalogMessage();
+    expect(catalog).toContain(
+      "- core_forearm_plank: Forearm Plank (core, hold, difficulty 2, target by fitness level: beginner 0:30 per hold, intermediate 1:00 per hold, advanced 3:00 per hold)",
+    );
+    expect(catalog).toContain(
+      "- core_dead_bug: Dead Bug (core, per side, difficulty 2, target by fitness level: beginner 10 per side, intermediate 15 per side, advanced 20 per side)",
+    );
+    expect(catalog.split("\n").filter((line) => line.includes("target by fitness level"))).toHaveLength(2);
   });
 });
 

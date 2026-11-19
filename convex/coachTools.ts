@@ -1,4 +1,4 @@
-import { servedMovement } from "./coachCatalog";
+import { servedMovement, type FitnessLevel } from "./coachCatalog";
 
 /**
  * The Coach agent's tools (M4, US-CA03/US-CA04, decision 26/27, ADR-0017).
@@ -202,7 +202,7 @@ const WEEKDAYS: Record<string, number> = { sun: 1, mon: 2, tue: 3, wed: 4, thu: 
  * clamped, a kind proposed twice keeps its first, at most `MAX_ACTION_PROPOSALS` actions and one Custom
  * Workout survive.
  */
-export function parseToolCalls(calls: ToolCall[], today: TodayMovement[], newId: () => string): CoachProposal[] {
+export function parseToolCalls(calls: ToolCall[], today: TodayMovement[], newId: () => string, level?: FitnessLevel): CoachProposal[] {
   const proposals: CoachProposal[] = [];
   const kinds = new Set<string>();
   for (const call of calls) {
@@ -213,7 +213,7 @@ export function parseToolCalls(calls: ToolCall[], today: TodayMovement[], newId:
       continue;
     }
     if (args === null || typeof args !== "object" || Array.isArray(args)) continue;
-    const proposal = toProposal(call.name, args as Record<string, unknown>, today, newId);
+    const proposal = toProposal(call.name, args as Record<string, unknown>, today, newId, level);
     if (proposal === null || kinds.has(proposal.kind)) continue;
     const actions = proposals.filter((existing) => existing.kind !== "customWorkout").length;
     if (proposal.kind !== "customWorkout" && actions >= MAX_ACTION_PROPOSALS) continue;
@@ -223,7 +223,13 @@ export function parseToolCalls(calls: ToolCall[], today: TodayMovement[], newId:
   return proposals;
 }
 
-function toProposal(name: string, args: Record<string, unknown>, today: TodayMovement[], newId: () => string): CoachProposal | null {
+function toProposal(
+  name: string,
+  args: Record<string, unknown>,
+  today: TodayMovement[],
+  newId: () => string,
+  level: FitnessLevel | undefined,
+): CoachProposal | null {
   const id = newId();
   switch (name) {
     case "log_outside_activity": {
@@ -270,7 +276,7 @@ function toProposal(name: string, args: Record<string, unknown>, today: TodayMov
       return { id, kind: "reminder", status: "proposed", hour: Number(match[1]), minute: Number(match[2]), weekdays };
     }
     case "propose_custom_workout": {
-      const workout = customWorkout(args);
+      const workout = customWorkout(args, level);
       return workout === null ? null : { id, kind: "customWorkout", status: "proposed", workout };
     }
     default:
@@ -278,8 +284,12 @@ function toProposal(name: string, args: Record<string, unknown>, today: TodayMov
   }
 }
 
-/** Validates and clamps a Custom Workout draft; catalog ids that are not served become text-only steps. */
-export function customWorkout(args: Record<string, unknown>): CustomWorkoutDraft | null {
+/**
+ * Validates and clamps a Custom Workout draft; catalog ids that are not served become text-only steps. A
+ * catalog movement with a Fixed Target starts at the target for `level`, whatever the model sent
+ * (ADR-0022); the user can still edit it before accepting.
+ */
+export function customWorkout(args: Record<string, unknown>, level?: FitnessLevel): CustomWorkoutDraft | null {
   const title = text(args.title, 40);
   if (title === undefined || !Array.isArray(args.steps)) return null;
   const note = text(args.note, 280) ?? "";
@@ -292,8 +302,9 @@ export function customWorkout(args: Record<string, unknown>): CustomWorkoutDraft
     if (name === undefined) continue;
     const sets = clamp(integer(step.sets) ?? 3, 1, 6);
     const rest = clamp(integer(step.rest_seconds) ?? 30, 0, 180);
-    const reps = integer(step.reps);
-    const seconds = integer(step.seconds);
+    const target = catalog?.fixedTarget !== undefined && level !== undefined ? catalog.fixedTarget[level] : undefined;
+    const reps = target ?? integer(step.reps);
+    const seconds = target ?? integer(step.seconds);
     // A catalog hold is timed and a catalog rep movement counts reps, whatever the model sent.
     const timed = catalog !== undefined ? catalog.isHold : seconds !== undefined && seconds > 0 && (reps === undefined || reps <= 0);
     const perSide = catalog !== undefined ? catalog.isPerSide : step.per_side === true;
