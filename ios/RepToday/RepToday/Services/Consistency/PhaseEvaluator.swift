@@ -144,7 +144,29 @@ enum PhaseEvaluator {
         library: [Exercise],
         level: FitnessLevel
     ) -> Bool {
-        line.entryExercises(in: library).contains { RepGrammar.hasCleared($0, in: logs, level: level) }
+        line.entryExercises(in: library).contains { entry in
+            RepGrammar.hasCleared(entry, in: logs, level: level) || hasMovedPast(entry, logs: logs, library: library)
+        }
+    }
+
+    /// Whether the user worked `entry` on a Training Day and later worked a higher rung of its chain toward
+    /// progression - the evidence that moved their frontier past it under the ADR-0013 bar - so a rung
+    /// cleared under an earlier target (an advanced user's 90-second plank before Fixed Targets, ADR-0022)
+    /// stays cleared. Entry work logged before Training Days (no station role) is left to re-clear, as
+    /// ADR-0013 accepts, and entering a chain above its entry rung (the Start Seed band) leaves no work on
+    /// the entry rung and so clears nothing.
+    private static func hasMovedPast(_ entry: Exercise, logs: [WorkoutLog], library: [Exercise]) -> Bool {
+        let higherIds = Set(library
+            .filter { $0.progressionChainId == entry.progressionChainId && $0.progressionOrder > entry.progressionOrder }
+            .flatMap(\.placementIds))
+        func dates(of ids: Set<String>, where qualifies: (LoggedExercise) -> Bool = { _ in true }) -> [Date] {
+            logs.filter { log in
+                log.exercises.contains { $0.countsForProgression && ids.contains($0.exerciseId) && qualifies($0) }
+            }.map(\.completedAt)
+        }
+        guard let firstOnEntry = dates(of: Set(entry.placementIds), where: { $0.role != nil }).min(),
+              let lastAbove = dates(of: higherIds).max() else { return false }
+        return lastAbove > firstOnEntry
     }
 
 

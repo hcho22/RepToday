@@ -114,6 +114,7 @@ A user who was on a removed rung stands on the closest rung they still get on th
 The rationale, presentation, Coach behavior and existing-user recalculation are recorded in [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md).
 
 Since M1 a line is cleared by four clean sets at the top of the user's range on the entry rung, at earned reps, in a session not rated too hard ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md), `RepGrammar.isAdvancementMet`), so a Discipline user may need to re-clear a foundation after the update.
+A line cleared since then stays cleared when a bar later rises: a user who worked the entry rung on a Training Day and later moved up its chain keeps the line ([ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md)).
 
 ## Back injury area
 

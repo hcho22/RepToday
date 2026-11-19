@@ -203,6 +203,34 @@ final class FixedTargetTests: XCTestCase {
         XCTAssertEqual(RepGrammar.clearingSessionCount(plank, in: intermediate, level: .intermediate), 3)
     }
 
+    /// PRD decision 11 (US-FT04): an advanced user who cleared the Core line at 4 x 90s before Fixed Targets
+    /// and has since moved up to Side Plank keeps the line and their Strength-Phase eligibility, while the
+    /// same 90-second logs with no move past the plank still leave them on Forearm Plank with Core uncleared.
+    func testAnAdvancedCoreLineClearedAtNinetySecondsStaysCleared() throws {
+        let clearedAtNinety = (5...7).map { plankLog(seconds: 90, earned: 90, daysAgo: $0 * 2) }
+        let movedUp = clearedAtNinety + [sidePlankLog(daysAgo: 2)]
+
+        XCTAssertEqual(isCoreCleared(movedUp, level: .advanced), true)
+        XCTAssertEqual(plankRung(level: .advanced, logs: movedUp), "core_side_plank")
+        XCTAssertEqual(evaluatePhase(sustainedHistory() + otherFoundationsCleared() + movedUp, level: .advanced), .strength)
+
+        XCTAssertEqual(isCoreCleared(clearedAtNinety, level: .advanced), false)
+        XCTAssertEqual(plankRung(level: .advanced, logs: clearedAtNinety), "core_forearm_plank")
+        XCTAssertEqual(
+            evaluatePhase(sustainedHistory() + otherFoundationsCleared() + clearedAtNinety, level: .advanced), .discipline
+        )
+    }
+
+    /// Entry-rung work logged before Training Days still has to re-clear (ADR-0013): a later Side Plank
+    /// session does not carry an old plank log with no station role.
+    func testAPreTrainingDaysPlankLogIsNotKeptByMovingUp() throws {
+        let legacy = TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("core_forearm_plank", pattern: .core, role: nil, value: 90, isHold: true)],
+            completedAt: TrainingDayFixtures.date(daysAgo: 10)
+        )
+        XCTAssertEqual(isCoreCleared([legacy, sidePlankLog(daysAgo: 2)], level: .advanced), false)
+    }
+
     func testDeadBugClearsOnlyAtFourCleanSetsPerSideAtTheTarget() throws {
         let deadBug = try exercise("core_dead_bug")
         XCTAssertTrue(RepGrammar.hasCleared(deadBug, in: [deadBugLog(reps: 20, daysAgo: 2)], level: .advanced))
@@ -467,6 +495,47 @@ final class FixedTargetTests: XCTestCase {
             completedAt: TrainingDayFixtures.date(daysAgo: daysAgo),
             difficulty: difficulty
         )
+    }
+
+    private func sidePlankLog(daysAgo: Int) -> WorkoutLog {
+        TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("core_side_plank", pattern: .core, role: .core, value: 20, earned: 20, isHold: true)],
+            completedAt: TrainingDayFixtures.date(daysAgo: daysAgo)
+        )
+    }
+
+    /// Three show-ups a week for the eight weeks the Strength Phase asks for.
+    private func sustainedHistory() -> [WorkoutLog] {
+        (0..<8).flatMap { week in
+            [0, 2, 4].map { TrainingDayFixtures.log([], completedAt: TrainingDayFixtures.date(daysAgo: week * 7 + $0)) }
+        }
+    }
+
+    /// A clearing session at the advanced top for the entry rung of every foundation line but Core.
+    private func otherFoundationsCleared() -> [WorkoutLog] {
+        StrengthFoundation.displayOrder.flatMap(\.lines).filter { $0.pattern != .core }.compactMap { line in
+            line.entryExercises(in: library).first.map { entry in
+                let top = RepGrammar.earnedRange(for: entry, level: .advanced).upperBound
+                return TrainingDayFixtures.log(
+                    [TrainingDayFixtures.station(
+                        entry.id, pattern: entry.movementPattern, value: top, earned: top, isHold: entry.isHold
+                    )],
+                    completedAt: TrainingDayFixtures.date(daysAgo: 3)
+                )
+            }
+        }
+    }
+
+    private func phaseProgress(_ logs: [WorkoutLog], level: FitnessLevel) -> PhaseProgress {
+        PhaseEvaluator.progress(logs: logs, library: library, level: level, asOf: asOf, calendar: calendar)
+    }
+
+    private func isCoreCleared(_ logs: [WorkoutLog], level: FitnessLevel) -> Bool? {
+        phaseProgress(logs, level: level).foundations.first { $0.foundation == .core }?.isCleared
+    }
+
+    private func evaluatePhase(_ logs: [WorkoutLog], level: FitnessLevel) -> Phase {
+        PhaseEvaluator.evaluate(logs: logs, library: library, level: level, asOf: asOf, calendar: calendar)
     }
 
     private func deadBugLog(
