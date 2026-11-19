@@ -114,7 +114,6 @@ A user who was on a removed rung stands on the closest rung they still get on th
 The rationale, presentation, Coach behavior and existing-user recalculation are recorded in [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md).
 
 Since M1 a line is cleared by four clean sets at the top of the user's range on the entry rung, at earned reps, in a session not rated too hard ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md), `RepGrammar.isAdvancementMet`), so a Discipline user may need to re-clear a foundation after the update.
-A line cleared since then stays cleared when a bar later rises: a user who worked the entry rung on a Training Day and later moved up its chain keeps the line ([ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md)).
 
 ## Back injury area
 
@@ -206,7 +205,8 @@ A per-level number a movement is served at, set by the user's fitness level alon
 It never climbs, steps back or pads; "too hard", a skip or "couldn't finish" hold it, never step the user down a rung, and only keep that session from counting toward advancement - which the "couldn't finish" screen says on its card.
 Because it never pads, a beginner session whose other levers are spent can run honestly short of its length.
 A short session may cut it toward the short-session floor and a Return eases it, and neither session counts toward advancement.
-Moving up takes four clean sets at the target, prescribed at the target, in a session not rated too hard and not marked "couldn't finish"; its advancement copy reads "4 clean holds at your target" or "4 clean sets per side at your target".
+Moving up takes four clean sets at the target, prescribed at the target, in a session not rated too hard and not marked "couldn't finish"; a Foundation line cleared under the earlier earned range before Fixed Targets took effect stays cleared.
+Its advancement copy reads "4 clean holds at your target" or "4 clean sets per side at your target".
 A Practice station of such a movement runs at the level target.
 Decided in [ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md); the catalog declares it (`Exercise.fixedTarget`) and `Services/Engine/RepGrammar.swift` owns it.
 

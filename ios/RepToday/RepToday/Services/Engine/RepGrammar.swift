@@ -127,10 +127,18 @@ enum RepGrammar {
         exercise: Exercise,
         level: FitnessLevel
     ) -> Bool {
+        isAdvancementMet(by: logged, in: log, exercise: exercise, top: earnedRange(for: exercise, level: level).upperBound)
+    }
+
+    private static func isAdvancementMet(
+        by logged: LoggedExercise,
+        in log: WorkoutLog,
+        exercise: Exercise,
+        top: Int
+    ) -> Bool {
         guard logged.exerciseId == exercise.id,
               log.countsTowardAdvancement(logged),
               log.perceivedDifficulty != .tooHard else { return false }
-        let top = earnedRange(for: exercise, level: level).upperBound
         let atTop = logged.completedSets.filter { set in
             (exercise.isHold ? set.durationSeconds : set.reps).map { $0 >= top } ?? false
         }
@@ -141,6 +149,26 @@ enum RepGrammar {
     /// Whether any of `logs` clears `exercise`'s rung for a user at `level`.
     static func hasCleared(_ exercise: Exercise, in logs: [WorkoutLog], level: FitnessLevel) -> Bool {
         clearingSessionCount(exercise, in: logs, level: level) > 0
+    }
+
+    /// When Fixed Targets took effect (ADR-0022): the start of 2026-11-19 UTC, the day they were approved, so
+    /// no log written under a Fixed Target is dated before it. Logs carry no schema version, so their
+    /// recorded `completedAt` is what tells a log written before Fixed Targets from one written after.
+    static let fixedTargetsTookEffect = Date(timeIntervalSince1970: 1_795_046_400)
+
+    /// Whether any of `logs` clears `exercise`'s rung for its Foundation line: by `hasCleared`, or - for a
+    /// Fixed Target movement only - by a log dated before `fixedTargetsTookEffect` that cleared under the
+    /// earned range in force when it was written (an advanced 4 x 90s plank), so a foundation already
+    /// cleared stays cleared (ADR-0022). Moving up a rung never reads this: old logs count toward that only
+    /// when they reached the target.
+    static func hasClearedFoundation(_ exercise: Exercise, in logs: [WorkoutLog], level: FitnessLevel) -> Bool {
+        if hasCleared(exercise, in: logs, level: level) { return true }
+        guard exercise.fixedTarget != nil else { return false }
+        let earlierTop = earnedRange(for: kind(of: exercise), level: level).upperBound
+        return logs.contains { log in
+            log.completedAt < fixedTargetsTookEffect
+                && log.exercises.contains { isAdvancementMet(by: $0, in: log, exercise: exercise, top: earlierTop) }
+        }
     }
 
     /// How many of `logs` clear `exercise`'s rung - read by plateau diagnosis, which looks for a rung

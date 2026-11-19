@@ -203,32 +203,79 @@ final class FixedTargetTests: XCTestCase {
         XCTAssertEqual(RepGrammar.clearingSessionCount(plank, in: intermediate, level: .intermediate), 3)
     }
 
-    /// PRD decision 11 (US-FT04): an advanced user who cleared the Core line at 4 x 90s before Fixed Targets
-    /// and has since moved up to Side Plank keeps the line and their Strength-Phase eligibility, while the
-    /// same 90-second logs with no move past the plank still leave them on Forearm Plank with Core uncleared.
-    func testAnAdvancedCoreLineClearedAtNinetySecondsStaysCleared() throws {
-        let clearedAtNinety = (5...7).map { plankLog(seconds: 90, earned: 90, daysAgo: $0 * 2) }
-        let movedUp = clearedAtNinety + [sidePlankLog(daysAgo: 2)]
+    /// PRD decision 11 (US-FT04): an advanced user's 4 x 90s plank clear from before Fixed Targets keeps the
+    /// Core line and their Strength-Phase eligibility, though it still does not move them up to Side Plank.
+    func testAnAdvancedCoreClearFromBeforeFixedTargetsStaysCleared() throws {
+        let plank = try exercise("core_forearm_plank")
+        let clearedAtNinety = [plankLog(seconds: 90, earned: 90, daysAgo: 4)]
+        XCTAssertLessThan(clearedAtNinety[0].completedAt, RepGrammar.fixedTargetsTookEffect)
 
-        XCTAssertEqual(isCoreCleared(movedUp, level: .advanced), true)
-        XCTAssertEqual(plankRung(level: .advanced, logs: movedUp), "core_side_plank")
-        XCTAssertEqual(evaluatePhase(sustainedHistory() + otherFoundationsCleared() + movedUp, level: .advanced), .strength)
-
-        XCTAssertEqual(isCoreCleared(clearedAtNinety, level: .advanced), false)
-        XCTAssertEqual(plankRung(level: .advanced, logs: clearedAtNinety), "core_forearm_plank")
+        XCTAssertTrue(RepGrammar.hasClearedFoundation(plank, in: clearedAtNinety, level: .advanced))
+        XCTAssertEqual(isCoreCleared(clearedAtNinety, level: .advanced, asOf: asOf), true)
         XCTAssertEqual(
-            evaluatePhase(sustainedHistory() + otherFoundationsCleared() + clearedAtNinety, level: .advanced), .discipline
+            PhaseEvaluator.evaluate(
+                logs: sustainedHistory(endingDaysAgo: 0) + otherFoundationsCleared() + clearedAtNinety,
+                library: library, level: .advanced, asOf: asOf, calendar: calendar
+            ),
+            .strength
         )
+        XCTAssertEqual(plankRung(level: .advanced, logs: clearedAtNinety), "core_forearm_plank")
+
+        let tooShort = [plankLog(seconds: 85, earned: 85, daysAgo: 4)]
+        XCTAssertFalse(RepGrammar.hasClearedFoundation(plank, in: tooShort, level: .advanced))
     }
 
-    /// Entry-rung work logged before Training Days still has to re-clear (ADR-0013): a later Side Plank
-    /// session does not carry an old plank log with no station role.
-    func testAPreTrainingDaysPlankLogIsNotKeptByMovingUp() throws {
-        let legacy = TrainingDayFixtures.log(
-            [TrainingDayFixtures.station("core_forearm_plank", pattern: .core, role: nil, value: 90, isHold: true)],
-            completedAt: TrainingDayFixtures.date(daysAgo: 10)
+    /// A log from the cutoff on is judged only against the target: a short session that cut the advanced
+    /// 3:00 plank to 1:40 (above the old 90-second top, earned at the target) never clears the Core line.
+    func testACutPlankSessionAfterTheCutoffNeverCountsUnderTheOldBar() throws {
+        let plank = try exercise("core_forearm_plank")
+        let after = calendar.date(byAdding: .day, value: 2, to: RepGrammar.fixedTargetsTookEffect)!
+        let cut = TrainingDayFixtures.log(
+            [TrainingDayFixtures.station("core_forearm_plank", pattern: .core, role: .core, value: 100, earned: 180, isHold: true)],
+            completedAt: after
         )
-        XCTAssertEqual(isCoreCleared([legacy, sidePlankLog(daysAgo: 2)], level: .advanced), false)
+        XCTAssertFalse(RepGrammar.hasClearedFoundation(plank, in: [cut], level: .advanced))
+        XCTAssertEqual(isCoreCleared([cut], level: .advanced, asOf: after.addingTimeInterval(3600)), false)
+    }
+
+    /// A beginner who swaps Standard Push-Up for Wide Push-Up, the next rung of the same chain, has not
+    /// cleared the Push line.
+    func testASameChainSwapNeverClearsAFoundationLine() throws {
+        let standard = TrainingDayFixtures.station("push_standard", pattern: .push, value: 20, earned: 20)
+        let wide = TrainingDayFixtures.station("push_wide", pattern: .push, value: 20, earned: 20)
+        let logs = [
+            TrainingDayFixtures.log([standard], completedAt: TrainingDayFixtures.date(daysAgo: 4)),
+            TrainingDayFixtures.log([wide], completedAt: TrainingDayFixtures.date(daysAgo: 2)),
+        ]
+        let push = PhaseEvaluator.progress(logs: logs, library: library, level: .beginner, asOf: asOf, calendar: calendar)
+            .foundations.first { $0.foundation == .push }
+        XCTAssertEqual(push?.isCleared, false)
+    }
+
+    /// Every movement without a Fixed Target clears its Foundation line exactly by `hasCleared`, before the
+    /// cutoff and after it.
+    func testEveryOtherMovementClearsItsFoundationExactlyAsBefore() throws {
+        let after = calendar.date(byAdding: .day, value: 2, to: RepGrammar.fixedTargetsTookEffect)!
+        for exercise in library where exercise.fixedTarget == nil {
+            for level in FitnessLevel.allCases {
+                let top = RepGrammar.earnedRange(for: exercise, level: level).upperBound
+                for date in [TrainingDayFixtures.date(daysAgo: 4), after] {
+                    for value in [top - RepGrammar.step, top] {
+                        let logs = [TrainingDayFixtures.log(
+                            [TrainingDayFixtures.station(
+                                exercise.id, pattern: exercise.movementPattern, value: value, earned: value, isHold: exercise.isHold
+                            )],
+                            completedAt: date
+                        )]
+                        XCTAssertEqual(
+                            RepGrammar.hasClearedFoundation(exercise, in: logs, level: level),
+                            RepGrammar.hasCleared(exercise, in: logs, level: level),
+                            "\(exercise.id) at \(level) and \(value)"
+                        )
+                    }
+                }
+            }
+        }
     }
 
     func testDeadBugClearsOnlyAtFourCleanSetsPerSideAtTheTarget() throws {
@@ -497,17 +544,10 @@ final class FixedTargetTests: XCTestCase {
         )
     }
 
-    private func sidePlankLog(daysAgo: Int) -> WorkoutLog {
-        TrainingDayFixtures.log(
-            [TrainingDayFixtures.station("core_side_plank", pattern: .core, role: .core, value: 20, earned: 20, isHold: true)],
-            completedAt: TrainingDayFixtures.date(daysAgo: daysAgo)
-        )
-    }
-
     /// Three show-ups a week for the eight weeks the Strength Phase asks for.
-    private func sustainedHistory() -> [WorkoutLog] {
+    private func sustainedHistory(endingDaysAgo: Int) -> [WorkoutLog] {
         (0..<8).flatMap { week in
-            [0, 2, 4].map { TrainingDayFixtures.log([], completedAt: TrainingDayFixtures.date(daysAgo: week * 7 + $0)) }
+            [0, 2, 4].map { TrainingDayFixtures.log([], completedAt: TrainingDayFixtures.date(daysAgo: endingDaysAgo + week * 7 + $0)) }
         }
     }
 
@@ -517,25 +557,16 @@ final class FixedTargetTests: XCTestCase {
             line.entryExercises(in: library).first.map { entry in
                 let top = RepGrammar.earnedRange(for: entry, level: .advanced).upperBound
                 return TrainingDayFixtures.log(
-                    [TrainingDayFixtures.station(
-                        entry.id, pattern: entry.movementPattern, value: top, earned: top, isHold: entry.isHold
-                    )],
+                    [TrainingDayFixtures.station(entry.id, pattern: entry.movementPattern, value: top, earned: top, isHold: entry.isHold)],
                     completedAt: TrainingDayFixtures.date(daysAgo: 3)
                 )
             }
         }
     }
 
-    private func phaseProgress(_ logs: [WorkoutLog], level: FitnessLevel) -> PhaseProgress {
+    private func isCoreCleared(_ logs: [WorkoutLog], level: FitnessLevel, asOf: Date) -> Bool? {
         PhaseEvaluator.progress(logs: logs, library: library, level: level, asOf: asOf, calendar: calendar)
-    }
-
-    private func isCoreCleared(_ logs: [WorkoutLog], level: FitnessLevel) -> Bool? {
-        phaseProgress(logs, level: level).foundations.first { $0.foundation == .core }?.isCleared
-    }
-
-    private func evaluatePhase(_ logs: [WorkoutLog], level: FitnessLevel) -> Phase {
-        PhaseEvaluator.evaluate(logs: logs, library: library, level: level, asOf: asOf, calendar: calendar)
+            .foundations.first { $0.foundation == .core }?.isCleared
     }
 
     private func deadBugLog(
