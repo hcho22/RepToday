@@ -218,7 +218,7 @@ final class TrainerTests: XCTestCase {
 
     // MARK: - US-TP02: bundled art
 
-    /// The bundle carries art for every served movement that has art, keyed by exercise id: 70 full
+    /// The bundle carries art for every served movement that has art, keyed by exercise id: 76 full
     /// pairs per Trainer, the two end-only gaps, and nothing for the withheld `version2` movements (the
     /// three crawls, decision 16, and Prone Y-T-W Raises, whose source art never matched one movement).
     func testTheBundleCarriesArtForEveryServedMovementAndNoneForVersion2() throws {
@@ -235,7 +235,7 @@ final class TrainerTests: XCTestCase {
                 }
                 if case .pair = art { pairs += 1 }
             }
-            XCTAssertEqual(pairs, 70, "\(trainer) full pairs")
+            XCTAssertEqual(pairs, 76, "\(trainer) full pairs")
         }
     }
 

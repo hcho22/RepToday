@@ -1,7 +1,7 @@
 import XCTest
 
 /// M1 exit criterion: a full 45-minute Training Day plays end to end in the running app, every movement
-/// shows Trainer art (bar those ADR-0020 added, still on the icon), and Today moves on to the next group afterwards.
+/// shows Trainer art, and Today moves on to the next group afterwards.
 ///
 /// Walks the session with the player's own early-advance controls (**Done**, **Skip rest**) so it runs
 /// in minutes, recording each movement's illustration label on the way.
@@ -82,13 +82,8 @@ final class TrainingDayUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(illustrations.count, 6, "too few movements seen: \(illustrations)")
         // ADR-0018: 2 warm-up + 4 main + 2 Core Sprinkles + 2 cooldown (no Focus Areas picked here).
         XCTAssertLessThanOrEqual(illustrations.count, 10, "a 45 minute session serves at most 10 movements: \(illustrations.keys.sorted())")
-        // The movements ADR-0020 added ship with the card's icon until their art lands; every other one
-        // shows the Trainer.
-        let awaitingArt: Set<String> = [
-            "Wide Push-Up", "One-Legged Push-Up", "Spider Push-Up",
-            "Explosive Push-Up", "Burpee with Push-Up", "Burpee",
-        ]
-        for (name, label) in illustrations where !awaitingArt.contains(name) {
+        // Every movement a session serves shows the Trainer.
+        for (name, label) in illustrations {
             XCTAssertTrue(label.contains("trainer showing"), "\(name) shows no Trainer art: \(label)")
         }
 

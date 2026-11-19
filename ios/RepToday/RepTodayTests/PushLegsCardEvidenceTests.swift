@@ -3,11 +3,12 @@ import SwiftUI
 @testable import RepToday
 
 /// Reviewer evidence for ADR-0020 on the production exercise screen: the Standard Push-Up's card carries
-/// its one line naming the easier options, and a movement added without Trainer art (Wide Push-Up) shows
-/// the card's icon fallback. Each runs on the default phone (393x852 pt) and the small phone (375x667 pt),
-/// dark and light, asserts the live accessibility tree and that the timer still sits above the controls,
-/// and writes a PNG per state under `artifacts/reports/ADR-0020/` only when run with
-/// `REPTODAY_WRITE_EVIDENCE=1` (a temporary directory otherwise).
+/// its one line naming the easier options, and the six movements ADR-0020 added and kept show each
+/// Trainer's start and end poses. The Standard card and the Wide Push-Up card run on the default phone
+/// (393x852 pt) and the small phone (375x667 pt), dark and light; every new movement runs for both
+/// Trainers on the default phone, dark. Each asserts the live accessibility tree and that the timer still
+/// sits above the controls, and writes a PNG per state under `artifacts/reports/ADR-0020/` only when run
+/// with `REPTODAY_WRITE_EVIDENCE=1` (a temporary directory otherwise).
 @MainActor
 final class PushLegsCardEvidenceTests: XCTestCase {
 
@@ -52,10 +53,10 @@ final class PushLegsCardEvidenceTests: XCTestCase {
         )
     }
 
-    private func user() -> User {
+    private func user(sex: Sex = .female) -> User {
         var user = MockPersistence.sampleUser
         user.profile.fitnessLevel = .beginner
-        user.profile.sex = .female
+        user.profile.sex = sex
         return user
     }
 
@@ -82,10 +83,10 @@ final class PushLegsCardEvidenceTests: XCTestCase {
         return predicate()
     }
 
-    private func host(_ workout: Workout, _ variant: Variant) {
+    private func host(_ workout: Workout, _ variant: Variant, sex: Sex = .female) {
         window = nil
         let (_, hosted) = HostedSurface.host(
-            ActiveSessionView(workout: workout, user: user()),
+            ActiveSessionView(workout: workout, user: user(sex: sex)),
             size: variant.size, settleFor: 1.5, style: variant.style, emulatingSafeArea: variant.safeArea
         )
         window = hosted
@@ -130,18 +131,27 @@ final class PushLegsCardEvidenceTests: XCTestCase {
         }
     }
 
-    /// A movement added without Trainer art shows the card's icon, named for VoiceOver as a demonstration,
-    /// and no cue line of its own.
-    func testNewMovementWithoutArtShowsTheIcon() async throws {
-        let workout = session(try await prescription("push_wide"))
-        for variant in variants {
-            host(workout, variant)
-            XCTAssertTrue(pump(until: { self.labels().contains("Wide Push-Up demonstration") }, timeout: 5),
-                          "\(variant.suffix): \(labels())")
-            XCTAssertFalse(labels().contains { $0.contains("trainer showing") }, "\(variant.suffix): no pose art exists for it")
-            XCTAssertFalse(labels().contains(cue), "\(variant.suffix): only Standard carries the line")
-            assertTimerAboveDone(variant)
-            try capture("02-wide-push-up-icon-fallback", variant)
+    /// Each movement ADR-0020 added and kept shows the user's Trainer in start and end poses rather than the
+    /// card's icon, and no cue line of its own. The icon fallback itself is
+    /// `TrainerPoseEvidenceTests.testNoArtMovementKeepsTheGlyphFallback`.
+    func testNewMovementsShowTheTrainerPoses() async throws {
+        let ids = ["push_wide", "push_one_leg", "push_spider", "push_explosive", "push_burpee", "squat_burpee"]
+        for id in ids {
+            let prescription = try await prescription(id)
+            let name = prescription.exercise.displayName
+            let workout = session(prescription)
+            for sex in [Sex.female, .male] {
+                for variant in id == "push_wide" ? variants : [variants[0]] {
+                    let label = "\(id) \(sex.rawValue) \(variant.suffix)"
+                    host(workout, variant, sex: sex)
+                    XCTAssertTrue(pump(until: { self.labels().contains("\(name), trainer showing start and end positions") }, timeout: 5),
+                                  "\(label): \(labels())")
+                    XCTAssertFalse(labels().contains("\(name) demonstration"), "\(label): the icon fallback is gone")
+                    XCTAssertFalse(labels().contains(cue), "\(label): only Standard carries the line")
+                    assertTimerAboveDone(variant)
+                    try capture("02-\(id)-\(sex.rawValue)", variant)
+                }
+            }
         }
     }
 }
