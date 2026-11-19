@@ -15,13 +15,8 @@ CHECKER = ROOT / 'tools/check-trainer-art.py'
 CATALOG = ROOT / 'ios/RepToday/RepToday/Resources/Exercises.json'
 TRAINER_ART = ROOT / 'ios/RepToday/RepToday/Resources/Assets.xcassets/Trainer'
 
-# Only the two Pull movements' start poses are still missing; every other served movement has both poses for both Trainers.
-TODAY = [
-    'warning: Trainer art gap: pull_reverse_snow_angel (Reverse Snow Angel) is missing the male start pose',
-    'warning: Trainer art gap: pull_reverse_snow_angel (Reverse Snow Angel) is missing the female start pose',
-    'warning: Trainer art gap: pull_wall_scapular_pull (Wall Scapular Pull) is missing the male start pose',
-    'warning: Trainer art gap: pull_wall_scapular_pull (Wall Scapular Pull) is missing the female start pose',
-]
+# Every served movement has both poses for both Trainers.
+TODAY = []
 
 
 def run(catalog, assets):

@@ -318,19 +318,40 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                       "the work window must restart for the substitute; tree reads \(labels())")
     }
 
-    /// Wall Scapular Pull has only an end pose: one centered pose, named as the end position.
-    func testSinglePoseMovementShowsOneCenteredPose() throws {
-        let session = workout([("Strength", .strength, [try prescription("pull_wall_scapular_pull", sets: 2)])])
-        for variant in variants {
-            host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
-            assertPoseLabel("Wall Scapular Pull, trainer showing end position", exerciseName: "Wall Scapular Pull")
-            if let pose = frame({ $0 == "Wall Scapular Pull, trainer showing end position" }) {
-                XCTAssertEqual(pose.midX, variant.size.width / 2, accuracy: 1, "a single pose is centered")
+    /// Wall Scapular Pull, Reverse Snow Angel and Figure-Four Glute Stretch show their start/end pair for
+    /// both Trainers (the two Pull movements showed only an end pose until their start poses landed).
+    func testRedrawnMovementsShowTheirPairForBothTrainers() throws {
+        let movements: [(id: String, name: String, session: Workout)] = [
+            ("pull_wall_scapular_pull", "Wall Scapular Pull",
+             workout([("Strength", .strength, [try prescription("pull_wall_scapular_pull", sets: 2)])])),
+            ("pull_reverse_snow_angel", "Reverse Snow Angel",
+             workout([("Strength", .strength, [try prescription("pull_reverse_snow_angel", sets: 2)])])),
+            ("mobility_figure_four", "Figure-Four Glute Stretch",
+             workout([
+                 ("Warm-up", .warmup, [try prescription("mobility_figure_four")]),
+                 ("Strength", .strength, [try prescription("push_wall")]),
+             ])),
+        ]
+        for movement in movements {
+            for sex in [Sex.male, .female] {
+                for variant in variants where !variant.isSmall {
+                    host(ActiveSessionView(workout: movement.session, user: user(sex: sex)), variant)
+                    assertPoseLabel("\(movement.name), trainer showing start and end positions", exerciseName: movement.name)
+                    try capture("05-pair-\(movement.id)-\(sex.rawValue)", variant)
+                }
             }
-            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
-            assertTimerAboveTheFold(prefix: "Work window, ", primary: "Done")
-            try capture("05-single-pose", variant)
         }
+    }
+
+    /// No served movement is drawn in one pose today, but a partial art drop still renders: hosted with
+    /// a lookup holding only the end pose, the illustration names the one pose it shows.
+    func testSinglePoseArtNamesTheOnePose() throws {
+        let resolver = TrainerPoseResolver { $0 == "Trainer/female/pull_wall_scapular_pull-end" }
+        let illustration = ExerciseIllustration(prescription: try prescription("pull_wall_scapular_pull"), resolver: resolver)
+            .environment(\.trainer, .female)
+            .frame(width: 345, height: ExerciseDemoView.height)
+        host(illustration, variants[0])
+        assertPoseLabel("Wall Scapular Pull, trainer showing end position", exerciseName: "Wall Scapular Pull")
     }
 
     /// Prone Y-T-W Raises has no usable art: today's glyph with today's label. It is withdrawn until
@@ -396,9 +417,9 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 ready: { $0.hasPrefix("Work window, ") }
             ),
             FoldState(
-                name: "single-pose",
+                name: "wall-scapular-pull-pair",
                 session: workout([("Strength", .strength, [try prescription("pull_wall_scapular_pull", sets: 4)])]),
-                posesLabel: "Wall Scapular Pull, trainer showing end position",
+                posesLabel: "Wall Scapular Pull\(pair)",
                 ready: { $0.hasPrefix("Work window, ") }
             ),
             FoldState(

@@ -26,7 +26,7 @@ Settings and the largest-text capture are hosted at full content height (`*-x140
 | `02-running-hold-pair` | Auto-started warm-up hold, male Trainer, Deep Squat Hold | pair label; "Hold, N seconds remaining"; ring compact and above the controls |
 | `03-idle-training-hold` | Training hold before Start hold, Forearm Plank | pair label; no ring; Start hold present; starting it brings the ring and keeps the poses |
 | `04-rep-based-stretch` | Rep-based warm-up stretch, Cat-Cow Flow | pair label; no ring |
-| `05-single-pose` | Wall Scapular Pull (end pose only) | "Wall Scapular Pull, trainer showing end position"; centered |
+| `05-pair-<movement>-<trainer>` | Wall Scapular Pull, Reverse Snow Angel and Figure-Four Glute Stretch, male and female Trainer, 393x852 only (replaced `05-single-pose` on 2026-11-19, below) | "<name>, trainer showing start and end positions" |
 | `06-no-art-fallback` | Prone Y-T-W Raises (no usable art) | "Prone Y-T-W Raises demonstration"; no Trainer label |
 | `07-transition-beat` | Between-station transition beat | "Next: Bodyweight Squat"; Bodyweight Squat's pair; fit (below) |
 | `08-between-round-rest` | Between-round rest | "Next up, Wall Push-Up"; Wall Push-Up's pair; fit |
@@ -116,7 +116,7 @@ An earlier version tightened the rhythm only for states that would otherwise sit
 | Idle per-side training hold (Side Plank) | 16 pt | 176 pt | at the fold |
 | Running per-side training hold (Side Plank) | 16 pt | 167.5 pt | at the fold |
 | Rep-based stretch (Cat-Cow Flow) | 16 pt | 194.5 pt | at the fold |
-| Single pose (Wall Scapular Pull) | 16 pt | 153.5 pt | at the fold |
+| Single pose (Wall Scapular Pull; a pair since 2026-11-19, `14-fold-wall-scapular-pull-pair`) | 16 pt | 153.5 pt | at the fold |
 | No-art glyph (Prone Y-T-W Raises) | 16 pt | 153.5 pt | at the fold |
 
 On 393x852 every state keeps the 24 pt rhythm and the 220 pt card, and this run's 393x852 `14-fold-*` captures match the committed ones apart from one live countdown digit, so the 393x852 baselines are unchanged.
@@ -133,3 +133,12 @@ Physical-device checks this suite cannot make, left for the captain:
 - [ ] Live VoiceOver focus order through the card, the headline, the ring and the controls, and on the rest overlay.
 - [ ] Reduce Motion: the compact ring and the rest ring step rather than sweep; the glyph fallback is still.
 - [ ] The Trainer choice and Settings switch on a device signed in to iCloud, then the choice on a second device after sync.
+
+## 2026-11-19: Wall Scapular Pull and Reverse Snow Angel are pairs
+
+Both Pull movements gained start poses and Figure-Four Glute Stretch got a new pair, so no served movement shows a single pose any more.
+`05-single-pose-*` and `14-fold-single-pose-*` were removed; `05-pair-*` shows the three redrawn movements for both Trainers at 393x852 in dark and light, and the fold walk's Wall Scapular Pull state is now `14-fold-wall-scapular-pull-pair-*`.
+End-only rendering stays covered by `testSinglePoseArtNamesTheOnePose`, which hosts `ExerciseIllustration` with a stub resolver holding only an end pose.
+Only those new PNGs were added from that run; the other captures here were left as they were.
+The app's palette has been one dark set since the 2026-11-14 visual direction, so the new dark and light captures render the same.
+
