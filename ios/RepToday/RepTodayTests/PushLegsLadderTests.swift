@@ -40,7 +40,7 @@ final class PushLegsLadderTests: XCTestCase {
     private let removedSideToSide = ["push_side_to_side"]
     private var removed: [String] { removedPush + removedNordic + removedSideToSide }
 
-    /// The six movements ADR-0020 added that the app still serves, all without Trainer art for now.
+    /// The six movements ADR-0020 added that the app still serves.
     private let added = [
         "push_wide", "push_one_leg", "push_spider", "push_explosive", "push_burpee", "squat_burpee",
     ]
@@ -406,7 +406,7 @@ final class PushLegsLadderTests: XCTestCase {
         }
     }
 
-    // MARK: - The Standard card's line, and the new movements' icon fallback
+    // MARK: - The Standard card's line, and the new movements' Trainer art
 
     func testTheStandardPushUpCardNamesTheEasierOptions() async throws {
         let library = try await offeredLibrary()
@@ -415,15 +415,19 @@ final class PushLegsLadderTests: XCTestCase {
         XCTAssertEqual(library.filter { $0.cue != nil }.map(\.id), ["push_standard"])
     }
 
-    func testTheNewMovementsHaveNoTrainerArtAndShowTheIcon() async throws {
+    func testTheNewMovementsHaveBothTrainersStartAndEndArt() async throws {
         let library = try await offeredLibrary()
         let resolver = TrainerPoseResolver.bundled
         for id in added {
             let exercise = try XCTUnwrap(library.first { $0.id == id })
             for trainer in Trainer.allCases {
-                XCTAssertEqual(resolver.art(exerciseId: id, trainer: trainer), .none, "\(id) / \(trainer)")
+                XCTAssertEqual(
+                    resolver.art(exerciseId: id, trainer: trainer),
+                    .pair(start: "Trainer/\(trainer.rawValue)/\(id)-start", end: "Trainer/\(trainer.rawValue)/\(id)-end"),
+                    "\(id) / \(trainer)"
+                )
             }
-            XCTAssertFalse(SessionAssembly.hasBundledTrainerArt(exercise), id)
+            XCTAssertTrue(SessionAssembly.hasBundledTrainerArt(exercise), id)
         }
     }
 

@@ -82,13 +82,8 @@ final class TrainingDayUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(illustrations.count, 6, "too few movements seen: \(illustrations)")
         // ADR-0018: 2 warm-up + 4 main + 2 Core Sprinkles + 2 cooldown (no Focus Areas picked here).
         XCTAssertLessThanOrEqual(illustrations.count, 10, "a 45 minute session serves at most 10 movements: \(illustrations.keys.sorted())")
-        // The movements ADR-0020 added ship with the card's icon until their art lands; every other one
-        // shows the Trainer.
-        let awaitingArt: Set<String> = [
-            "Wide Push-Up", "One-Legged Push-Up", "Spider Push-Up",
-            "Explosive Push-Up", "Burpee with Push-Up", "Burpee",
-        ]
-        for (name, label) in illustrations where !awaitingArt.contains(name) {
+        // Every movement a session serves shows the Trainer.
+        for (name, label) in illustrations {
             XCTAssertTrue(label.contains("trainer showing"), "\(name) shows no Trainer art: \(label)")
         }
 

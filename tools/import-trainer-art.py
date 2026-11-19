@@ -15,8 +15,8 @@ What it does, every run, from scratch:
 - Maps a file to an exercise id through the explicit `SLUG_TO_ID` table below, keyed by family
   folder *and* slug, so the two "Cossack Squat" entries (leg vs mobility) cannot collide.
 - Skips, and names, every file it does not bundle: art that maps to no catalog movement (the
-  Prone Y/T/W variants today), art for a `version2` movement (withheld until version 2), and any
-  file whose name it cannot read.
+  Prone Y/T/W variants today), art for a `version2` movement (withheld until version 2), art for a
+  movement in `NEVER_BUNDLED`, and any file whose name it cannot read.
 
 Only PNGs are copied. Provenance logs, manifests, prompt files and review images stay where they
 are - they are never committed to this repository (asset-attribution decision, US-TP01).
@@ -50,6 +50,11 @@ SLUG_TO_ID = {
     ('push', 'one-arm-push-up'): 'push_one_arm',
     ('push', 'floor-tricep-dips'): 'push_floor_dips',
     ('push', 'pike-push-up'): 'push_pike',
+    ('push', 'wide-push-up'): 'push_wide',
+    ('push', 'one-legged-push-up'): 'push_one_leg',
+    ('push', 'spider-push-up'): 'push_spider',
+    ('push', 'explosive-push-up'): 'push_explosive',
+    ('push', 'burpee-with-push-up'): 'push_burpee',
     ('back', 'superman-hold'): 'pull_superman',
     ('back', 'reverse-snow-angel'): 'pull_reverse_snow_angel',
     ('back', 'prone-y-t-w-raises'): 'pull_ytw',
@@ -73,6 +78,7 @@ SLUG_TO_ID = {
     ('leg', 'nordic-curl'): 'hinge_nordic',
     ('leg', 'bodyweight-good-morning'): 'hinge_good_morning',
     ('leg', 'single-leg-romanian-deadlift'): 'hinge_single_leg_rdl',
+    ('leg', 'burpee'): 'squat_burpee',
     ('core', 'forearm-plank'): 'core_forearm_plank',
     ('core', 'side-plank'): 'core_side_plank',
     ('core', 'bird-dog'): 'core_bird_dog',
@@ -117,6 +123,10 @@ SLUG_TO_ID = {
     ('mobility', 'ankle-rocks'): 'mobility_ankle_rocks',
     ('mobility', 'arm-circles'): 'mobility_arm_circles',
 }
+
+# Withdrawn before their art ever shipped (version 2 under ADR-0007, then retired with the primal
+# pillar under ADR-0014): the files stay in the art folder, but no build has bundled them.
+NEVER_BUNDLED = {'primal_gorilla_walk', 'primal_lizard_crawl', 'primal_underswitch'}
 
 NAMESPACE_CONTENTS = {'info': {'author': 'xcode', 'version': 1}, 'properties': {'provides-namespace': True}}
 
@@ -182,6 +192,9 @@ def main(argv):
                 exercise_id = SLUG_TO_ID.get((family, match['slug']))
                 if exercise_id is None:
                     skipped.append((label, 'maps to no catalog movement'))
+                    continue
+                if exercise_id in NEVER_BUNDLED:
+                    skipped.append((label, f'{exercise_id} was withdrawn before its art shipped'))
                     continue
                 if catalog[exercise_id].get('audience') == 'version2':
                     skipped.append((label, f'{exercise_id} is a version2 movement (not served)'))
