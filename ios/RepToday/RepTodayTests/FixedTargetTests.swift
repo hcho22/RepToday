@@ -311,6 +311,30 @@ final class FixedTargetTests: XCTestCase {
         XCTAssertEqual(ActiveSessionView.spokenHoldLength(90), "90 second", "a part-minute hold stays in seconds")
     }
 
+    /// After "too hard", the "couldn't finish" list flags a Fixed Target move, whose card says its target
+    /// stays the same; the header keeps its ease-off promise unless every listed move holds a target.
+    func testTheCouldNotFinishListFlagsAFixedTargetMove() throws {
+        let block = WorkoutBlock(id: UUID(), title: "Push Day", category: .strength, exercises: [
+            PrescribedExercise(id: UUID(), exercise: try exercise("push_standard"), sets: 1, reps: 15, durationSeconds: nil, restSeconds: 15),
+            PrescribedExercise(id: UUID(), exercise: try exercise("core_forearm_plank"), sets: 1, reps: nil, durationSeconds: 60, restSeconds: 15),
+        ])
+        let workout = Workout(id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil, requestedMinutes: 15, wasReturn: false, blocks: [block])
+        let vm = ActiveSessionViewModel(workout: workout, now: { self.asOf }, cuePlayer: QuietCuePlayer(), voiceOverActive: { false })
+        vm.start()
+        for _ in 0..<4 where !vm.isComplete { vm.completeSet() }
+        XCTAssertTrue(vm.isComplete)
+        XCTAssertEqual(vm.finishCheckMoves.map(\.id), ["push_standard", "core_forearm_plank"])
+        XCTAssertEqual(vm.finishCheckMoves.map(\.holdsItsTarget), [false, true])
+
+        let easeOff = "Tap them and only those ease off next time. Tap none and everything eases off a little."
+        XCTAssertEqual(ActiveSessionView.finishCheckIntro(vm.finishCheckMoves), easeOff)
+        XCTAssertEqual(
+            ActiveSessionView.finishCheckIntro(vm.finishCheckMoves.filter(\.holdsItsTarget)),
+            "Your targets stay the same either way. A tapped move's session just won't count toward moving up."
+        )
+        XCTAssertEqual(ActiveSessionView.finishCheckHoldNote, "Your target stays the same. This session just won't count toward moving up.")
+    }
+
     // MARK: - US-FT07: 0:30 held bookends
 
     /// Every held warm-up and cooldown stretch is 0:30 at every level and length (per side when one-sided),
