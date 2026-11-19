@@ -155,7 +155,17 @@ final class TrainerTests: XCTestCase {
             )
             XCTAssertEqual(
                 resolver.art(exerciseId: "pull_wall_scapular_pull", trainer: trainer),
-                .single(.end, "Trainer/\(trainer.rawValue)/pull_wall_scapular_pull-end")
+                .pair(
+                    start: "Trainer/\(trainer.rawValue)/pull_wall_scapular_pull-start",
+                    end: "Trainer/\(trainer.rawValue)/pull_wall_scapular_pull-end"
+                )
+            )
+            XCTAssertEqual(
+                resolver.art(exerciseId: "pull_reverse_snow_angel", trainer: trainer),
+                .pair(
+                    start: "Trainer/\(trainer.rawValue)/pull_reverse_snow_angel-start",
+                    end: "Trainer/\(trainer.rawValue)/pull_reverse_snow_angel-end"
+                )
             )
             XCTAssertEqual(resolver.art(exerciseId: "pull_ytw", trainer: trainer), .none)
             XCTAssertEqual(resolver.art(exerciseId: "not_a_movement", trainer: trainer), .none)
@@ -166,24 +176,24 @@ final class TrainerTests: XCTestCase {
     /// upgrades the answer with no code change.
     func testResolverIsPerTrainerAndUpgradesOnAFileDrop() {
         var available: Set<String> = [
-            "Trainer/male/pull_reverse_snow_angel-start",
-            "Trainer/male/pull_reverse_snow_angel-end",
-            "Trainer/female/pull_reverse_snow_angel-end",
+            "Trainer/male/x-start",
+            "Trainer/male/x-end",
+            "Trainer/female/x-end",
         ]
         let resolver = TrainerPoseResolver { available.contains($0) }
         XCTAssertEqual(
-            resolver.art(exerciseId: "pull_reverse_snow_angel", trainer: .male),
-            .pair(start: "Trainer/male/pull_reverse_snow_angel-start", end: "Trainer/male/pull_reverse_snow_angel-end")
+            resolver.art(exerciseId: "x", trainer: .male),
+            .pair(start: "Trainer/male/x-start", end: "Trainer/male/x-end")
         )
         XCTAssertEqual(
-            resolver.art(exerciseId: "pull_reverse_snow_angel", trainer: .female),
-            .single(.end, "Trainer/female/pull_reverse_snow_angel-end")
+            resolver.art(exerciseId: "x", trainer: .female),
+            .single(.end, "Trainer/female/x-end")
         )
 
-        available.insert("Trainer/female/pull_reverse_snow_angel-start")
+        available.insert("Trainer/female/x-start")
         XCTAssertEqual(
-            resolver.art(exerciseId: "pull_reverse_snow_angel", trainer: .female),
-            .pair(start: "Trainer/female/pull_reverse_snow_angel-start", end: "Trainer/female/pull_reverse_snow_angel-end")
+            resolver.art(exerciseId: "x", trainer: .female),
+            .pair(start: "Trainer/female/x-start", end: "Trainer/female/x-end")
         )
     }
 
@@ -203,8 +213,8 @@ final class TrainerTests: XCTestCase {
             "Glute Bridge, trainer showing start and end positions"
         )
         XCTAssertEqual(
-            TrainerPoseCopy.accessibilityLabel(exerciseName: "Wall Scapular Pull", art: .single(.end, "e")),
-            "Wall Scapular Pull, trainer showing end position"
+            TrainerPoseCopy.accessibilityLabel(exerciseName: "X", art: .single(.end, "e")),
+            "X, trainer showing end position"
         )
         XCTAssertEqual(
             TrainerPoseCopy.accessibilityLabel(exerciseName: "X", art: .single(.start, "s")),
@@ -218,9 +228,9 @@ final class TrainerTests: XCTestCase {
 
     // MARK: - US-TP02: bundled art
 
-    /// The bundle carries art for every served movement that has art, keyed by exercise id: 76 full
-    /// pairs per Trainer, the two end-only gaps, and nothing for the withheld `version2` movements (the
-    /// three crawls, decision 16, and Prone Y-T-W Raises, whose source art never matched one movement).
+    /// The bundle carries art for every served movement that has art, keyed by exercise id: 78 full
+    /// pairs per Trainer and nothing for the withheld `version2` movements (the three crawls, decision
+    /// 16, and Prone Y-T-W Raises, whose source art never matched one movement).
     func testTheBundleCarriesArtForEveryServedMovementAndNoneForVersion2() throws {
         let url = try XCTUnwrap(Bundle(for: AppState.self).url(forResource: "Exercises", withExtension: "json"))
         let catalog = try JSONDecoder().decode([Exercise].self, from: Data(contentsOf: url))
@@ -235,7 +245,7 @@ final class TrainerTests: XCTestCase {
                 }
                 if case .pair = art { pairs += 1 }
             }
-            XCTAssertEqual(pairs, 76, "\(trainer) full pairs")
+            XCTAssertEqual(pairs, 78, "\(trainer) full pairs")
         }
     }
 
