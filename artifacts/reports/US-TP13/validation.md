@@ -116,7 +116,7 @@ An earlier version tightened the rhythm only for states that would otherwise sit
 | Idle per-side training hold (Side Plank) | 16 pt | 176 pt | at the fold |
 | Running per-side training hold (Side Plank) | 16 pt | 167.5 pt | at the fold |
 | Rep-based stretch (Cat-Cow Flow) | 16 pt | 194.5 pt | at the fold |
-| Single pose (Wall Scapular Pull; a pair since 2026-11-19, `14-fold-wall-scapular-pull-pair`) | 16 pt | 153.5 pt | at the fold |
+| Single pose (Wall Scapular Pull; a pair since 2026-11-19, `14-fold-wall-scapular-pull-pair`, re-measured in the 2026-11-19 section below) | 16 pt | 153.5 pt | at the fold |
 | No-art glyph (Prone Y-T-W Raises) | 16 pt | 153.5 pt | at the fold |
 
 On 393x852 every state keeps the 24 pt rhythm and the 220 pt card, and this run's 393x852 `14-fold-*` captures match the committed ones apart from one live countdown digit, so the 393x852 baselines are unchanged.
@@ -138,6 +138,7 @@ Physical-device checks this suite cannot make, left for the captain:
 
 Both Pull movements gained start poses and Figure-Four Glute Stretch got a new pair, so no served movement shows a single pose any more.
 `05-single-pose-*` and `14-fold-single-pose-*` were removed; `05-pair-*` shows the three redrawn movements for both Trainers at 393x852 in dark and light, and the fold walk's Wall Scapular Pull state is now `14-fold-wall-scapular-pull-pair-*`.
+The 2026-11-19 run of `testRoundTrackerDotsStayAboveTheFoldInEveryState` measured Wall Scapular Pull as a pair at rhythm 8 pt, card 184.8 pt and round tracker bottom 371.4 pt against a 527 pt fold on 375x667 (above the fold), and at rhythm 12 pt, card 196.6 pt and tracker bottom 486.1 pt against a 678 pt fold on 393x852.
 End-only rendering stays covered by `testSinglePoseArtNamesTheOnePose`, which hosts `ExerciseIllustration` with a stub resolver holding only an end pose.
 Only those new PNGs were added from that run; the other captures here were left as they were.
 The app's palette has been one dark set since the 2026-11-14 visual direction, so the new dark and light captures render the same.
