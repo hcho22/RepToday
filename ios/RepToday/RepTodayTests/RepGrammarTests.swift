@@ -101,7 +101,9 @@ final class RepGrammarTests: XCTestCase {
     func testANewMovementOpensAtTheBottomOfTheRange() {
         XCTAssertEqual(AdaptiveOverload.earned(for: exercise("push_standard"), level: .beginner, recentLogs: []), 15)
         XCTAssertEqual(AdaptiveOverload.earned(for: exercise("push_archer"), level: .advanced, recentLogs: []), 5)
-        XCTAssertEqual(AdaptiveOverload.earned(for: exercise("core_forearm_plank"), level: .beginner, recentLogs: []), 20)
+        XCTAssertEqual(AdaptiveOverload.earned(for: exercise("core_side_plank"), level: .beginner, recentLogs: []), 20)
+        // A Fixed Target opens at its target (ADR-0022).
+        XCTAssertEqual(AdaptiveOverload.earned(for: exercise("core_forearm_plank"), level: .beginner, recentLogs: []), 30)
     }
 
     func testEarnedRepsClimbOneStepPerSessionAtOrAboveThem() {

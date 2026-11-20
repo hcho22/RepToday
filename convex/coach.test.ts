@@ -337,6 +337,34 @@ describe("tools become proposals; safety-owned moves are unreachable", () => {
     ]);
   });
 
+  test("a Custom Workout starts Forearm Plank and Dead Bug at the user's level target (US-FT08)", async () => {
+    const t = convexTest(schema, modules);
+    await seedUser(t, ALICE);
+    nextResponse = () =>
+      modelReply("Try this.", [
+        {
+          name: "propose_custom_workout",
+          arguments: {
+            title: "Core Basics",
+            note: "",
+            steps: [
+              { name: "plank", catalog_id: "core_forearm_plank", sets: 3, reps: null, seconds: 90, per_side: false, rest_seconds: 30 },
+              { name: "dead bug", catalog_id: "core_dead_bug", sets: 3, reps: 12, seconds: null, per_side: true, rest_seconds: 30 },
+              { name: "bird dog", catalog_id: "core_bird_dog", sets: 3, reps: 12, seconds: null, per_side: true, rest_seconds: 30 },
+            ],
+          },
+        },
+      ]);
+    const [proposal] = (await send(t, ALICE, "write me a core workout")).coach.proposals;
+    if (proposal.kind !== "customWorkout") throw new Error("expected a Custom Workout");
+    // Alice is a beginner: the plank's 0:30 and Dead Bug's 10 per side; Bird Dog keeps the model's number.
+    expect(proposal.workout.steps).toEqual([
+      { name: "Forearm Plank", exerciseId: "core_forearm_plank", sets: 3, seconds: 30, perSide: false, restSeconds: 30 },
+      { name: "Dead Bug", exerciseId: "core_dead_bug", sets: 3, reps: 10, perSide: true, restSeconds: 30 },
+      { name: "Bird Dog", exerciseId: "core_bird_dog", sets: 3, reps: 12, perSide: true, restSeconds: 30 },
+    ]);
+  });
+
   test("proposal outcomes are recorded once, in order, and only by the owner", async () => {
     const t = convexTest(schema, modules);
     await seedUser(t, ALICE);

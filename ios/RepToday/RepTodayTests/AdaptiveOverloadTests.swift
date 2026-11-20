@@ -587,7 +587,8 @@ final class AdaptiveOverloadTests: XCTestCase {
     }
 
     /// Every catalog movement's opening number sits on the grid inside its range and under the top, at
-    /// every level and every Start Seed multiplier, so no first session clears a rung.
+    /// every level and every Start Seed multiplier, so no first session clears a rung - except a Fixed
+    /// Target, which opens at its target, the number its level is always asked for (ADR-0022).
     func testEveryCatalogOpeningNumberSitsOnTheGridUnderTheTop() async throws {
         let library = try await MockExerciseService().exercises()
         for exercise in library {
@@ -596,6 +597,10 @@ final class AdaptiveOverloadTests: XCTestCase {
                 for multiplier in [1.0, 1.15, 1.30] {
                     let value = served(exercise, [], level: level, startingRepMultiplier: multiplier)
                     XCTAssertEqual(value % RepGrammar.step, 0, "\(exercise.id) x\(multiplier) -> \(value)")
+                    if let target = RepGrammar.fixedTarget(for: exercise, level: level) {
+                        XCTAssertEqual(value, target, "\(exercise.id) \(level) x\(multiplier) opens off its Fixed Target")
+                        continue
+                    }
                     XCTAssertTrue(range.contains(value), "\(exercise.id) \(level) x\(multiplier) -> \(value)")
                     XCTAssertLessThan(value, range.upperBound, "\(exercise.id) \(level) x\(multiplier) opens at the top")
                 }

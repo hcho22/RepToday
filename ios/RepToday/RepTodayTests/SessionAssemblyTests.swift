@@ -249,7 +249,8 @@ final class SessionAssemblyTests: XCTestCase {
 
     /// A session that would still run past the tolerance with every rep at the short-session floor drops
     /// a station and runs short instead (ADR-0018): a cold-start intermediate's 15-minute Pull Day with
-    /// Abs gives up the Abs extra Core Sprinkle, keeping its two main slots and the base Core Sprinkle.
+    /// Abs, fit into 13 minutes, gives up the Abs extra Core Sprinkle, keeping its two main slots and the
+    /// base Core Sprinkle. (Since the 0:30 bookend holds, ADR-0022, the plan fits its own 15 minutes.)
     func testAnOverlongSessionDropsTheAbsExtraCoreSprinkleFirst() {
         var coldStart = TrainingDayFixtures.user(level: .intermediate, focusAreas: [.abs])
         coldStart.coldStart = User.ColdStart(sessionsLogged: 0, active: true)
@@ -260,8 +261,8 @@ final class SessionAssemblyTests: XCTestCase {
         )
         XCTAssertEqual(plan.stations.filter { $0.role == .core }.count, 2, "Abs asks for two Core Sprinkles at 15 minutes")
         let before = plan.stations.map(\.exercise.id)
-        SessionAssembly.fit(&plan, targetSeconds: 15 * 60)
-        XCTAssertLessThanOrEqual(plan.totalSeconds - 15 * 60, SessionAssembly.toleranceSeconds)
+        SessionAssembly.fit(&plan, targetSeconds: 13 * 60)
+        XCTAssertLessThanOrEqual(plan.totalSeconds - 13 * 60, SessionAssembly.toleranceSeconds)
         XCTAssertEqual(plan.stations.filter { $0.role == .core }.count, 1)
         XCTAssertEqual(plan.stations.filter { $0.role != .core }.count, 2)
         XCTAssertEqual(plan.stations.map(\.exercise.id), Array(before.dropLast()), "the last-added Core Sprinkle goes")
@@ -448,12 +449,12 @@ final class SessionAssemblyTests: XCTestCase {
                                 XCTFail("\(label): the shipping catalog carries no Variation, so none is ever served")
                             case .main?, .core?:
                                 XCTAssertGreaterThanOrEqual(value, RepGrammar.shortSessionFloor(for: kind), "\(label): \(exercise.id)")
-                                XCTAssertLessThanOrEqual(value, RepGrammar.earnedRange(for: kind, level: level).upperBound, "\(label): \(exercise.id)")
+                                XCTAssertLessThanOrEqual(value, RepGrammar.earnedRange(for: exercise, level: level).upperBound, "\(label): \(exercise.id)")
                                 XCTAssertNotNil(item.earnedReps ?? item.earnedDurationSeconds, "\(label): \(exercise.id) records no Earned Reps")
                             case .practice?:
-                                let atPractice = value == RepGrammar.practiceValue(for: kind)
+                                let atPractice = value == RepGrammar.practiceValue(for: exercise, level: level)
                                 let atVolume = value >= RepGrammar.shortSessionFloor(for: kind)
-                                    && value <= RepGrammar.earnedRange(for: kind, level: level).upperBound
+                                    && value <= RepGrammar.earnedRange(for: exercise, level: level).upperBound
                                 XCTAssertTrue(atPractice || atVolume, "\(label): \(exercise.id) practice at \(value)")
                                 XCTAssertNil(item.earnedReps ?? item.earnedDurationSeconds, "\(label): Practice records no Earned Reps")
                             case .recovery?, nil:

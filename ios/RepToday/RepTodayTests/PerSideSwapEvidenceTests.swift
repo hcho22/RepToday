@@ -716,8 +716,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             XCTAssertFalse(spoken.contains(" 1 reps"), "\"\(spoken)\"", file: file, line: line)
         }
         if let seconds = prescription.durationSeconds {
+            let length = ActiveSessionView.spokenHoldLength(seconds)
             XCTAssertTrue(
-                spoken.contains(sets == 1 ? "of a \(seconds) second hold" : "of \(seconds) second holds"),
+                spoken.contains(sets == 1 ? "of a \(length) hold" : "of \(length) holds"),
                 "\(prescription.exercise.id) is a \(seconds)s hold over \(sets) set(s) but VoiceOver "
                 + "reads \"\(spoken)\"",
                 file: file, line: line

@@ -43,6 +43,7 @@ enum EvidenceOutput {
         static let accounts = "us-au02-accounts"
         static let restorePurchases = "restore-purchases"
         static let profilePhoto = "profile-photo"
+        static let fixedTargets = "fixed-targets"
     }
 
     /// The directory `story`'s evidence is written to for this run.

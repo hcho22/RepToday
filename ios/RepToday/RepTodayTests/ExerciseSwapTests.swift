@@ -283,7 +283,9 @@ final class ExerciseSwapTests: XCTestCase {
         let user = user(level: .advanced)
         let strength = library.filter { $0.pillar == .strength }
 
-        for (point, expectedSwapped) in [("bottom", 39), ("middle", 26), ("top", 14)] {
+        // A Fixed Target movement (Forearm Plank, Dead Bug, ADR-0022) sits at its target at every point and
+        // only ever substitutes in at it, so an advanced 3:00 plank slot finds no peer close in time.
+        for (point, expectedSwapped) in [("bottom", 38), ("middle", 26), ("top", 16)] {
             var swapped = 0
             var declined: [String] = []
             for movement in strength {
@@ -318,9 +320,9 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// The same sweep in the shape a real warm-up and cooldown slot has: one set of a stretch at its
-    /// catalog length. A stretch swaps for a stretch at *its* catalog length, so the slot stays one set and
-    /// the only question is whether the two catalog lengths are close enough - and every stretch in the
-    /// catalog has an in-band peer that is.
+    /// bookend length. A stretch swaps for a stretch at *its* bookend length, so the slot stays one set and
+    /// the only question is whether the two lengths are close enough - and every stretch in the catalog
+    /// has an in-band peer that is.
     func testEveryStretchSubstituteStaysInBudgetInTheBookendShape() async throws {
         let library = try await library()
         let mobility = library.filter { $0.pillar == .mobility }
@@ -342,7 +344,7 @@ final class ExerciseSwapTests: XCTestCase {
             XCTAssertNil(result.role, "a bookend stretch carries no station role")
             XCTAssertEqual(
                 result.durationSeconds ?? result.reps, SessionAssembly.bookendValue(for: result.exercise),
-                "a stretch substitute runs at its own catalog length"
+                "a stretch substitute runs at its own bookend length"
             )
             XCTAssertLessThanOrEqual(
                 abs(slotSeconds(of: result) - slotSeconds(of: slot)), tolerance(of: slot),
@@ -354,14 +356,15 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// Every one-set bookend - the warm-up and the cooldown - is a stretch at one set by construction, so
-    /// a swap never reaches for a two-set stretch to make up time: a stretch whose catalog length is far
+    /// a swap never reaches for a two-set stretch to make up time: a stretch whose bookend length is far
     /// from the slot's is declined rather than restructured.
     func testSwapNeverMovesTheSetCountOfAOneSetBlock() async throws {
-        // A 100-second stretch beside a peer that runs 30 seconds. At one set the peer is 70s away, past
+        // A 100-second stretch slot - a session saved before held bookends became 0:30 (ADR-0022) plays it
+        // as saved - beside a peer that runs the 0:30 bookend hold. At one set the peer is 70s away, past
         // the slot's widened one-set tolerance (30 + 0.3 x 100 = 60s); at two sets it would be within it.
         let stretch = makeExercise(id: "stretch_long", pillar: .mobility, pattern: .mobility, isHold: true, defaultValue: 100)
         let peer = makeExercise(id: "stretch_peer", pillar: .mobility, pattern: .mobility, isHold: true, defaultValue: 30)
-        let slot = prescription(for: stretch)
+        let slot = prescription(for: stretch, perSet: 100)
         XCTAssertEqual(slot.durationSeconds, 100)
 
         for (title, category) in [("Warm-Up", ExerciseCategory.warmup), ("Cooldown", .cooldown)] {
@@ -377,7 +380,7 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// The Start Seed (US-O02) never reaches a stretch, so a swapped *mobility* movement opens at its own
-    /// catalog length for an advanced cold-start user, exactly as the warm-up and cooldown the assembler
+    /// bookend length for an advanced cold-start user, exactly as the warm-up and cooldown the assembler
     /// built for them did.
     func testSwapDoesNotApplyTheStartSeedToAMobilitySubstitute() async throws {
         let library = try await library()
@@ -397,7 +400,7 @@ final class ExerciseSwapTests: XCTestCase {
         XCTAssertEqual(result.exercise.pillar, .mobility)
         XCTAssertEqual(
             result.durationSeconds ?? result.reps, SessionAssembly.bookendValue(for: result.exercise),
-            "a mobility substitute opens at its own catalog length, unseeded, like every other stretch"
+            "a mobility substitute opens at its own bookend length, unseeded, like every other stretch"
         )
     }
 
@@ -833,18 +836,19 @@ final class ExerciseSwapTests: XCTestCase {
 
         // The Start Seed's volume half (US-O02) only reaches a *no-history* target: a fresh advanced
         // user's substitute opens above the bottom of its range.
+        // Bear Hold rather than Forearm Plank: a Fixed Target opens at its target, never seeded (ADR-0022).
         let hollow = try XCTUnwrap(library.first { $0.id == "core_hollow_hold" })
-        let plank = try XCTUnwrap(library.first { $0.id == "core_forearm_plank" })
+        let bear = try XCTUnwrap(library.first { $0.id == "core_bear_hold" })
         let freshSlot = prescription(for: hollow, perSet: 20, role: .core)
         let seeded = try substitute(
             ExerciseSwap.swap(
-                freshSlot, in: workout([freshSlot]), user: user(level: .advanced), library: [hollow, plank],
+                freshSlot, in: workout([freshSlot]), user: user(level: .advanced), library: [hollow, bear],
                 recentLogs: [], sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
             )
         )
-        XCTAssertEqual(seeded.exercise.id, plank.id)
+        XCTAssertEqual(seeded.exercise.id, bear.id)
         XCTAssertGreaterThan(
-            try XCTUnwrap(seeded.durationSeconds), RepGrammar.earnedRange(for: plank, level: .advanced).lowerBound,
+            try XCTUnwrap(seeded.durationSeconds), RepGrammar.earnedRange(for: bear, level: .advanced).lowerBound,
             "the Start Seed (US-O02) must reach the swap"
         )
     }

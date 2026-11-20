@@ -695,6 +695,9 @@ final class ActiveSessionViewModel {
         /// The catalog exercise id, which is what the mark is stored against.
         let id: String
         let displayName: String
+        /// Whether the move is served a Fixed Target (ADR-0022): a mark holds its number rather than easing
+        /// it off, and only keeps this session from counting toward moving up.
+        var holdsItsTarget = false
     }
 
     /// The exercise ids the user marked "couldn't finish" on the completion screen. Only meaningful
@@ -715,7 +718,7 @@ final class ActiveSessionViewModel {
                 !(completedSets[step.id] ?? []).isEmpty,
                 seen.insert(exercise.id).inserted
             else { return nil }
-            return FinishCheckMove(id: exercise.id, displayName: exercise.displayName)
+            return FinishCheckMove(id: exercise.id, displayName: exercise.displayName, holdsItsTarget: exercise.fixedTarget != nil)
         }
     }
 

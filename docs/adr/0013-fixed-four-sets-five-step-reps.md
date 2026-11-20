@@ -1,7 +1,7 @@
 # ADR-0013: Fixed 4 sets, reps in steps of 5, reps as the fit lever, and fixed movement counts
 
 - Status: Accepted (decided 2026-11-10); implemented in M1 (2026-11-10, `US-TD00`...`US-TD04`; `Services/Engine/RepGrammar.swift`, `Services/Engine/AdaptiveOverload.swift`, `Services/Engine/SessionAssembly.swift`), with the reconciliations below.
-- Amended by: [ADR-0018](0018-session-sizing-and-day-matched-bookends.md) (2026-11-12) - main movements by length are now 1 (5 min), 2 (10-15), 3 (20-30), 4 (45) and 5 (60), with Core Sprinkles 1 at 15-30 minutes and 2 at 45-60 (plus one with Abs); 4 sets, the rep grid, reps as the fit lever and the rest caps stand.
+- Amended by: [ADR-0018](0018-session-sizing-and-day-matched-bookends.md) (2026-11-12) - main movements by length are now 1 (5 min), 2 (10-15), 3 (20-30), 4 (45) and 5 (60), with Core Sprinkles 1 at 15-30 minutes and 2 at 45-60 (plus one with Abs); 4 sets, the rep grid, reps as the fit lever and the rest caps stand. [ADR-0022](0022-fixed-targets-for-forearm-plank-and-dead-bug.md) (2026-11-19) - Forearm Plank and Dead Bug leave Earned Reps for a per-level Fixed Target that never climbs, steps back or pads, and clear at four clean sets at it; every other movement's range, climb and bar stand.
 - Date: 2026-11-10
 - Deciders: captain, via the Push/Pull/Legs design grill (2026-11-09 to 2026-11-10)
 - Spec: `.claude/agent/tasks/prd-ppl-rest-accounts-coach-agent_261110.md`

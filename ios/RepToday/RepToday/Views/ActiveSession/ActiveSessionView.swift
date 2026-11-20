@@ -1128,8 +1128,9 @@ struct ActiveSessionView: View {
 
     /// The "too hard" follow-up (ADR-0011): the session's worked training moves, for the user to tap
     /// any they could not finish. A tapped move steps back next time and never counts toward moving up;
-    /// with none tapped, every move eases off as "too hard" always has. Optional and non-blocking like
-    /// the rating itself - nothing here gates Done. Each move is an option card carrying the selected
+    /// with none tapped, every move eases off as "too hard" always has. A Fixed Target move (ADR-0022)
+    /// never eases off, so its card says so instead (`finishCheckHoldNote`). Optional and non-blocking
+    /// like the rating itself - nothing here gates Done. Each move is an option card carrying the selected
     /// trait, at the 60pt active-screen touch target.
     private var finishCheckControl: some View {
         VStack(spacing: Theme.Spacing.smd) {
@@ -1138,7 +1139,7 @@ struct ActiveSessionView: View {
                     .font(Self.completionHeaderFont)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .accessibilityAddTraits(.isHeader)
-                Text("Tap them and only those ease off next time. Tap none and everything eases off a little.")
+                Text(Self.finishCheckIntro(viewModel.finishCheckMoves))
                     .font(Theme.Typography.callout)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
@@ -1159,13 +1160,30 @@ struct ActiveSessionView: View {
         return Button {
             viewModel.toggleCouldNotFinish(move.id)
         } label: {
-            OptionCard(title: move.displayName, isSelected: isMarked, minHeight: Theme.Spacing.workoutTouchTarget)
+            OptionCard(
+                title: move.displayName,
+                detail: move.holdsItsTarget ? Self.finishCheckHoldNote : nil,
+                isSelected: isMarked,
+                minHeight: Theme.Spacing.workoutTouchTarget
+            )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(move.displayName)
+        .accessibilityLabel(move.holdsItsTarget ? "\(move.displayName), \(Self.finishCheckHoldNote)" : move.displayName)
         .accessibilityHint(isMarked ? "Clears the mark" : "Marks this move as not finished")
         .accessibilityAddTraits(isMarked ? [.isSelected] : [])
     }
+
+    /// The line under the "couldn't finish" header. It promises the ease-off only when a listed move
+    /// eases off; when every listed move holds a Fixed Target, it says what a mark does to those instead.
+    static func finishCheckIntro(_ moves: [ActiveSessionViewModel.FinishCheckMove]) -> String {
+        guard !moves.isEmpty, moves.allSatisfy(\.holdsItsTarget) else {
+            return "Tap them and only those ease off next time. Tap none and everything eases off a little."
+        }
+        return "Your targets stay the same either way. A tapped move's session just won't count toward moving up."
+    }
+
+    /// What a "couldn't finish" mark does to a Fixed Target move (ADR-0022), on its card.
+    static let finishCheckHoldNote = "Your target stays the same. This session just won't count toward moving up."
 
     /// The completion screen's type (DESIGN `X20-Complete`, `Z1-Complete-375`).
     private static let completionSubtitleFont = ThemeFont(Theme.Typography.FontName.textMedium, size: 19, relativeTo: .body)
@@ -1276,7 +1294,7 @@ struct ActiveSessionView: View {
     }
 
     /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds", "1 set of a
-    /// 45 second hold" - carrying the same " per side" suffix, since VoiceOver is the only place a
+    /// 45 second hold", "4 sets of 3 minute holds" - carrying the same " per side" suffix, since VoiceOver is the only place a
     /// non-sighted user meets the prescription and dropping it there would hide exactly half the work.
     ///
     /// Unlike `targetText`, which shows bare numerals, this spells the nouns out, so every count it
@@ -1293,12 +1311,19 @@ struct ActiveSessionView: View {
         }
         if let seconds = prescription.durationSeconds {
             // One set holds once, so the article moves with the noun: "1 set of a 30 second hold".
+            let length = spokenHoldLength(seconds)
             let holdPhrase = CountWording.noun(
-                for: prescription.sets, singular: "a \(seconds) second hold", plural: "\(seconds) second holds"
+                for: prescription.sets, singular: "a \(length) hold", plural: "\(length) holds"
             )
             return "\(setsPhrase(prescription.sets)) of \(holdPhrase)\(suffix)"
         }
         return setsPhrase(prescription.sets)
+    }
+
+    /// "30 second" / "3 minute" - a hold's length as the spoken target names it: whole minutes in minutes,
+    /// so an advanced 3:00 plank (ADR-0022) is read as "3 minute", never "180 second".
+    static func spokenHoldLength(_ seconds: Int) -> String {
+        seconds >= 60 && seconds % 60 == 0 ? "\(seconds / 60) minute" : "\(seconds) second"
     }
 
     /// `"1 set"` / `"3 sets"` - the set count agreeing with its noun.

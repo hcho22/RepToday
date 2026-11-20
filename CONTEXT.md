@@ -52,6 +52,7 @@ Retired by [ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md): **Paddin
 
 Every rep and hold number is a multiple of five ([ADR-0011](docs/adr/0011-round-numbers-and-the-climb.md)); a per-side move follows the rule per side.
 Since M1 the numbers live in **Earned Reps** ranges (reps 15-30, advanced 15-50; per side 5-15; holds 20-60 seconds, advanced 90), and a short session may serve down to 10 reps (5 per side) - the one owner is `Services/Engine/RepGrammar.swift`.
+The exception is a **Fixed Target** movement (Forearm Plank, Dead Bug), whose one number per level is its whole range and never climbs or steps back ([ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md)).
 **The climb** ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md)'s reconciliation, replacing ADR-0011's three-session climb): Earned Reps climb 5 after each session not rated too hard whose prescription reached them, "too easy" adds 5 at once, and "too hard" or a skip takes 5 off - or, already at the bottom of the range, steps the move one rung down its progression chain.
 After "too hard" the completion screen lists the session's strength and primal moves for the user to tap any they **couldn't finish**: only those step back and that session never counts toward their advancement, the untapped ones hold, and with none tapped every move steps back and the session counts toward no move's advancement.
 A number logged before the grid is read rounded down onto it, and logs are never rewritten.
@@ -183,7 +184,7 @@ The core movement added to a Training Day: one at 15-30 minutes and two at 45-60
 ## Practice Movement
 
 The next harder rung of a ladder, prescribed at low reps beside the current rung on longer sessions.
-It runs at 4 x 10 (per side 4 x 5, holds 15 seconds), previews progression but never advances it (`LoggedExercise.countsForProgression`), and may sit above the user's staple level ([ADR-0015](docs/adr/0015-practice-movement-bypasses-staple-gate.md)).
+It runs at 4 x 10 (per side 4 x 5, holds 15 seconds) - a **Fixed Target** movement at its level's target instead ([ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md)) - previews progression but never advances it (`LoggedExercise.countsForProgression`), and may sit above the user's staple level ([ADR-0015](docs/adr/0015-practice-movement-bypasses-staple-gate.md)).
 With no harder rung the slot takes the rung below at volume reps; with neither, the session has one fewer movement.
 
 ## Variation
@@ -196,11 +197,29 @@ Landing a Variation's catalog entry and its art is the only step that makes it l
 
 The per-movement rep count the user has earned through rated sessions, always a multiple of 5, recorded on every prescription and log (`earnedReps`, `earnedDurationSeconds`) so Padding and a short session's cut never move it.
 Moving up a rung requires four clean sets at the top of the level's range at earned reps ([ADR-0013](docs/adr/0013-fixed-four-sets-five-step-reps.md)).
+Every strength and core movement is on Earned Reps except a **Fixed Target** movement, whose recorded Earned Reps are always its target.
+
+## Fixed Target
+
+A per-level number a movement is served at, set by the user's fitness level alone: **Forearm Plank** 0:30, 1:00 and 3:00 per hold, **Dead Bug** 10, 15 and 20 per side (beginner, intermediate, advanced).
+It never climbs, steps back or pads; "too hard", a skip or "couldn't finish" hold it, never step the user down a rung, and only keep that session from counting toward advancement - which the "couldn't finish" screen says on its card.
+Because it never pads, a beginner session whose other levers are spent can run honestly short of its length.
+A short session may cut it toward the short-session floor and a Return eases it, and neither session counts toward advancement.
+Moving up takes four clean sets at the target, prescribed at the target, in a session not rated too hard and not marked "couldn't finish"; a Foundation line cleared under the earlier earned range before Fixed Targets took effect stays cleared.
+Its advancement copy reads "4 clean holds at your target" or "4 clean sets per side at your target".
+A Practice station of such a movement runs at the level target.
+Decided in [ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md); the catalog declares it (`Exercise.fixedTarget`) and `Services/Engine/RepGrammar.swift` owns it.
+
+## Bookend hold
+
+Every held warm-up, cooldown and Recovery stretch runs **0:30** at every level - **per side** when the stretch is one-sided (side 1, "Switch sides", side 2) - while a rep-based bookend move keeps its catalog reps.
+The bookend rule owns the length (`SessionAssembly.bookendHoldSeconds`), not the catalog's `defaultDurationSeconds` ([ADR-0022](docs/adr/0022-fixed-targets-for-forearm-plank-and-dead-bug.md)); a session saved before the rule resumes with the lengths it was saved with.
 
 ## Padding
 
 Reps prescribed above Earned Reps only to fill a longer session.
 Padded reps count as done but never move the Rep Ramp or a rung.
+A **Fixed Target** is never padded.
 
 ## Outside Activity
 

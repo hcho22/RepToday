@@ -144,7 +144,7 @@ enum PhaseEvaluator {
         library: [Exercise],
         level: FitnessLevel
     ) -> Bool {
-        line.entryExercises(in: library).contains { RepGrammar.hasCleared($0, in: logs, level: level) }
+        line.entryExercises(in: library).contains { RepGrammar.hasClearedFoundation($0, in: logs, level: level) }
     }
 
 
