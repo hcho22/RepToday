@@ -257,7 +257,7 @@ The owning code is `Views/Welcome/WelcomePageView.swift` and `AppState.isWelcome
 ## Account
 
 The user's required sign-in identity: a Clerk user, signed in with Apple, Google or an email code at "Save your plan", the last onboarding step ([ADR-0016](docs/adr/0016-clerk-accounts-convex-local-first.md)).
-Someone who already has an account can go there straight from the Welcome step ("Already have an account? Sign in"): an account with a saved plan brings it back and opens on Today, and one without goes on to the onboarding questions.
+Someone who already has an account can go there straight from the first onboarding story screen ("Already have an account? Sign in"): an account with a saved plan brings it back and opens on Today, and one without goes on to the onboarding questions.
 Data lives on the device first: Core Data stays the store the app runs on, every change also lands in the sync **outbox** (`CDSyncChange`) in the same save, and the outbox uploads to the account on Rep Today's Convex backend whenever the phone is online, idempotent by record id, with the newer change winning; other devices pull what changed.
 Sessions generate, play and log with no connection; only signing in, account deletion and the Coach need one.
 Every account function checks that the caller owns the data (`convex/ownership.ts`).
