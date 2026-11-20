@@ -2084,3 +2084,21 @@ A captain request, decided in ADR-0022 (`.claude/agent/tasks/prd-fixed-core-targ
 - **"Couldn't finish" (captain, 2026-11-19).** `ActiveSessionViewModel.FinishCheckMove.holdsItsTarget` marks a Fixed Target move, and its card carries `ActiveSessionView.finishCheckHoldNote` ("Your target stays the same. This session just won't count toward moving up."), spoken with its name; the header keeps its ease-off promise unless every listed move holds a target (`finishCheckIntro`). Every other move's wording is unchanged.
 - **Docs (US-FT09).** `CONTEXT.md` gains "Fixed Target" and "Bookend hold" and names the exception in "Round numbers", "Earned Reps / Rep Ramp", "Padding" and "Practice Movement"; ADR-0022 records the decision.
 - **Tests and evidence (US-FT10).** `FixedTargetTests` covers each story's validation test; `FixedTargetSessionSweepTests` sweeps every length, level and day with both movements forced into the Core Sprinkles and prints the before/after table. Tests that pinned the old numbers moved: the opening-number grid and "no first prescription clears its move" tests exempt a Fixed Target (it opens at the target that clears it), the criteria template accepts "at your target", the Start Seed examples (catalog openings, the swap, the advanced core station) use Bear Hold or the advanced user's own core station, the one-set bookend swap test builds its 100-second slot as a saved session would carry it, the swap coverage counts moved to 38/26/16 (an advanced 3:00 plank slot finds no peer close in time), and the Abs-extra drop test fits its 15-minute plan into 13 minutes, since with 0:30 bookends no shipping 15-30 minute session overruns far enough to drop a station.
+
+## Onboarding story: four value screens before the questions (2026-11-19)
+
+A captain request from the Nov 19 design handoff ("Onboarding story (added)", `screens/F02*`): four value screens replace the "Welcome to Rep Today" step, and the questions' progress bar drops from eight segments to seven.
+The question screens (`F03` to `F09c`) differ from the previous handoff only in that bar and in Back on the basics returning to the last story screen.
+
+- **Steps (`OnboardingViewModel`).** `Step` opens with `.welcome`, `.storyWho`, `.storyHow` and `.storyDiscipline`, then the questions as before.
+  The story and the questions each have their own bar: `progressSteps` is the four story screens, or the questions from the basics through Save your plan (six once signed in from the first screen), and `progressPosition` the place on it ("Step 2 of 4", "Step 1 of 7").
+  `primaryActionTitle` reads "Get started" on the last story screen.
+  Answers, stored profile values, sign-in, Save your plan and the funnel events are unchanged.
+- **Screens (`Views/Onboarding/OnboardingStorySteps.swift`).** Each is a `sun` overline, a Display headline with its key phrase in `sun`, one sentence and one visual, recreated from the handoff HTML with Theme tokens and Trainer art the app already ships (the staircase is the `climb` mark); no asset was added.
+  Headlines are balanced, as the mockups' `text-wrap: balance` sets them, never narrower than their longest word, and step down at the largest sizes only as far as that word needs to fit a line.
+  From iOS 26 the story text is set at the mockups' line heights (`lineHeight(.exact)`, the headline lifted to sit mid-line as CSS places it); iOS 17 and 18 keep the fonts' own.
+  At accessibility sizes the day's labels stack once a word no longer fits its column, and the Trainer and Push Day cards stack.
+- **Screen 1.** "Already have an account? Sign in" sits above Continue (in the page at accessibility sizes) and still opens the existing sign-in on Save your plan; its 44 pt target overhangs its 22 pt line.
+  The usage-data disclosure takes the handoff's wording and 12 pt size with "Privacy Policy" drawn inline; VoiceOver still reads the sentence and then a separate link.
+- **Buttons.** Continue and Get started are 60 pt with Inter Bold 19 on the story screens, as the mockups set them; Back stays 56 pt.
+- **Kept as today.** The 8 pt the footer keeps above the home indicator, shared by every onboarding screen, so a phone with no home indicator never puts Continue on the screen's edge.

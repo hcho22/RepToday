@@ -71,7 +71,7 @@ final class AccountScreensEvidenceTests: XCTestCase {
             let root = host.view!
             waitFor("Continue with email", in: root)
             XCTAssertNotNil(AccessibilityTree.element(labeled: "Save your plan", in: root), "\(AccessibilityTree.labels(in: root))")
-            XCTAssertNotNil(AccessibilityTree.element(labeled: "Step 8 of 8", in: root))
+            XCTAssertNotNil(AccessibilityTree.element(labeled: "Step 7 of 7", in: root))
             try assertControls(["Continue with Apple", "Continue with Google", "Continue with email", "Back"], in: root, window: window)
             try assertChoicesMatch(in: root)
             XCTAssertNil(AccessibilityTree.element(labeled: "Continue", in: root), "signing in is the only way forward")

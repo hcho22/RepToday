@@ -27,7 +27,7 @@ final class TrainingDayUITests: XCTestCase {
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false)
         let welcome = app.buttons["Continue"]
         XCTAssertTrue(welcome.waitForExistence(timeout: 15), "the app did not reach onboarding")
-        welcome.tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()

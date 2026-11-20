@@ -273,7 +273,7 @@ final class TelemetryOptOutUITests: XCTestCase {
         // lands an emission site at app entry.
         app.launch(.optedOutWithNoProbe, onboarded: false)
         XCTAssertTrue(
-            app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20),
+            app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 20),
             "onboarding never reached its first screen"
         )
         capture("01-onboarding-disclosure")
