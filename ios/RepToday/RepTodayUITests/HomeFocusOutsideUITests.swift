@@ -20,7 +20,7 @@ final class HomeFocusOutsideUITests: XCTestCase {
         // Onboarding, with Chest and Abs as Focus Areas.
         let welcome = app.buttons["Continue"]
         XCTAssertTrue(welcome.waitForExistence(timeout: 15), "the app did not reach onboarding")
-        welcome.tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         focus(name, in: app)

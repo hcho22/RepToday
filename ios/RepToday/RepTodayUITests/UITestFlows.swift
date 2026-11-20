@@ -5,6 +5,23 @@ import XCTest
 /// past a launch that has no profile to show.
 extension XCTestCase {
 
+    /// The first onboarding story screen's headline: what a suite waits on to know a launch opened on
+    /// onboarding.
+    static let onboardingFirstScreenHeadline = "Built for the time you actually have."
+
+    /// Walks the four onboarding story screens from the first - Continue on each, "Get started" on the
+    /// last - to the basics question.
+    func walkOnboardingStory(in app: TestApp, file: StaticString = #filePath, line: UInt = #line) {
+        for screen in 1...3 {
+            let next = app.buttons["Continue"]
+            XCTAssertTrue(next.waitForExistence(timeout: 15), "story screen \(screen) has no Continue", file: file, line: line)
+            next.tap()
+        }
+        let getStarted = app.buttons["Get started"]
+        XCTAssertTrue(getStarted.waitForExistence(timeout: 5), "the last story screen has no Get started", file: file, line: line)
+        getStarted.tap()
+    }
+
     /// Walks the onboarding flow from wherever it is to "Save your plan" on the primary button, then
     /// signs in there with an email code - the stub sign-in every XCUITest launch uses accepts the one
     /// code it advertises, and so does a Clerk development test address - which finishes onboarding
@@ -17,7 +34,12 @@ extension XCTestCase {
         line: UInt = #line
     ) {
         let saveYourPlan = app.staticTexts["Save your plan"]
-        for _ in 0..<12 where !saveYourPlan.exists {
+        for _ in 0..<16 where !saveYourPlan.exists {
+            // The last story screen's primary button reads "Get started"; every other one "Continue".
+            if app.buttons["Get started"].exists {
+                app.buttons["Get started"].tap()
+                continue
+            }
             guard app.buttons["Continue"].waitForExistence(timeout: 5) else { break }
             app.buttons["Continue"].tap()
         }
@@ -141,8 +163,7 @@ extension XCTestCase {
         guard app.staticTexts["No profile found yet."].waitForExistence(timeout: 8) else { return }
         app.terminate()
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false)
-        XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 15))
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         focus(app.textFields.firstMatch, in: app)
         app.textFields.firstMatch.typeText("Riley\n")

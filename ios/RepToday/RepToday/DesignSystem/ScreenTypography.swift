@@ -34,4 +34,17 @@ extension Theme.Typography {
     static let unitLabel = ThemeFont(Name.textSemiBold, size: 13, relativeTo: .footnote)
     /// The "TODAY" pill under the Cycle strip's current step: Inter ExtraBold 10.
     static let todayPill = ThemeFont(Name.textExtraBold, size: 10, relativeTo: .caption2)
+
+    // MARK: Onboarding story (`screens/F02*`)
+
+    /// The primary button on an onboarding story screen (Continue, Get started): Inter Bold 19.
+    static let storyButton = ThemeFont(Name.textBold, size: 19, relativeTo: .headline)
+    /// A short label in a story visual (a day's parts, a quiet tag): Inter SemiBold 13.
+    static let storyCaption = ThemeFont(Name.textSemiBold, size: 13, relativeTo: .footnote)
+    /// The line under a title in a story card: Inter 14.
+    static let storyDetail = ThemeFont(Name.textRegular, size: 14, relativeTo: .subheadline)
+    /// A stage's title on the discipline story's path ("Show up"): Bricolage ExtraBold 19.
+    static let storyStageTitle = ThemeFont(Name.displaySmall, size: 19, relativeTo: .headline)
+    /// The anonymous-usage-data disclosure on the first story screen: Inter 12.
+    static let disclosure = ThemeFont(Name.textRegular, size: 12, relativeTo: .caption)
 }

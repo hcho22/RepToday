@@ -14,7 +14,7 @@ final class FoundationsUITests: XCTestCase {
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false)
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 15))
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         focus(app.textFields.firstMatch, in: app)
         app.textFields.firstMatch.typeText("Riley\n")
@@ -113,7 +113,7 @@ final class FoundationsUITests: XCTestCase {
         app.alerts.buttons["Delete Account"].tap()
 
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 15))
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
         focus(app.textFields.firstMatch, in: app)
         app.textFields.firstMatch.typeText("Riley\n")

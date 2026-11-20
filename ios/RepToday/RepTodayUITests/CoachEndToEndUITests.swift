@@ -223,7 +223,7 @@ final class CoachEndToEndUITests: XCTestCase {
     private func onboardFreshAccount(label: String, age: Int?) {
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 20), "a fresh install opens on onboarding")
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -357,7 +357,7 @@ final class CoachEndToEndUITests: XCTestCase {
         let confirm = app.alerts.buttons["Delete Account"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         confirm.tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30), "deletion returns to onboarding")
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 30), "deletion returns to onboarding")
         app.terminate()
     }
 

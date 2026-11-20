@@ -63,7 +63,8 @@ struct OnboardingView: View {
                     ScrollView {
                         stepContent
                             .padding(.horizontal, Theme.Spacing.screenMargin)
-                            .padding(.top, Theme.Spacing.smd)
+                            // The story screens sit their overline 2 pt nearer the pager, as the mockups do.
+                            .padding(.top, viewModel.step.isStory ? 10 : Theme.Spacing.smd)
                             .padding(.bottom, Theme.Spacing.mlg)
                             .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
                     }
@@ -81,10 +82,15 @@ struct OnboardingView: View {
                         .padding(.bottom, Theme.Spacing.sm)
                 }
 
-                navigationControls
-                    .padding(.horizontal, Theme.Spacing.screenMargin)
-                    .padding(.top, 10)
-                    .padding(.bottom, Theme.Spacing.sm)
+                VStack(spacing: 10) {
+                    if viewModel.offersSignInFromWelcome && !dynamicTypeSize.isAccessibilitySize {
+                        WelcomeSignInLink(viewModel: viewModel, alignment: .center)
+                    }
+                    navigationControls
+                }
+                .padding(.horizontal, Theme.Spacing.screenMargin)
+                .padding(.top, 10)
+                .padding(.bottom, Theme.Spacing.sm)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.step)
@@ -98,12 +104,13 @@ struct OnboardingView: View {
 
     // MARK: - Progress
 
-    /// One 6 pt segment per step, filled `sun` up to and including this one, on `surface3`.
+    /// One 6 pt segment per step of the bar on screen - the four story screens, or the questions - filled
+    /// `sun` up to and including this one, on `surface3`.
     private var progressBar: some View {
         HStack(spacing: 5) {
-            ForEach(viewModel.progressSteps) { step in
+            ForEach(Array(viewModel.progressSteps.enumerated()), id: \.element) { index, _ in
                 Capsule()
-                    .fill(step.rawValue <= viewModel.step.rawValue
+                    .fill(index < viewModel.progressPosition
                           ? Theme.Colors.sun
                           : Theme.Colors.surface3)
                     .frame(height: 6)
@@ -111,7 +118,7 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, Theme.Spacing.screenMargin)
         .accessibilityElement()
-        .accessibilityLabel("Step \(viewModel.step.rawValue + 1) of \(viewModel.progressSteps.count)")
+        .accessibilityLabel("Step \(viewModel.progressPosition) of \(viewModel.progressSteps.count)")
     }
 
     // MARK: - Step content
@@ -119,14 +126,17 @@ struct OnboardingView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch viewModel.step {
-        case .welcome:      WelcomeStep(viewModel: viewModel)
-        case .basics:       BasicsStep(viewModel: viewModel)
-        case .fitnessLevel: FitnessLevelStep(viewModel: viewModel)
-        case .focusAreas:   FocusAreasStep(viewModel: viewModel)
-        case .why:          WhyStep(viewModel: viewModel)
-        case .lifestyle:    LifestyleStep(viewModel: viewModel)
-        case .duration:     DurationStep(viewModel: viewModel)
-        case .saveYourPlan: SaveYourPlanStep(signIn: signIn)
+        case .welcome:         WelcomeStep(viewModel: viewModel)
+        case .storyWho:        StoryWhoStep()
+        case .storyHow:        StoryHowStep()
+        case .storyDiscipline: StoryDisciplineStep()
+        case .basics:          BasicsStep(viewModel: viewModel)
+        case .fitnessLevel:    FitnessLevelStep(viewModel: viewModel)
+        case .focusAreas:      FocusAreasStep(viewModel: viewModel)
+        case .why:             WhyStep(viewModel: viewModel)
+        case .lifestyle:       LifestyleStep(viewModel: viewModel)
+        case .duration:        DurationStep(viewModel: viewModel)
+        case .saveYourPlan:    SaveYourPlanStep(signIn: signIn)
         }
     }
 
@@ -160,6 +170,7 @@ struct OnboardingView: View {
             // Its own width beside the primary action; the full width when it stands alone (Save your
             // plan) or stacks under it at the accessibility text sizes.
             let fills = viewModel.step == .saveYourPlan || dynamicTypeSize.isAccessibilitySize
+            // Back keeps the question screens' size on the story screens too, beside their taller Continue.
             Button(action: viewModel.goBack) {
                 Text("Back")
                     .font(Theme.Typography.button)
@@ -178,18 +189,17 @@ struct OnboardingView: View {
                 if viewModel.isFinishing {
                     ProgressView().tint(Theme.Colors.onAccent)
                 } else {
-                    Text(primaryTitle)
-                        .font(Theme.Typography.button)
+                    Text(viewModel.primaryActionTitle)
+                        .font(viewModel.step.isStory ? Theme.Typography.storyButton : Theme.Typography.button)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: Theme.Spacing.buttonHeight)
+            // The story screens' primary action stands taller (60 pt, Inter Bold 19), as their mockups set it.
+            .frame(minHeight: viewModel.step.isStory ? Theme.Spacing.startButtonHeight : Theme.Spacing.buttonHeight)
         }
         .accentFilledButtonStyle()
         .disabled(!viewModel.canAdvance || viewModel.isFinishing)
     }
-
-    private var primaryTitle: String { viewModel.finishesSignedIn ? "Finish" : "Continue" }
 
     /// Saving or signing in: the flow holds still until it ends.
     private var isBusy: Bool { viewModel.isFinishing || signIn.isWorking }
@@ -234,22 +244,22 @@ private struct StepHeader: View {
     }
 }
 
-// MARK: - Welcome
+// MARK: - Welcome (story 1)
 
+/// The first story screen (`screens/F02-Onboarding-Welcome`): the promise, the session lengths and both
+/// Trainers, then the anonymous-usage-data disclosure at the foot of the page. Its "Already have an
+/// account? Sign in" sits above Continue (`OnboardingView`), or in the page at the accessibility text
+/// sizes, where the footer has no room left for it.
 private struct WelcomeStep: View {
     @Bindable var viewModel: OnboardingViewModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.mlg) {
-            StepHeader(
-                title: "Welcome to Rep Today",
-                subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
-            )
+        VStack(alignment: .leading, spacing: 18) {
+            StoryWelcomeVisual()
 
-            WelcomeTrainerStage()
-
-            if viewModel.offersSignInFromWelcome {
-                signInLink
+            if viewModel.offersSignInFromWelcome && dynamicTypeSize.isAccessibilitySize {
+                WelcomeSignInLink(viewModel: viewModel, alignment: .leading)
             }
 
             Spacer(minLength: 0)
@@ -264,9 +274,45 @@ private struct WelcomeStep: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    /// Someone who already has an account - back after signing out, or on a new phone - goes straight
-    /// to the sign-in instead of answering the questions again.
-    private var signInLink: some View {
+    /// The disclosure with its "Privacy Policy" link set inline at the end, as the mockup draws it. To
+    /// VoiceOver it stays two elements - the sentence, then a link - so the link is found on its own.
+    private var telemetryDisclosure: some View {
+        (Text(Self.disclosure + " ") + Text(privacyPolicyLink))
+            .font(Theme.Typography.disclosure)
+            .foregroundStyle(Theme.Colors.text2)
+            .tint(Theme.Colors.sun)
+            .designLineHeight(17, relativeTo: .caption)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityRepresentation {
+                VStack(alignment: .leading) {
+                    Text(Self.disclosure)
+                    Link("Privacy Policy", destination: LegalLinks.privacyPolicy)
+                }
+            }
+    }
+
+    static let disclosure = "Rep Today collects anonymous usage data to see whether it's working. You can turn that off anytime in Profile, under Settings."
+
+    @Environment(\.legibilityWeight) private var legibilityWeight
+
+    private var privacyPolicyLink: AttributedString {
+        var link = AttributedString("Privacy Policy")
+        link.link = LegalLinks.privacyPolicy
+        link.font = Theme.Typography.disclosure.weight(.bold).font(for: legibilityWeight)
+        link.underlineStyle = .single
+        return link
+    }
+}
+
+/// "Already have an account? Sign in" on the first story screen: someone who already has an account -
+/// back after signing out, or on a new phone - goes straight to the sign-in instead of answering the
+/// questions again.
+private struct WelcomeSignInLink: View {
+    let viewModel: OnboardingViewModel
+    let alignment: TextAlignment
+
+    var body: some View {
         Button(action: viewModel.goToSignIn) {
             (Text("Already have an account? ")
                 .foregroundStyle(Theme.Colors.text1)
@@ -274,84 +320,26 @@ private struct WelcomeStep: View {
                 .foregroundStyle(Theme.Colors.sun)
                 .fontWeight(.bold)
                 .underline())
-                .font(Theme.Typography.lead)
-                .multilineTextAlignment(.leading)
+                .font(Theme.Typography.callout)
+                .multilineTextAlignment(alignment)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+                // A 44 pt target around a 22 pt line: the target overhangs the line rather than spacing
+                // it out, so the link sits where the mockup sets it, 10 pt above Continue.
+                .padding(.vertical, Self.targetOverhang)
                 .contentShape(Rectangle())
+                .padding(.vertical, -Self.targetOverhang)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Self.signInLinkLabel)
+        .accessibilityLabel(Self.label)
         .accessibilityHint("Signs in to your account and brings your plan back")
     }
 
-    /// The one label the Welcome step's sign-in link is known by, to VoiceOver and the XCUITests.
-    static let signInLinkLabel = "Already have an account? Sign in"
+    /// The one label the sign-in link is known by, to VoiceOver and the XCUITests.
+    static let label = "Already have an account? Sign in"
 
-    private var telemetryDisclosure: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text("Rep Today collects anonymous usage data to see whether it's working - you can turn that off anytime in Profile, under Settings.")
-                .font(Theme.Typography.footnote)
-                .foregroundStyle(Theme.Colors.text2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Link(destination: LegalLinks.privacyPolicy) {
-                InlineLinkLabel(title: "Privacy Policy")
-            }
-            .accessibilityLabel("Privacy Policy")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-}
-
-/// The Welcome step's Trainer stage: both Trainers on one lit `sun` stage - the male Trainer in a reverse
-/// lunge, the female Trainer standing tall - each over its floor glow, with the warm-white outline that
-/// keeps the ink line off the black. Decorative: the words beside it carry the step.
-private struct WelcomeTrainerStage: View {
-    /// The tallest each pose draws; a narrower column fits them down.
-    private static let maxPose: CGFloat = 170
-
-    private static let poses = [
-        TrainerPoseResolver.assetName(exerciseId: "lunge_reverse", trainer: .male, pose: .end),
-        TrainerPoseResolver.assetName(exerciseId: "squat_bodyweight", trainer: .female, pose: .start),
-    ]
-
-    var body: some View {
-        GeometryReader { proxy in
-            let side = min(Self.maxPose, proxy.size.width / 2)
-            HStack(spacing: 0) {
-                ForEach(Self.poses, id: \.self) { name in
-                    ZStack {
-                        Ellipse()
-                            .fill(EllipticalGradient(
-                                colors: [Theme.Colors.sun.opacity(0.7), Theme.Colors.sun.opacity(0)],
-                                center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5
-                            ))
-                            .frame(width: side * 0.9, height: side * 0.13)
-                            .position(x: side / 2, y: side * 0.865)
-                        Image(name)
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(1, contentMode: .fit)
-                            .frame(width: side, height: side)
-                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 1, y: 0)
-                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: -1, y: 0)
-                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: 1)
-                            .shadow(color: Theme.Colors.artOutline, radius: 0, x: 0, y: -1)
-                    }
-                    .frame(width: side, height: side)
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .frame(height: Self.maxPose)
-        .frame(maxWidth: .infinity)
-        .background(ExerciseDemoView.stageBackground(.sun), in: RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.stageCornerRadius))
-        .padding(.top, Theme.Spacing.xs)
-        .accessibilityHidden(true)
-    }
+    /// How far the touch target reaches past the line above and below.
+    private static let targetOverhang: CGFloat = 11
 }
 
 // MARK: - Basics

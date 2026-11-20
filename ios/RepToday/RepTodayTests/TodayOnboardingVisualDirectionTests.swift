@@ -123,8 +123,7 @@ final class TodayOnboardingVisualDirectionTests: XCTestCase {
             userService: MockUserService(),
             sessionPolicyService: MockSessionPolicyService()
         )
-        viewModel.advance()
-        XCTAssertEqual(viewModel.step, .basics)
+        while viewModel.step != .basics { viewModel.advance() }
         let (host, window) = HostedSurface.host(
             OnboardingView(viewModel: viewModel).environment(\.dynamicTypeSize, .accessibility5),
             size: CGSize(width: 375, height: 2400)

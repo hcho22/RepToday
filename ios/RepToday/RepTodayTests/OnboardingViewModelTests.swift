@@ -379,13 +379,17 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isSigningInFromWelcome)
     }
 
-    /// The sign-in link is only on Welcome.
+    /// The sign-in link is only on Welcome, the first story screen: not on the later story screens, and
+    /// not on the questions.
     func testWelcomeSignInIsOfferedOnlyOnWelcome() {
         let vm = makeViewModel()
-        vm.advance()
-        XCTAssertFalse(vm.offersSignInFromWelcome)
-        vm.goToSignIn()
-        XCTAssertEqual(vm.step, .basics, "the link does nothing away from Welcome")
+        for step in [OnboardingViewModel.Step.storyWho, .storyHow, .storyDiscipline, .basics] {
+            vm.advance()
+            XCTAssertEqual(vm.step, step)
+            XCTAssertFalse(vm.offersSignInFromWelcome, "no sign-in link on \(step)")
+            vm.goToSignIn()
+            XCTAssertEqual(vm.step, step, "the link does nothing away from Welcome")
+        }
     }
 
     /// An account with a saved plan comes back with no questions asked.
@@ -437,7 +441,9 @@ final class OnboardingViewModelTests: XCTestCase {
             vm.advance()
         }
         XCTAssertTrue(vm.finishesSignedIn, "the last question finishes, with no second sign-in")
+        XCTAssertEqual(vm.primaryActionTitle, "Finish")
         XCTAssertEqual(vm.progressSteps.last, .duration, "the progress bar ends at the last question")
+        XCTAssertEqual(vm.progressSteps.count, 6)
         let finished = await vm.finish()
         XCTAssertTrue(finished)
         let saved = try await users.currentUser()
@@ -467,24 +473,68 @@ final class OnboardingViewModelTests: XCTestCase {
 
     // MARK: - Navigation
 
+    /// The four story screens come first, in order, and lead into the basics question; Back walks them
+    /// back to the first, where it stops.
     func testAdvanceAndGoBackWalkTheSteps() {
         let vm = makeViewModel()
         XCTAssertTrue(vm.isFirstStep)
         XCTAssertEqual(vm.step, .welcome)
 
+        let story: [OnboardingViewModel.Step] = [.welcome, .storyWho, .storyHow, .storyDiscipline]
+        XCTAssertEqual(OnboardingViewModel.Step.story, story)
+        XCTAssertEqual(Array(OnboardingViewModel.Step.allCases.prefix(4)), story, "the story comes before the questions")
+        for step in story.dropFirst() {
+            XCTAssertTrue(vm.canAdvance, "a story screen is always ready")
+            vm.advance()
+            XCTAssertEqual(vm.step, step)
+        }
         vm.advance()
-        XCTAssertEqual(vm.step, .basics)
+        XCTAssertEqual(vm.step, .basics, "Get started lands on the basics question")
+
         vm.goBack()
-        XCTAssertEqual(vm.step, .welcome)
+        XCTAssertEqual(vm.step, .storyDiscipline, "Back from the basics returns to the last story screen")
+        for step in story.reversed().dropFirst() {
+            vm.goBack()
+            XCTAssertEqual(vm.step, step)
+        }
         vm.goBack()  // no-op at the first step
         XCTAssertEqual(vm.step, .welcome)
+    }
+
+    /// The primary button says "Get started" on the last story screen and "Continue" on the others and
+    /// on the questions.
+    func testThePrimaryActionReadsGetStartedOnlyOnTheLastStoryScreen() {
+        let vm = makeViewModel()
+        vm.displayName = "Riley"
+        while vm.step != .saveYourPlan {
+            XCTAssertEqual(vm.primaryActionTitle, vm.step == .storyDiscipline ? "Get started" : "Continue", "on \(vm.step)")
+            vm.advance()
+        }
+    }
+
+    /// The story screens carry their own four-segment pager; the questions, from the basics through
+    /// "Save your plan", a seven-segment bar that starts again at one.
+    func testTheStoryAndTheQuestionsEachHaveTheirOwnProgressBar() {
+        let vm = makeViewModel()
+        vm.displayName = "Riley"
+        var seen: [(Int, Int)] = []
+        while true {
+            seen.append((vm.progressPosition, vm.progressSteps.count))
+            XCTAssertTrue(vm.progressSteps.contains(vm.step), "\(vm.step) is on the bar it shows")
+            if vm.step == .saveYourPlan { break }
+            vm.advance()
+        }
+        XCTAssertEqual(seen.map(\.0), [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7])
+        XCTAssertEqual(seen.map(\.1), [4, 4, 4, 4, 7, 7, 7, 7, 7, 7, 7])
+        XCTAssertEqual(vm.progressSteps.first, .basics)
+        XCTAssertEqual(vm.progressSteps.last, .saveYourPlan)
     }
 
     /// The basics step gates advance until a name is entered; every other step is always ready, so
     /// the flow never opens the Ready Screen onto a blocked Start.
     func testCanAdvanceRequiresNameOnBasics() {
         let vm = makeViewModel()
-        vm.advance()  // -> basics
+        while vm.step != .basics { vm.advance() }
         XCTAssertEqual(vm.step, .basics)
         XCTAssertFalse(vm.canAdvance, "no name yet")
 

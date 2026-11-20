@@ -43,7 +43,7 @@ final class AccountEndToEndUITests: XCTestCase {
         // Fresh install: onboarding ends at "Save your plan", and signing in finishes it.
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 20), "a fresh install opens on onboarding")
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -97,12 +97,12 @@ final class AccountEndToEndUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 10))
         snapshot("b1-delete-confirmation")
         confirm.tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30), "deletion returns to onboarding")
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 30), "deletion returns to onboarding")
         snapshot("b2-onboarding-after-deletion")
 
         // The deleted account's session is gone from the device: "Save your plan" offers the three
         // choices, not the deleted account back.
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -165,7 +165,7 @@ final class AccountEndToEndUITests: XCTestCase {
     func testD1_AnAccountWithASavedSession() throws {
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 20), "a fresh install opens on onboarding")
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -235,7 +235,7 @@ final class AccountEndToEndUITests: XCTestCase {
         app.alerts["Sign out of Rep Today?"].buttons["Sign Out"].tap()
         XCTAssertTrue(warning.waitForExistence(timeout: 30))
         warning.buttons["Sign Out Anyway"].tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 30))
         app.terminate()
 
         app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false, liveAccount: true)
@@ -281,7 +281,7 @@ final class AccountEndToEndUITests: XCTestCase {
         if expectingWarning {
             app.alerts["Recent workouts aren't saved"].buttons["Sign Out Anyway"].tap()
         }
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 30), "signing out returns to Welcome")
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 30), "signing out returns to Welcome")
         XCTAssertFalse(app.alerts["Recent workouts aren't saved"].exists, "nothing was waiting, so no warning")
     }
 

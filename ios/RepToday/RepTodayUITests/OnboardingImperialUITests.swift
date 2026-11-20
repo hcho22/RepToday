@@ -86,7 +86,7 @@ final class OnboardingImperialUITests: XCTestCase {
     private func goToBasicsStep() -> XCUIElement {
         let welcomeContinue = app.buttons["Continue"]
         XCTAssertTrue(welcomeContinue.waitForExistence(timeout: 10), "the app did not reach onboarding")
-        welcomeContinue.tap()
+        walkOnboardingStory(in: app)
 
         let nameField = app.textFields.firstMatch
         XCTAssertTrue(nameField.waitForExistence(timeout: 5), "the basics step has no name field")

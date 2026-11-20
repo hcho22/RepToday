@@ -34,9 +34,18 @@ final class OnboardingViewModel {
 
     // MARK: - Steps
 
-    /// The ordered onboarding steps. `CaseIterable` order is the flow order.
+    /// The ordered onboarding steps. `CaseIterable` order is the flow order: the four story screens, then
+    /// the questions.
     enum Step: Int, CaseIterable, Identifiable {
+        /// Story 1, the promise: built for the time you actually have. The flow opens here, and it is
+        /// the one story screen that offers signing in to an existing account.
         case welcome
+        /// Story 2: who Rep Today is for.
+        case storyWho
+        /// Story 3: how it works - nothing to pick, just press play.
+        case storyHow
+        /// Story 4: discipline first, strength earned. Its Continue reads "Get started".
+        case storyDiscipline
         case basics
         case fitnessLevel
         case focusAreas
@@ -47,6 +56,12 @@ final class OnboardingViewModel {
         case saveYourPlan
 
         var id: Int { rawValue }
+
+        /// The story screens that come before the questions, in order.
+        static let story: [Step] = [.welcome, .storyWho, .storyHow, .storyDiscipline]
+
+        /// Whether this is one of the story screens rather than a question.
+        var isStory: Bool { Step.story.contains(self) }
     }
 
     /// How a signed-in onboarding ended.
@@ -214,13 +229,27 @@ final class OnboardingViewModel {
     /// question, once the Welcome step's sign-in found no plan.
     var finishesSignedIn: Bool { signedInIdentity != nil && step == .duration }
 
-    /// The steps this flow walks, for the progress bar: without "Save your plan" once already signed in.
+    /// The segments of the progress bar on screen. The story screens and the questions each have their
+    /// own: the four story screens, or the questions from the basics through "Save your plan" - without
+    /// "Save your plan" once already signed in.
     var progressSteps: [Step] {
-        signedInIdentity == nil ? Step.allCases : Step.allCases.filter { $0 != .saveYourPlan }
+        if step.isStory { return Step.story }
+        let questions = Step.allCases.filter { !$0.isStory }
+        return signedInIdentity == nil ? questions : questions.filter { $0 != .saveYourPlan }
     }
+
+    /// The step on screen as a 1-based position in its progress bar ("Step 2 of 4", "Step 1 of 7").
+    var progressPosition: Int { (progressSteps.firstIndex(of: step) ?? 0) + 1 }
 
     /// Whether the Welcome step offers signing in to an existing account. Not once signed in.
     var offersSignInFromWelcome: Bool { step == .welcome && signedInIdentity == nil }
+
+    /// The primary button's title: "Get started" on the last story screen, "Finish" on the last question
+    /// for an account already signed in, and "Continue" everywhere else.
+    var primaryActionTitle: String {
+        if finishesSignedIn { return "Finish" }
+        return step == .storyDiscipline ? "Get started" : "Continue"
+    }
 
     /// Whether the current step's required inputs are satisfied. The duration step is always ready
     /// (a value is preselected), so the flow is never gated behind an unanswered picker - the Ready
@@ -228,7 +257,8 @@ final class OnboardingViewModel {
     /// only by signing in, so it has no Continue.
     var canAdvance: Bool {
         switch step {
-        case .welcome, .fitnessLevel, .focusAreas, .why, .lifestyle, .duration:
+        case .welcome, .storyWho, .storyHow, .storyDiscipline,
+             .fitnessLevel, .focusAreas, .why, .lifestyle, .duration:
             return true
         case .basics:
             return !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

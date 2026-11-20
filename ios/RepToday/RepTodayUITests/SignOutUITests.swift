@@ -26,7 +26,7 @@ final class SignOutUITests: XCTestCase {
 
     func testSignOutConfirmsWarnsAndReturnsToWelcome() {
         resetThroughAccountDeletion(in: app)
-        app.buttons["Continue"].tap()
+        walkOnboardingStory(in: app)
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         focus(name, in: app)
@@ -72,7 +72,7 @@ final class SignOutUITests: XCTestCase {
         confirm.buttons["Sign Out"].tap()
         XCTAssertTrue(warning.waitForExistence(timeout: 30))
         warning.buttons["Sign Out Anyway"].tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20), "signing out did not return to Welcome")
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 20), "signing out did not return to Welcome")
         XCTAssertTrue(app.buttons["Already have an account? Sign in"].exists, "Welcome does not offer signing back in")
         XCTAssertFalse(app.tabBars.buttons["Profile"].exists)
         attachScreenshot(named: "04-welcome-after-sign-out")
@@ -90,7 +90,7 @@ final class SignOutUITests: XCTestCase {
         link.tap()
         XCTAssertTrue(app.staticTexts["Save your plan"].waitForExistence(timeout: 5))
         app.buttons["Back"].tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 5), "Back did not return to Welcome")
+        XCTAssertTrue(app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 5), "Back did not return to Welcome")
 
         link.tap()
         finishOnboardingThroughSaveYourPlan(in: app)

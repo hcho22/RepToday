@@ -22,7 +22,7 @@ final class AccountAccessUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Sign in with Apple"].exists, "signing in is no longer optional, so nothing offers it here")
-        XCTAssertFalse(app.staticTexts["Welcome to Rep Today"].exists)
+        XCTAssertFalse(app.staticTexts[Self.onboardingFirstScreenHeadline].exists)
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "profile-account-status"

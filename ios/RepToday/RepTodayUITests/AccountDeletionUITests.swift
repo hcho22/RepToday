@@ -68,7 +68,7 @@ final class AccountDeletionUITests: XCTestCase {
 
         // US-AD03: the teardown routes back to onboarding's first screen.
         XCTAssertTrue(
-            app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20),
+            app.staticTexts[Self.onboardingFirstScreenHeadline].waitForExistence(timeout: 20),
             "deleting the account did not route back to onboarding"
         )
         attachScreenshot(named: "03-routed-back-to-onboarding")
@@ -108,7 +108,7 @@ final class AccountDeletionUITests: XCTestCase {
             "cancelling should leave the user on the Settings screen"
         )
         XCTAssertFalse(
-            app.staticTexts["Welcome to Rep Today"].exists,
+            app.staticTexts[Self.onboardingFirstScreenHeadline].exists,
             "cancelling must not route to onboarding"
         )
     }
