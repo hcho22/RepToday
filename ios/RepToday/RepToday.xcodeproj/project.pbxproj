@@ -2284,8 +2284,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app;
 				REPTODAY_ANALYTICS_ENDPOINT = "https://sensible-spider-810.convex.site";
 				REPTODAY_ANALYTICS_SECRET = "";
-				REPTODAY_CLERK_PUBLISHABLE_KEY = "";
-				REPTODAY_CONVEX_URL = "";
+				REPTODAY_CLERK_PUBLISHABLE_KEY = pk_live_Y2xlcmsucmVwdG9kYXkuYXBwJA;
+				REPTODAY_CONVEX_URL = "https://sensible-spider-810.convex.cloud";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

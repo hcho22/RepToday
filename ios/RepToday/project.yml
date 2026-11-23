@@ -114,8 +114,8 @@ targets:
       # app syncs to, expanded into `Info.plist`'s `RepTodayClerkPublishableKey` and
       # `RepTodayConvexURL`. A publishable key is a public identifier, safe in a public repository; the
       # Clerk secret key lives only on the Convex deployment (`npx convex env set`). Debug uses the
-      # Clerk development instance and the dev deployment. Release stays empty
-      # until the production Clerk instance and backend are released, and `tools/archive-release.sh`
+      # Clerk development instance and the dev deployment; Release uses the production instance
+      # (`clerk.reptoday.app`) and the production deployment, and `tools/archive-release.sh`
       # refuses to archive without both, because a Release build that cannot sign in cannot be used.
       configs:
         Debug:
@@ -124,8 +124,8 @@ targets:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           # The secret key is absent here on purpose, not forgotten: see the comment above.
         Release:
-          REPTODAY_CLERK_PUBLISHABLE_KEY: ""
-          REPTODAY_CONVEX_URL: ""
+          REPTODAY_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsucmVwdG9kYXkuYXBwJA
+          REPTODAY_CONVEX_URL: https://sensible-spider-810.convex.cloud
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
