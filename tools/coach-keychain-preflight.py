@@ -19,22 +19,35 @@ OVERALL_LIMIT = 595
 CLEANUP_GRACE = 1
 
 
+def signal_owned(child, number):
+    """Signal every live process in the owned group; a group with none left is already stopped."""
+    try:
+        os.killpg(child.pid, number)
+        return
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        # macOS answers EPERM rather than ESRCH when every process left in the group is a zombie,
+        # which is the state of a leader that exited after the last poll. Any other EPERM is real.
+        if child.poll() is None:
+            raise
+    # The leader is reaped now: an empty group answers ESRCH, and a live member still gets the signal.
+    try:
+        os.killpg(child.pid, number)
+    except ProcessLookupError:
+        pass
+
+
 def stop_owned(child):
     """Only the session created for this invocation; never signal system UI or other helpers."""
     # Kill the owned group even when its leader just exited. Native preflight has no children;
     # this also contains unexpected children in the synthetic containment test.
-    try:
-        os.killpg(child.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    signal_owned(child, signal.SIGTERM)
     try:
         child.wait(timeout=CLEANUP_GRACE)
     except subprocess.TimeoutExpired:
         pass
-    try:
-        os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    signal_owned(child, signal.SIGKILL)
     child.wait(timeout=CLEANUP_GRACE)
 
 

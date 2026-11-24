@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build/coach-runtime-migration"
@@ -67,6 +68,39 @@ time.sleep(20)
                         "preflight category=all event=success elapsed_ms=0 read_elapsed_ms=0 osstatus=0"]:
             status, _, _ = self.supervise(f"print({payload!r}, flush=True)\n")
             self.assertEqual(status, 78)
+
+    def wait_until_zombie(self, child):
+        """Hold until the owned leader has exited but is still unreaped, without reaping it."""
+        self.assertIsNone(child.returncode)
+        deadline = time.monotonic() + 5
+        while True:
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(child.pid)],
+                                   capture_output=True, text=True).stdout.strip()
+            if state.startswith("Z"):
+                return
+            self.assertLess(time.monotonic(), deadline, f"leader never became a zombie: {state!r}")
+            time.sleep(0.01)
+
+    def test_cleanup_reaps_leader_that_exited_unreaped(self):
+        # macOS refuses killpg with EPERM when the group holds only this zombie leader.
+        child = subprocess.Popen([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, start_new_session=True)
+        self.wait_until_zombie(child)
+        preflight.stop_owned(child)
+        self.assertEqual(child.returncode, 0)
+
+    def test_outer_failure_holds_when_leader_exits_before_cleanup(self):
+        # A loaded runner can deschedule the supervisor until the rejected child has exited.
+        original = preflight.stop_owned
+
+        def stop_after_exit(child):
+            self.wait_until_zombie(child)
+            original(child)
+
+        with mock.patch.object(preflight, "stop_owned", stop_after_exit):
+            status, output, _ = self.supervise("print('NONSECRET_VALUE_SENTINEL', flush=True)\n")
+        self.assertEqual(status, 78)
+        self.assertIn("category=all event=failure", output)
 
     def test_outer_cancel_reaps_owned_child(self):
         pidfile = self.root / "pid"
