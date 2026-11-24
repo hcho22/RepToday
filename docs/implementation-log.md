@@ -1678,6 +1678,7 @@ A page served from localhost posts to the stub, never to Kit.
 
 The closing promise is now "one launch email, plus a beta invitation only if you ask for one", the FAQ names what the waitlist keeps and points to the policy, and no placement offers a mailbox join.
 `tools/waitlist/check-site.py` (CI job `waitlist`) keeps the four placements one form, the approved strings and field names intact, and the site free of stray addresses; the A/B pages differ outside the waitlist as before.
+Since layout B (2026-11-23, below) each page carries the form once, and the check requires exactly that.
 The [validation record](../artifacts/reports/US-WL03/validation.md) owns the commands and results.
 
 ## Waitlist Source links and persistence (US-WL04, 2026-10-20)
@@ -2102,3 +2103,12 @@ The question screens (`F03` to `F09c`) differ from the previous handoff only in 
   The usage-data disclosure takes the handoff's wording and 12 pt size with "Privacy Policy" drawn inline; VoiceOver still reads the sentence and then a separate link.
 - **Buttons.** Continue and Get started are 60 pt with Inter Bold 19 on the story screens, as the mockups set them; Back stays 56 pt.
 - **Kept as today.** The 8 pt the footer keeps above the home indicator, shared by every onboarding screen, so a phone with no home indicator never puts Continue on the screen's edge.
+
+## Landing site rebuilt as layout B, "the scroll is a session" (2026-11-23)
+
+The two landing variants (`gtm/03-site/index.html`, `index-b.html`) are rebuilt in the app's dark look: a pinned "time left" timer and step list (a slim pinned bar under 1040 px), a Warm-Up hero, three Rounds, a Cooldown and a Done section holding the Waitlist form, with Rest beats between.
+`site.css` is the one stylesheet for both variants and `privacy.html` (whose text is unchanged), and `session.js` only reads the scroll position to move the timer and the step list; without script the page is a plain long page.
+The app screens on the page are HTML and CSS matched against captures of the running app, the Trainer poses are the app's own art, and the fonts are subsets of the app's bundled faces served from `/fonts/`, so the site makes no third-party request.
+Each page now carries the Waitlist form once, in Done; `waitlist.js`, the form's markup and its behavior are unchanged, and `tools/waitlist/check-site.py` requires one closing placement a page that the page links to.
+Every claim was checked against the app and corrected (accounts, the 69-movement library, Training Days and Rest Days, the Coach, what Premium is); the [validation record](../artifacts/reports/landing-layout-b/validation.md) lists each one with the checks run.
+Nothing was published by this change.

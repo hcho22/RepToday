@@ -26,209 +26,22 @@
   ============================================================================
 -->
 
-<style>
-  /* Rep Today privacy policy. Reuses the landing page's Paper theme tokens and
-     type scale (gtm/03-site/index.html) so it reads as part of the site.
-     Self-contained: system rounded stack, inline SVG only, no external resources. */
-
-  :root {
-    --paper: #FAF7F2;
-    --ink: #1B2228;
-    --slate: #525E66;
-    --moss: #2E6B4E;
-    --night: #14181C;
-    --night-surface: #1E242A;
-    --bone: #F1EEE8;
-    --mist: #A7B0B8;
-    --fern: #5FA981;
-    --hairline: rgba(27, 34, 40, 0.14);
-    --card-shadow: 0 1px 3px rgba(27, 34, 40, 0.08);
-    --amber-bg: rgba(180, 120, 20, 0.10);
-    --amber-border: rgba(150, 100, 20, 0.45);
-    --amber-ink: #6B4E12;
-  }
-
-  * { box-sizing: border-box; }
-
-  html, body { margin: 0; padding: 0; }
-  html { background: #FAF7F2; }
-
-  body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    font-size: 17px;
-    line-height: 26px;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-
-  .container {
-    max-width: 760px;
-    margin: 0 auto;
-    padding-left: 24px;
-    padding-right: 24px;
-  }
-
-  a { color: var(--moss); }
-
-  /* ---------- Type scale (marketing scale, matched to index.html) ---------- */
-
-  .display {
-    font-size: clamp(32px, 2.4vw + 22px, 44px);
-    line-height: 1.1;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin: 0;
-  }
-  .h2 {
-    font-size: clamp(22px, 1vw + 18px, 26px);
-    line-height: 32px;
-    font-weight: 600;
-    margin: 0;
-  }
-  .h3 { font-size: 19px; line-height: 26px; font-weight: 600; margin: 0; }
-  .small { font-size: 14px; line-height: 20px; font-weight: 400; }
-  .overline {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--moss);
-    margin: 0 0 16px;
-  }
-  .muted { color: var(--slate); }
-
-  /* ---------- Header ---------- */
-
-  header.site { padding: 28px 0; }
-  .wordmark { display: flex; align-items: center; gap: 18px; }
-  .wordmark svg { display: block; }
-  .wordmark .name { font-size: 24px; line-height: 1; font-weight: 700; color: var(--ink); }
-  .wordmark a { color: inherit; text-decoration: none; }
-
-  /* ---------- Document layout ---------- */
-
-  main { padding: clamp(16px, 3vw, 40px) 0 clamp(48px, 6vw, 96px); }
-
-  .doc-head { margin-bottom: 32px; }
-  .doc-head .updated { margin: 16px 0 0; color: var(--slate); }
-  .doc-head p.lede { margin: 20px 0 0; color: var(--slate); font-size: 19px; line-height: 29px; }
-
-  section.policy { padding: 0; margin-top: 44px; }
-  section.policy > .h2 { margin-bottom: 14px; }
-  section.policy p { margin: 0 0 16px; max-width: 40em; }
-  section.policy p:last-child { margin-bottom: 0; }
-  section.policy .h3 { margin: 24px 0 8px; }
-
-  ul.plain {
-    list-style: none;
-    margin: 0 0 16px;
-    padding: 0;
-    max-width: 40em;
-  }
-  ul.plain li {
-    position: relative;
-    padding-left: 26px;
-    margin-top: 10px;
-    color: var(--ink);
-  }
-  ul.plain li:first-child { margin-top: 0; }
-  ul.plain li::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 10px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--moss);
-  }
-
-  strong { font-weight: 700; }
-
-  /* ---------- Draft / not-legal-advice banner ---------- */
-
-  .banner {
-    margin: 8px 0 0;
-    padding: 18px 20px;
-    border: 1px solid var(--amber-border);
-    border-left-width: 4px;
-    border-radius: 12px;
-    background: var(--amber-bg);
-    color: var(--amber-ink);
-  }
-  .banner .banner-title {
-    margin: 0 0 6px;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-  .banner p { margin: 0; max-width: 44em; font-size: 15px; line-height: 23px; }
-
-  /* ---------- Inline "consult a lawyer" flag ---------- */
-
-  .legal-flag {
-    margin: 12px 0 0;
-    padding: 12px 16px;
-    border-left: 3px solid var(--amber-border);
-    background: var(--amber-bg);
-    border-radius: 0 8px 8px 0;
-    font-size: 15px;
-    line-height: 23px;
-    color: var(--amber-ink);
-    max-width: 44em;
-  }
-  .legal-flag strong { color: var(--amber-ink); }
-
-  /* ---------- Table of contents ---------- */
-
-  nav.toc {
-    margin: 36px 0 0;
-    padding: 20px 24px;
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
-    background: var(--paper);
-    box-shadow: var(--card-shadow);
-  }
-  nav.toc p { margin: 0 0 10px; font-weight: 600; font-size: 15px; }
-  nav.toc ol { margin: 0; padding-left: 20px; color: var(--slate); }
-  nav.toc li { margin-top: 6px; line-height: 24px; }
-
-  /* ---------- Footer ---------- */
-
-  footer.site {
-    border-top: 1px solid var(--hairline);
-    padding: 48px 0 64px;
-  }
-  footer.site .wordmark { gap: 14px; }
-  footer.site .wordmark .name { font-size: 18px; }
-  footer.site .foot-links { margin: 20px 0 0; }
-  footer.site .foot-links a { margin-right: 18px; }
-  footer.site .legal { margin: 20px 0 0; color: var(--slate); }
-  footer.site .legal p { margin: 0 0 6px; }
-</style>
+<meta name="theme-color" content="#000000">
+<link rel="preload" href="/fonts/inter-regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
 </head>
 <body>
 
-<header class="site">
-  <div class="container">
-    <div class="wordmark">
-      <a href="/" aria-label="Rep Today home">
-        <!-- Ready Mark: reference SVG from brand guidelines section 3, Moss on transparent -->
-        <svg width="36" height="36" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rep Today Ready Mark">
-          <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
-          <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
-        </svg>
-      </a>
-      <a href="/"><span class="name">Rep Today</span></a>
-    </div>
-  </div>
+<div class="doc">
+
+<header class="doc-top">
+  <a class="brand" href="/" aria-label="Rep Today home">
+    <svg width="26" height="26" viewBox="0 0 100 100" aria-hidden="true"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="50" cy="66" r="12" fill="currentColor"/></svg>
+    <span>Rep Today</span>
+  </a>
 </header>
 
 <main>
-  <div class="container">
 
     <div class="doc-head">
       <p class="overline">Privacy</p>
@@ -436,29 +249,24 @@
       <h2 class="h2">15. Contact</h2>
       <p>Questions about privacy or this policy? Contact us at <a href="mailto:reptoday.app@gmail.com">reptoday.app@gmail.com</a>.</p>
     </section>
-
-  </div>
 </main>
 
-<footer class="site">
-  <div class="container">
-    <div class="wordmark">
-      <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
-        <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
-      </svg>
-      <span class="name">Rep Today</span>
-    </div>
-    <div class="foot-links small">
-      <a href="/">Home</a>
-      <a href="/privacy">Privacy Policy</a>
-    </div>
-    <div class="legal small">
-      <p>Screen images simulated. App is pre-release. Pre-launch. A USPTO search was completed and the App Store name was reserved on 2026-08-07. This does not state that a trademark was registered or legally&nbsp;cleared.</p>
-      <p>Built for iOS 17+.</p>
-    </div>
+<footer class="foot">
+  <span class="brand">
+    <svg width="20" height="20" viewBox="0 0 100 100" aria-hidden="true"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="50" cy="66" r="12" fill="currentColor"/></svg>
+    <span>Rep Today</span>
+  </span>
+  <div class="foot-links small">
+    <a href="/">Home</a>
+    <a href="/privacy">Privacy Policy</a>
+  </div>
+  <div class="legal small">
+    <p>Screen images simulated. App is pre-release. Pre-launch. A USPTO search was completed and the App Store name was reserved on 2026-08-07. This does not state that a trademark was registered or legally&nbsp;cleared.</p>
+    <p>Built for iOS 17+.</p>
   </div>
 </footer>
+
+</div>
 
 </body>
 </html>

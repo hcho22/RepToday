@@ -9,7 +9,7 @@ The Mac-side commands (`waitlist.py`) run on the founder's Mac; the system `/usr
 | --- | --- |
 | `contract.json` | The one contract file: approved wording, Fit answers and tags, the four Source tags, `unknown` and `none`, the posted Kit field names, the view's rules. |
 | `check-view.py`, `test-check-view.py`, `fixtures/` | The anonymous view checker (mirrors gr0wthlab's reader) and its tests. |
-| `check-site.py`, `test-check-site.py` | Static checks on the landing pages: the four placements are one form, the approved strings and field names, no `mailto:` join, no stray address, the Source links, no top-level 404 page. |
+| `check-site.py`, `test-check-site.py` | Static checks on the landing pages: each page has one sign-up placement (in its closing Done section) that the page links to, the two placements are one form, the approved strings and field names, no `mailto:` join, no stray address, the Source links, no top-level 404 page. |
 | `test-source.cjs` | Node tests that run the page script (`gtm/03-site/waitlist.js`) against a fake page: the Source logic, the posted field names, the one-per-page beta choice, Kit's answers and guard, and the two web events. |
 | `stub-receiver.py` | A local stand-in for Kit's sign-up endpoint and the web-event sink, so no test posts to a real one. |
 | `waitlist.py` | The operator command: `produce`, `assign`, `sweep-unsubscribed`, `sweep-retention`, `remove`, `record-launch-email`, `tag`, `show`, `kit-deletes` and `daily`. Documented below. |

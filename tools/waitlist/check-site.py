@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Static checks for the Waitlist on the landing pages (US-WL03).
 
-The two landing pages (`index.html`, `index-b.html`) each carry the sign-up form twice, and
-there is no build step, so this check is what keeps the four copies one form and keeps the
-approved wording from drifting. Python 3 standard library only; no network.
+The two landing pages (`index.html`, `index-b.html`) each carry the sign-up form once, in the
+closing "Done" section, and there is no build step, so this check is what keeps the two copies
+one form and keeps the approved wording from drifting. Python 3 standard library only; no network.
 
   python3 tools/waitlist/check-site.py [--site gtm/03-site] [--contract tools/waitlist/contract.json]
 
@@ -12,8 +12,12 @@ It exits 0 when every rule holds and 1 otherwise, printing one finding per line 
 files hold (an address-shaped string in particular), only where it is.
 
 Rules:
-  placement-count   each landing page has exactly two sign-up placements (hero, closing)
-  placement-drift   the four placements are one form, differing only in element ids
+  placement-count   each landing page has exactly one sign-up placement, the closing one (the
+                    layout chosen on 2026-11-23 keeps the hero to one Start button; a hero
+                    placement, or a second closing one, fails)
+  placement-drift   the placements are one form, differing only in element ids
+  form-link         each page's placement sits in the element with id="waitlist", and the page
+                    links to it (#waitlist: "Skip to the waitlist")
   approved-string   every approved string of the contract file is present in each placement,
                     and the promise phrase is on each page
   form-fields       a placement has exactly three fields (email, the Fit radios, the beta
@@ -112,8 +116,8 @@ def check(site, contract):
         blocks = placements(text)
         found[name] = blocks
         kinds = sorted(kind for kind, _, _ in blocks)
-        if kinds != ['closing', 'hero']:
-            find('placement-count', name, 'expected one hero and one closing placement, found {}'.format(len(blocks)))
+        if kinds != ['closing']:
+            find('placement-count', name, 'expected one closing placement and no other, found {}'.format(len(blocks)))
 
     # The reference is the form most placements share, so one odd placement is the one named.
     seen = [(name, kind, line, normalized(block)) for name in PAGES for kind, line, block in found.get(name, [])]
@@ -159,6 +163,11 @@ def check(site, contract):
                 find('form-fields', where, 'the {} placement has a hidden input other than the Source'.format(kind))
 
     for name, text in pages.items():
+        anchor = re.search(r'<(\w+)\b[^>]*\bid="waitlist"[^>]*>\s*' + OPEN.pattern, text)
+        if not anchor:
+            find('form-link', name, 'the placement is not the first thing inside the element with id="waitlist"')
+        if not re.search(r'<a\b[^>]*\bhref="#waitlist"', text):
+            find('form-link', name, 'no link on the page jumps to the sign-up form (#waitlist)')
         plain = html.unescape(text)
         if contract['copy']['promise'] not in plain:
             find('approved-string', name, 'the page lacks copy.promise')

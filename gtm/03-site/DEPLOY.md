@@ -2,12 +2,19 @@
 
 The marketing site in this directory (`gtm/03-site/`) is **pure static HTML** - no
 build step, no bundler, no framework.
-Both pages use inline SVG and inline CSS, and both load the one shared script `/waitlist.js` (the Waitlist form, the Source links and the two web events), so neither page is self-contained: deploy the directory whole.
+The pages are not self-contained: deploy the directory whole.
+All three read one stylesheet, `/site.css`, the fonts in `/fonts/` (cut from the app's bundled Bricolage Grotesque and Inter, each family's license beside them) and the Trainer poses in `/img/` (converted from the app's own art); `docs/asset-attribution.md` records where each came from.
+Both landing pages load `/waitlist.js` (the Waitlist form, the Source links and the two web events) and `/session.js` (the pinned timer and step list that move as the page scrolls; it sends and stores nothing, and the page reads as a plain long page without it).
+Nothing is fetched from a third party.
 The four A/B report screenshots (`screenshot-*.png`) live in `artifacts/reports/landing-ab-screenshots/`, outside this directory, so the site no longer serves them; keep report artifacts out of here, because a deploy publishes every file in it.
 Cloudflare Pages serves this directory as-is.
 
-- `index.html` - variant **A**, served at the site root (`/`).
-- `index-b.html` - variant **B**, reachable at `/index-b` (or `/index-b.html`).
+- `index.html` - variant **A** ("Open the app. The workout is already there."), served at the site root (`/`).
+- `index-b.html` - variant **B** ("Missing a day never zeroes you out."), reachable at `/index-b` (or `/index-b.html`).
+
+Both are the same layout, "the scroll is a session": Warm-Up, three Rounds, Cooldown and Done, with the sign-up form once, in Done.
+B differs from A only in its title and description, its hero copy, and the score section, which sits first under the hero instead of in the Cooldown.
+Edit both files together; `tools/waitlist/check-site.py` fails when their sign-up forms drift apart.
 
 ## Which route is live
 
@@ -77,6 +84,17 @@ Nothing to configure. `.app` is on the **HSTS preload list** (HTTPS-only in ever
 major browser), and Cloudflare Pages auto-provisions the TLS certificate and
 serves every request over HTTPS. That is why `_headers` sets **no**
 `Strict-Transport-Security` header by hand - it would be redundant.
+
+## Look at it locally
+
+```bash
+python3 tools/waitlist/stub-receiver.py &
+npx wrangler pages dev gtm/03-site --port 8788
+```
+
+`wrangler pages dev` serves `_redirects` and the extensionless paths (`/index-b`, `/privacy`) the way Pages does; a plain file server does not.
+The pages address their files from the site root (`/site.css`, `/fonts/...`), so opening an HTML file straight from disk shows it unstyled.
+A local page posts its sign-up to the stub and never to Kit (`tools/waitlist/README.md`, "Try the site locally").
 
 ## Not in scope here
 

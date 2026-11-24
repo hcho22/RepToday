@@ -6,6 +6,9 @@
 # with an auto-provisioned certificate. Adding Strict-Transport-Security here
 # would be redundant (and easy to misconfigure). See DEPLOY.md.
 #
+# The pages load only this site's own files (site.css, session.js, waitlist.js, /fonts, /img):
+# no third-party script, font or image.
+#
 # No Content-Security-Policy is set. The waitlist form posts to Kit's public sign-up
 # endpoint (app.kit.com) and may show Kit's reCAPTCHA check in an iframe from the same
 # origin, and the web events post to the Convex site, so a CSP would need connect-src and
@@ -25,3 +28,11 @@
 # HTML must revalidate so a redeploy of the landing copy is picked up promptly.
 /*.html
   Cache-Control: public, max-age=0, must-revalidate
+
+# The one stylesheet all three pages read: revalidate, so a page and its styles never disagree after a redeploy.
+/*.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+# The web fonts are cut from the app's bundled faces and never change under a name; a new cut gets a new file name.
+/fonts/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
