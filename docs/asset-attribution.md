@@ -32,6 +32,18 @@ They ship as static cuts in `ios/RepToday/RepToday/Resources/Fonts/`, each famil
 | --- | --- | --- | --- | --- |
 | `Assets.xcassets/Icons/*.imageset/*.svg`, `Assets.xcassets/Marks/*.imageset/*.svg` | `Icons/<name>`, `Marks/<mark>-<fill\|line>` | Drawn for Rep Today in the approved design handoff (the owner's own design work; `camera`, for the profile photo, drawn on the same 24 pt grid and stroke by the project on 2026-11-16); converted to template vector images with their colors set to black so they tint. No third-party artwork. | Owned by the Rep Today project. | Yes (2026-11-14) |
 
+## Website (`gtm/03-site/`)
+
+The landing pages and the privacy policy serve copies of assets already cleared above, and nothing else: no third-party script, font service or image.
+
+| File | Served as | Source | License | Cleared to ship |
+| --- | --- | --- | --- | --- |
+| `gtm/03-site/fonts/bricolage-grotesque-*.woff2` | `Bricolage Grotesque 96pt`, `48pt` (ExtraBold) and `24pt` (Bold), the `@font-face` names in `gtm/03-site/site.css` | The app's `Resources/Fonts/BricolageGrotesque-96ptExtraBold.ttf`, `-48ptExtraBold.ttf` and `-24ptBold.ttf` (the row above), subset with fontTools `pyftsubset` to Basic Latin plus the few punctuation marks the pages use, and compressed to WOFF2. | SIL Open Font License 1.1, `gtm/03-site/fonts/BricolageGrotesque-OFL.txt` (served beside the fonts). The family declares no Reserved Font Name, so a subset keeps the name. | Yes (2026-11-23) |
+| `gtm/03-site/fonts/inter-*.woff2` | `Inter` at 400, 600 and 700 | The app's `Resources/Fonts/Inter-Regular.ttf`, `-SemiBold.ttf` and `-Bold.ttf` (the row above), subset and compressed the same way. | SIL Open Font License 1.1, `gtm/03-site/fonts/Inter-OFL.txt` (served beside the fonts). The family declares no Reserved Font Name. | Yes (2026-11-23) |
+| `gtm/03-site/img/trainer-push-up-start.webp`, `trainer-push-up-end.webp` | The Trainer poses on the landing pages' exercise screen | The app's `Assets.xcassets/Trainer/male/push_standard-start.imageset` and `push_standard-end.imageset` PNGs (the Trainer row above), resized to 384 px and converted to WebP with `cwebp`. | The same as the Trainer art: generated for Rep Today, owned under OpenAI's terms for generated output. | Yes (2026-11-23) |
+
+The app screens on the landing pages are HTML and CSS written for the site from the app's own views and theme; the icons in them are the app's own (the row above).
+
 ## Removed assets
 
 ### `push_standard.json` (removed)

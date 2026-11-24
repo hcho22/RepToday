@@ -54,8 +54,13 @@ class SiteCheckTests(unittest.TestCase):
     def test_the_command_line_agrees(self):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(check_site.main([]), 0)
-            self.edit('index.html', lambda t: t.replace('Join the waitlist', 'Join the wait list', 1))
+            self.edit('index.html', lambda t: t.replace('id="waitlist-foot-head">Join the waitlist', 'id="waitlist-foot-head">Join the wait list', 1))
             self.assertEqual(check_site.main(['--site', str(self.site)]), 1)
+
+    def test_the_real_site_has_one_closing_placement_a_page(self):
+        for name in check_site.PAGES:
+            blocks = check_site.placements((self.site / name).read_text(encoding='utf-8'))
+            self.assertEqual([kind for kind, _, _ in blocks], ['closing'], name)
 
     def test_a_mailbox_join_line_in_every_placement_fails_only_the_mailto_rule(self):
         link = '<noscript><p class="waitlist-fallback">Email <a href="mailto:{}">us</a> to join.</p></noscript>'.format(
@@ -65,19 +70,18 @@ class SiteCheckTests(unittest.TestCase):
                 '<noscript><p class="waitlist-fallback">The sign-up form needs JavaScript.</p></noscript>', link))
         found = self.findings()
         self.assertEqual(rules(found), ['mailto-join'])
-        self.assertEqual(len(found), 4)
+        self.assertEqual(len(found), 2)
         for finding in found:
             self.assertRegex(finding, r'index(-b)?\.html:\d+')
 
     def test_one_placement_that_differs_is_named(self):
-        text = (self.site / 'index.html').read_text(encoding='utf-8')
-        closing = text.index('id="waitlist-foot-head"')
-        edited = text[:closing] + text[closing:].replace('<label for="wl-email-foot">Email</label>', '<label for="wl-email-foot">Your email</label>', 1)
-        (self.site / 'index.html').write_text(edited, encoding='utf-8')
+        # With one placement a page there is no majority: the finding names both pages' placements.
+        self.edit('index-b.html', lambda t: t.replace('<label for="wl-email-foot">Email</label>', '<label for="wl-email-foot">Your email</label>', 1))
         found = self.findings()
-        self.assertIn('placement-drift', rules(found))
-        self.assertTrue(any('closing placement of index.html' in finding for finding in found))
-        self.assertFalse(any('hero placement of index.html differs' in finding for finding in found))
+        self.assertEqual(rules(found), ['placement-drift'])
+        self.assertEqual(len(found), 1)
+        self.assertRegex(found[0], r'index-b\.html:\d+')
+        self.assertIn('the closing placement of index-b.html differs from the closing placement of index.html', found[0])
 
     def test_an_altered_or_missing_approved_string_fails(self):
         self.edit('index-b.html', lambda t: t.replace("Add your email and we'll tell you the day it ships.", 'Add your email.'))
@@ -147,12 +151,38 @@ class SiteCheckTests(unittest.TestCase):
         self.edit('index.html', lambda t: t.replace('<script src="/waitlist.js"></script>', ''))
         self.assertEqual(rules(self.findings()), ['script'])
 
-    def test_a_third_placement_on_a_page_fails_the_count(self):
+    def test_a_second_placement_on_a_page_fails_the_count(self):
         text = (self.site / 'index.html').read_text(encoding='utf-8')
-        closing = check_site.placements(text)[1]
+        closing = check_site.placements(text)[0]
         self.assertEqual(closing[0], 'closing')
         self.edit('index.html', lambda t: t.replace('</main>', closing[2] + '\n</main>', 1))
         self.assertIn('placement-count', rules(self.findings()))
+
+    def test_a_hero_placement_fails_the_count(self):
+        text = (self.site / 'index-b.html').read_text(encoding='utf-8')
+        hero = check_site.placements(text)[0][2].replace('-foot', '-hero')
+        self.edit('index-b.html', lambda t: t.replace('<div class="hero-cta">', hero + '\n<div class="hero-cta">', 1))
+        found = self.findings()
+        self.assertEqual(rules(found), ['placement-count'])
+        self.assertTrue(any(finding.split()[1] == 'index-b.html' for finding in found))
+
+    def test_a_page_with_no_placement_fails_the_count(self):
+        text = (self.site / 'index.html').read_text(encoding='utf-8')
+        closing = check_site.placements(text)[0][2]
+        self.edit('index.html', lambda t: t.replace(closing, '', 1))
+        self.assertIn('placement-count', rules(self.findings()))
+
+    def test_the_form_must_sit_at_the_anchor_the_page_links_to(self):
+        self.edit('index.html', lambda t: t.replace('<div class="anchor" id="waitlist">', '<div class="anchor" id="join">', 1))
+        found = self.findings()
+        self.assertEqual(rules(found), ['form-link'])
+        self.assertTrue(all(finding.split()[1] == 'index.html' for finding in found))
+
+    def test_a_page_with_no_link_to_the_form_fails(self):
+        self.edit('index-b.html', lambda t: t.replace('href="#waitlist"', 'href="#done"'))
+        found = self.findings()
+        self.assertEqual(rules(found), ['form-link'])
+        self.assertTrue(all(finding.split()[1] == 'index-b.html' for finding in found))
 
 
 if __name__ == '__main__':

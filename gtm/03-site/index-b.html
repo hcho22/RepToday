@@ -4,1133 +4,451 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rep Today - Missing a day never zeroes you out.</title>
-<meta name="description" content="Rep Today is a bodyweight micro-workout iOS app with no streaks anywhere. It opens to a ready session, counts five minutes as a full show-up, and scores consistency on a rolling scale. Coming soon to iOS.">
-<style>
-  /* Rep Today landing page, v2 (Hero B variant).
-     Locked positioning v2: hero B "never zeroes you out", forgiveness pillar
-     promoted to first position below the hero, five-pillar hierarchy,
-     pain states named explicitly, discipline at essay length only.
-     Brand guidelines v1.0: Paper theme for marketing, Night tokens for product UI.
-     Self-contained: system rounded stack, inline SVG only, no external resources. */
-
-  :root {
-    --paper: #FAF7F2;
-    --ink: #1B2228;
-    --slate: #525E66;
-    --moss: #2E6B4E;
-    --night: #14181C;
-    --night-surface: #1E242A;
-    --bone: #F1EEE8;
-    --mist: #A7B0B8;
-    --fern: #5FA981;
-    --hairline: rgba(27, 34, 40, 0.14);
-    --card-shadow: 0 1px 3px rgba(27, 34, 40, 0.08);
-    --error: #A32A2A;
-  }
-
-  * { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-  }
-
-  html { background: #FAF7F2; }
-
-  /* Chrome headless=new enforces a ~500px minimum window width, so a
-     --window-size=390 screenshot is the left 390px of a 500px layout.
-     In that narrow band (rare on real devices), render the true 390px
-     layout so captures match what a 390px phone actually shows. */
-  @media (min-width: 480px) and (max-width: 504px) {
-    body { max-width: 390px; }
-  }
-
-  body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    font-size: 17px;
-    line-height: 26px;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-
-  .container {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding-left: 24px;
-    padding-right: 24px;
-  }
-
-  a { color: var(--moss); }
-
-  p { max-width: 34em; }
-
-  /* ---------- Type scale (marketing scale, section 5) ---------- */
-
-  .display {
-    font-size: clamp(38px, 3.4vw + 24px, 56px);
-    line-height: 1.08;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin: 0;
-  }
-
-  .h1 {
-    font-size: clamp(30px, 2vw + 20px, 40px);
-    line-height: 1.15;
-    font-weight: 700;
-    letter-spacing: -0.005em;
-    margin: 0;
-  }
-
-  .h2 {
-    font-size: clamp(24px, 1vw + 20px, 28px);
-    line-height: 34px;
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .h3 {
-    font-size: 22px;
-    line-height: 28px;
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .small {
-    font-size: 14px;
-    line-height: 20px;
-    font-weight: 400;
-  }
-
-  .overline {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--moss);
-    margin: 0 0 16px;
-  }
-
-  .muted { color: var(--slate); }
-
-  /* ---------- Header ---------- */
-
-  header.site {
-    padding: 28px 0;
-  }
-
-  .wordmark {
-    display: flex;
-    align-items: center;
-    gap: 18px; /* 50% of the 36px mark width */
-  }
-  .wordmark svg { display: block; }
-  .wordmark .name {
-    font-size: 24px; /* 2/3 of the 36px mark, per the wordmark lockup ratio */
-    line-height: 1;
-    font-weight: 700;
-    color: var(--ink);
-  }
-
-  /* ---------- Sections ---------- */
-
-  section {
-    padding: clamp(64px, 5vw + 48px, 112px) 0;
-  }
-
-  .section-head {
-    margin-bottom: clamp(32px, 4vw, 56px);
-  }
-  .section-head p {
-    margin: 16px 0 0;
-    color: var(--slate);
-  }
-
-  /* ---------- Hero ---------- */
-
-  section.hero {
-    padding-top: clamp(40px, 4vw + 24px, 88px);
-  }
-
-  .hero-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 32px;
-    align-items: center;
-  }
-  @media (min-width: 920px) {
-    .hero-grid {
-      grid-template-columns: 1.05fr 0.95fr;
-      grid-template-rows: auto auto;
-      column-gap: 48px;
-      row-gap: 0;
-    }
-    .hero-copy { grid-column: 1; grid-row: 1; align-self: end; }
-    .hero-proof { grid-column: 1; grid-row: 2; align-self: start; margin-top: 24px; }
-    .phone-wrap { grid-column: 2; grid-row: 1 / 3; }
-  }
-
-  .hero-copy .subhead {
-    margin: 24px 0 0;
-    font-size: 20px;
-    line-height: 30px;
-    color: var(--slate);
-    max-width: 30em;
-  }
-  .hero-proof .proof-line {
-    margin: 0;
-    padding: 12px 16px;
-    max-width: 32em;
-    border-radius: 12px;
-    background: rgba(46, 107, 78, 0.09);
-    font-size: 16px;
-    line-height: 24px;
-    font-weight: 600;
-    color: var(--ink);
-  }
-
-  /* ---------- Waitlist (sign-up card) ---------- */
-
-  .waitlist {
-    margin: 16px 0 0;
-    padding: 20px;
-    max-width: 32em;
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
-    background: var(--paper);
-    box-shadow: var(--card-shadow);
-  }
-  .waitlist .waitlist-head {
-    margin: 0;
-    font-size: 19px;
-    line-height: 25px;
-    font-weight: 700;
-    color: var(--ink);
-  }
-  .waitlist .waitlist-sub {
-    margin: 6px 0 14px;
-    max-width: none;
-    font-size: 15px;
-    line-height: 22px;
-    color: var(--slate);
-  }
-  .waitlist .waitlist-fallback {
-    margin: 0;
-    max-width: none;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--slate);
-  }
-  .waitlist-lead {
-    margin: 16px 0 0;
-    max-width: 32em;
-    font-size: 15px;
-    line-height: 22px;
-    color: var(--slate);
-  }
-
-  /* The sign-up form (waitlist.js): email, one Fit question, one optional box.
-     Controls are at least 44px tall; errors use --error, 4.5:1 on Paper. */
-  .waitlist .wl-form { max-width: 100%; margin: 0; }
-  .wl-form[hidden], .wl-form [hidden] { display: none; }
-  .wl-form label { display: block; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
-  .wl-field { margin: 0 0 14px; }
-  .wl-form input[type="email"] {
-    display: block;
-    width: 100%;
-    min-height: 44px;
-    margin-top: 6px;
-    padding: 10px 12px;
-    font: inherit;
-    font-size: 16px;
-    color: var(--ink);
-    background: #fff;
-    border: 1px solid var(--slate);
-    border-radius: 10px;
-  }
-  .wl-form fieldset { min-width: 0; margin: 0 0 6px; padding: 0; border: 0; }
-  .wl-form legend { padding: 0; margin: 0 0 2px; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
-  .wl-form .wl-choice { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 0; font-weight: 400; cursor: pointer; }
-  .wl-form .wl-choice input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--moss); }
-  .wl-form .wl-beta { margin-top: 2px; }
-  .wl-form :focus-visible { outline: 3px solid var(--moss); outline-offset: 2px; }
-  .wl-form input[aria-invalid="true"] { border-color: var(--error); }
-  .wl-error { margin: 6px 0 0; max-width: none; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--error); }
-  .wl-submit {
-    display: block;
-    width: 100%;
-    min-height: 48px;
-    margin-top: 10px;
-    padding: 12px 16px;
-    font: inherit;
-    font-size: 16px;
-    line-height: 24px;
-    font-weight: 700;
-    color: #fff;
-    background: var(--moss);
-    border: 0;
-    border-radius: 12px;
-    cursor: pointer;
-  }
-  .wl-submit:disabled { background: var(--slate); cursor: progress; }
-  .wl-status { margin: 0; max-width: none; font-size: 15px; line-height: 22px; color: var(--ink); }
-  .wl-status:not(:empty) { margin-top: 12px; }
-  .wl-status:focus { outline: none; }
-  .wl-guard { margin-top: 12px; }
-
-  /* Closing waitlist band: Night palette for a calm end-of-page CTA, with the
-     paper card kept light so the form stays legible. */
-  section.signup { background: var(--night); color: var(--bone); }
-  section.signup .h1 { color: var(--bone); }
-  section.signup .lead { margin: 16px 0 0; color: var(--mist); font-size: 19px; line-height: 29px; }
-  section.signup .waitlist { margin: 32px 0 0; }
-
-  /* ---------- Phone mock (Night tokens, section 4 dark palette) ---------- */
-
-  .phone-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .phone {
-    width: min(320px, 100%);
-    background: var(--ink);
-    border-radius: 54px;
-    padding: 12px;
-    box-shadow: var(--card-shadow);
-  }
-
-  .screen {
-    background: var(--night);
-    border-radius: 43px;
-    padding: 14px 16px 20px;
-    color: var(--bone);
-  }
-
-  .statusbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 12px 0;
-  }
-  .statusbar .time {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 16px;
-  }
-  .statusbar .icons { display: flex; align-items: center; gap: 5px; }
-  .statusbar svg { display: block; }
-
-  .island {
-    width: 88px;
-    height: 24px;
-    border-radius: 12px;
-    background: var(--ink);
-    margin: 8px auto 14px;
-  }
-
-  .app-label {
-    font-size: 11px;
-    line-height: 14px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--mist);
-    margin: 0;
-  }
-  .app-duration {
-    font-size: 32px;
-    line-height: 38px;
-    font-weight: 700;
-    margin: 2px 0 0;
-    color: var(--bone);
-  }
-
-  .chips {
-    display: flex;
-    gap: 5px;
-    margin-top: 14px;
-  }
-  .chip {
-    flex: 1;
-    text-align: center;
-    font-size: 11px;
-    line-height: 14px;
-    font-weight: 600;
-    padding: 6px 0;
-    border-radius: 999px;
-    background: var(--night-surface);
-    color: var(--mist);
-  }
-  .chip.active {
-    background: var(--fern);
-    color: var(--night);
-  }
-
-  .blocks {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 16px;
-  }
-  .block {
-    background: var(--night-surface);
-    border-radius: 14px;
-    padding: 11px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .block .move {
-    font-size: 14px;
-    line-height: 18px;
-    font-weight: 600;
-    color: var(--bone);
-  }
-  .block .pillar {
-    font-size: 11px;
-    line-height: 14px;
-    font-weight: 500;
-    color: var(--mist);
-    margin-top: 1px;
-  }
-  .block .dose {
-    font-size: 13px;
-    line-height: 16px;
-    font-weight: 500;
-    color: var(--mist);
-    white-space: nowrap;
-  }
-
-  .variety {
-    font-size: 12px;
-    line-height: 17px;
-    color: var(--mist);
-    margin: 14px 2px 0;
-  }
-
-  .start {
-    display: block;
-    width: 100%;
-    height: 52px;
-    line-height: 52px;
-    text-align: center;
-    border: 0;
-    border-radius: 16px;
-    background: var(--fern);
-    color: var(--night);
-    font-family: inherit;
-    font-size: 17px;
-    font-weight: 700;
-    margin-top: 14px;
-  }
-
-  .consistency {
-    font-size: 12px;
-    line-height: 16px;
-    color: var(--mist);
-    text-align: center;
-    margin: 12px 0 0;
-  }
-
-  .phone-caption {
-    color: var(--slate);
-    text-align: center;
-    margin: 0;
-  }
-
-  /* Compact hero on small screens: the 8-second skim must see the
-     Ready Screen session card and Start above the 390x844 fold.
-     Statusbar and island are decorative chrome and are dropped here;
-     every product element of the mock stays. */
-  @media (max-width: 600px) {
-    header.site { padding: 14px 0; }
-    section.hero { padding-top: 16px; }
-    .hero-grid { gap: 16px; }
-    section.hero .display { font-size: 30px; }
-    .hero-copy .overline { margin-bottom: 10px; }
-    .hero-copy .subhead {
-      margin-top: 12px;
-      font-size: 18px;
-      line-height: 26px;
-    }
-    .phone { width: min(250px, 100%); border-radius: 44px; padding: 10px; }
-    .screen { border-radius: 36px; padding: 12px 12px 14px; }
-    .statusbar, .island { display: none; }
-    .app-duration { font-size: 26px; line-height: 32px; }
-    .chips { margin-top: 10px; }
-    .blocks { gap: 5px; margin-top: 8px; }
-    .block { padding: 8px 12px; }
-    .variety { margin: 8px 2px 0; font-size: 11px; line-height: 15px; }
-    .start { height: 46px; line-height: 46px; margin-top: 8px; }
-    .consistency { margin-top: 8px; }
-  }
-
-  /* ---------- Cards (steps, pillars, pricing) ---------- */
-
-  .card-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-  @media (min-width: 760px) {
-    .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
-    .card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  .card {
-    background: var(--paper);
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: var(--card-shadow);
-  }
-  .card .kicker {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--moss);
-    margin: 0 0 12px;
-  }
-  .card h3 { margin: 0 0 10px; }
-  .card p { margin: 0; color: var(--slate); font-size: 16px; line-height: 25px; }
-  .card p + p { margin-top: 12px; }
-
-  /* ---------- Pain cards ---------- */
-
-  .card blockquote.pain-quote {
-    margin: 0 0 12px;
-    padding: 2px 0 2px 14px;
-    border-left: 3px solid var(--moss);
-    font-size: 16px;
-    line-height: 25px;
-    color: var(--ink);
-  }
-  .card .attribution {
-    margin: 0 0 12px;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--slate);
-  }
-  .card p.answer {
-    color: var(--ink);
-    font-weight: 600;
-  }
-
-  /* ---------- Evidence quotes ---------- */
-
-  figure.evidence {
-    margin: 40px 0 0;
-    padding: 4px 0 4px 20px;
-    border-left: 3px solid var(--moss);
-    max-width: 38em;
-  }
-  figure.evidence blockquote {
-    margin: 0;
-    font-size: 17px;
-    line-height: 26px;
-    color: var(--ink);
-  }
-  figure.evidence figcaption {
-    margin-top: 10px;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--slate);
-  }
-
-  /* ---------- Night band ---------- */
-
-  section.band {
-    background: var(--night);
-    color: var(--bone);
-  }
-  section.band .h1 { color: var(--bone); }
-  section.band .lead {
-    margin: 20px 0 0;
-    color: var(--mist);
-    font-size: 19px;
-    line-height: 29px;
-  }
-  .band-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
-    margin-top: 48px;
-  }
-  @media (min-width: 760px) {
-    .band-grid { grid-template-columns: repeat(3, 1fr); }
-  }
-  .band-item {
-    background: var(--night-surface);
-    border-radius: 16px;
-    padding: 24px;
-  }
-  .band-item h3 {
-    margin: 0 0 8px;
-    font-size: 19px;
-    line-height: 25px;
-    font-weight: 600;
-    color: var(--bone);
-  }
-  .band-item .num {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    color: var(--fern);
-    margin: 0 0 12px;
-  }
-  .band-item p {
-    margin: 0;
-    font-size: 16px;
-    line-height: 25px;
-    color: var(--mist);
-  }
-
-  /* ---------- Pricing ---------- */
-
-  .card p.price {
-    font-size: 40px;
-    line-height: 46px;
-    font-weight: 700;
-    color: var(--ink);
-    margin: 4px 0 4px;
-  }
-  .card p.price .per {
-    font-size: 17px;
-    font-weight: 500;
-    color: var(--slate);
-  }
-  .card p.plan-note {
-    margin-top: 20px;
-    font-size: 14px;
-    line-height: 20px;
-  }
-  .plan-list {
-    list-style: none;
-    margin: 20px 0 0;
-    padding: 0;
-  }
-  .plan-list li {
-    position: relative;
-    padding-left: 26px;
-    margin-top: 10px;
-    font-size: 16px;
-    line-height: 25px;
-    color: var(--ink);
-  }
-  .plan-list li::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 8px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--moss);
-  }
-  .plan-note {
-    margin-top: 20px;
-    color: var(--slate);
-  }
-
-  /* ---------- Manifesto ---------- */
-
-  section.manifesto .essay p {
-    margin: 0 0 20px;
-    max-width: 38em;
-  }
-  section.manifesto .essay p:last-child { margin-bottom: 0; }
-  section.manifesto .definition {
-    margin: 28px 0;
-    padding: 4px 0 4px 20px;
-    border-left: 3px solid var(--moss);
-    max-width: 36em;
-  }
-  section.manifesto .definition p {
-    margin: 0 0 12px;
-    font-size: 19px;
-    line-height: 29px;
-    font-weight: 600;
-    color: var(--ink);
-  }
-  section.manifesto .definition p:last-child { margin-bottom: 0; }
-
-  /* ---------- FAQ ---------- */
-
-  .faq {
-    max-width: 760px;
-    border-top: 1px solid var(--hairline);
-  }
-  .faq details {
-    border-bottom: 1px solid var(--hairline);
-  }
-  .faq summary {
-    list-style: none;
-    cursor: pointer;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 22px 0;
-    font-size: 19px;
-    line-height: 26px;
-    font-weight: 600;
-  }
-  .faq summary::-webkit-details-marker { display: none; }
-  .faq summary::after {
-    content: "+";
-    flex: none;
-    color: var(--moss);
-    font-size: 22px;
-    font-weight: 500;
-    line-height: 1;
-  }
-  .faq details[open] summary::after { content: "\2212"; } /* minus sign, toggle icon */
-  .faq .answer {
-    padding: 0 0 24px;
-  }
-  .faq .answer p {
-    margin: 0;
-    color: var(--slate);
-  }
-  .faq .answer p + p { margin-top: 12px; }
-
-  /* ---------- Footer ---------- */
-
-  footer.site {
-    border-top: 1px solid var(--hairline);
-    padding: 48px 0 64px;
-  }
-  footer.site .wordmark { gap: 14px; } /* 50% of the 28px footer mark */
-  footer.site .wordmark .name { font-size: 18px; }
-  footer.site .legal {
-    margin: 24px 0 0;
-    color: var(--slate);
-  }
-  footer.site .legal p { margin: 0 0 6px; }
-</style>
+<meta name="description" content="Rep Today is a bodyweight micro-workout iOS app with no streaks anywhere. Today's session is already built when you open it, five minutes counts as a full show-up, and consistency is scored on a rolling scale. Coming soon to iOS.">
+<meta name="theme-color" content="#000000">
+<!-- Rep Today landing page, layout B "the scroll is a session" (Hero B variant: "never zeroes you
+     out"). The page is the app's own look (site.css) and reads like a session: Warm-Up, three
+     Rounds, Cooldown, Done, with Rest beats between. Without script it is a plain long page;
+     session.js only moves the pinned timer and step list as the page scrolls. It differs from
+     index.html (the Hero A variant) in its hero copy and in the score section, which sits first
+     under the hero here instead of in the Cooldown. -->
+<link rel="preload" href="/fonts/bricolage-grotesque-96pt-extrabold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/inter-regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+<script>document.documentElement.className = 'js';</script>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to the page content</a>
 
-<header class="site">
-  <div class="container">
-    <div class="wordmark">
-      <!-- Ready Mark: reference SVG from brand guidelines section 3, Moss on transparent -->
-      <svg width="36" height="36" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rep Today Ready Mark">
-        <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
-        <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
-      </svg>
-      <span class="name">Rep Today</span>
+<div class="shell">
+
+  <a class="brand brand-top" href="/">
+    <svg width="26" height="26" viewBox="0 0 100 100" aria-hidden="true"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="50" cy="66" r="12" fill="currentColor"/></svg>
+    <span>Rep Today</span>
+  </a>
+
+  <header class="rail">
+    <a class="brand" href="/">
+      <svg width="26" height="26" viewBox="0 0 100 100" aria-hidden="true"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="50" cy="66" r="12" fill="currentColor"/></svg>
+      <span>Rep Today</span>
+    </a>
+
+    <div class="clock" data-clock aria-hidden="true">
+      <div class="clock-face">
+        <span class="lbl">Time left</span>
+        <span class="clock-time" data-clock-time>1:45</span>
+      </div>
+      <div class="clock-bar"><span data-clock-bar></span></div>
+      <div class="clock-now"><span class="lbl">Now</span><span data-clock-now>Warm-Up</span></div>
+    </div>
+    <p class="rail-note" aria-hidden="true">The timer stays pinned and counts down as you scroll, just like a session.</p>
+    <p class="rail-plain">A session-length page: Warm-Up, three Rounds, Cooldown, Done.</p>
+
+    <a class="btn-skip" href="#waitlist"><span class="long">Skip to the waitlist</span><span class="short">Waitlist</span></a>
+
+    <nav class="steps-nav" aria-label="Sections of this page">
+      <ol class="steps" data-steps>
+        <li class="is-now"><a href="#warm-up" aria-current="step"><span class="dot"></span><span class="name">Warm-Up</span></a></li>
+        <li><a href="#r1"><span class="dot"></span><span class="name">Round 1 · Why</span></a></li>
+        <li><a href="#r2"><span class="dot"></span><span class="name">Round 2 · How</span></a></li>
+        <li><a href="#r3"><span class="dot"></span><span class="name">Round 3 · Price</span></a></li>
+        <li><a href="#cooldown"><span class="dot"></span><span class="name">Cooldown</span></a></li>
+        <li><a href="#done"><span class="dot"></span><span class="name">Done</span></a></li>
+      </ol>
+    </nav>
+    <div class="rail-spacer"></div>
+  </header>
+
+  <div class="page">
+<main id="main">
+
+  <!-- ===== Warm-Up ===== -->
+  <section class="sec hero" id="warm-up" data-step aria-labelledby="warm-up-h">
+    <div class="hero-copy">
+      <p class="lbl lbl-push">Warm-Up · Coming soon to <span class="keep">iOS</span></p>
+      <h1 class="h1" id="warm-up-h">Missing a day never <em>zeroes you out.</em></h1>
+      <p class="hero-sub">Rep Today opens to a session that is already built, counts five minutes as a full show-up, and eases you back in after a week away.</p>
+      <div class="hero-cta">
+        <a class="btn" href="#r1"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Start</span></a>
+        <p class="p">One button. The page then runs like a session.</p>
+      </div>
+      <p class="hero-proof">No streaks, no badges, no XP, anywhere. A short week can dent your score. One missed day never zeroes it.</p>
+      <p class="hero-status">Rep Today is pre-launch and not yet on the App Store.</p>
+    </div>
+
+    <div class="phone phone-cut hero-phone" role="img" aria-label="The Rep Today app's Today screen: Push Day, 10 minutes. A warm-up stretch, Standard Push-Up 4 by 10 and Floor Tricep Dips 4 by 10 are listed above one Start button.">
+      <div class="scr" aria-hidden="true">
+        <div class="a-status"><b>9:41</b><span><svg width="18" height="12" viewBox="0 0 18 12"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></g></svg><svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1.6 4.4a10 10 0 0 1 13.8 0M4.1 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor" stroke="none"/></svg><svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="4" fill="none" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="20" height="9" rx="2.5" fill="currentColor"/><path d="M25 4.5v4a2.2 2.2 0 0 0 0-4z" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="a-scroll">
+          <div class="a-head">
+            <p class="a-greet">Ready when you are, Riley.</p>
+            <p class="a-display" style="color:#FF6B3D">Push Day</p>
+            <p class="a-display">10 minutes</p>
+            <p class="a-lead">Push work for chest, shoulders and arms.</p>
+            <svg class="a-mark" width="56" height="56" viewBox="0 0 100 100"><path d="M6 66a44 44 0 0 1 88 0v9a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z" fill="#FF6B3D"/></svg>
+          </div>
+          <div class="a-chips"><span class="a-chip">5 min</span><span class="a-chip on">10 min</span><span class="a-chip">15 min</span><span class="a-chip">20 min</span><span class="a-chip">30 min</span></div>
+          <div class="a-outline"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg><span>Different workout</span></div>
+          <div class="a-card"><p class="a-headline">You're someone who moves.</p><p class="a-foot">Every time you show up counts - even five minutes.</p></div>
+          <div class="a-card a-block">
+            <p class="a-over">Warm-Up</p>
+            <p class="a-row"><span>Cobra Stretch</span><b>1 × 0:30</b></p>
+          </div>
+          <div class="a-card a-block">
+            <p class="a-over" style="color:#FF6B3D">Push Day</p>
+            <p class="a-row"><span>Standard Push-Up</span><b>4 × 10</b></p>
+            <p class="a-row"><span>Floor Tricep Dips</span><b>4 × 10</b></p>
+          </div>
+        </div>
+        <div class="a-startbar"><div class="a-start"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Start</span></div></div>
+        <div class="a-tabs">
+          <span class="a-tab on"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19h18M5.5 19a6.5 6.5 0 0 1 13 0M12 5v2.5M4.9 8.4l1.8 1.8M19.1 8.4l-1.8 1.8"/></svg>Today</span>
+          <span class="a-tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7L8 20v-3.5H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/><path d="M12 7.3l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" fill="currentColor" stroke-width="1"/></svg>Coach</span>
+          <span class="a-tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h5v-5h5v-5h5V5h3"/></svg>Progress</span>
+          <span class="a-tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>Profile</span>
+        </div>
+        <div class="a-home"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec sun-rule" id="score" aria-labelledby="score-h">
+    <p class="lbl lbl-sun">Warm-Up · The score</p>
+    <h2 class="h2" id="score-h">A score that forgives.</h2>
+    <div class="score" role="img" aria-label="The app's score card: Consistency Score 82. You're someone who moves. Best run: 3 weeks on goal. Sample numbers.">
+      <span class="score-num" aria-hidden="true">82</span>
+      <span class="score-words" aria-hidden="true"><span class="lbl lbl-sun">Consistency Score</span><b>You're someone who moves.</b><span>Best run: 3 weeks on goal.</span></span>
+    </div>
+    <p class="p">Rep Today keeps a Consistency Score. It is a forgiving rolling average of your recent weeks, not a streak. A 5-minute session counts as a full show-up. Fall short one week and your score dips. It does not reset. Come back after a week or more away and the app serves a session that is easier and winnable, and it counts the comeback as a full show-up instead of penalizing it.</p>
+    <p class="p p-strong">You're someone who moves, not someone who owes.</p>
+    <p class="p">There is no XP, no levels, no badges, and no leaderboards anywhere in the app.</p>
+    <figure class="evidence">
+      <blockquote>"Then after 200 days, I lost my streak and... breathed a sigh of relief."</blockquote>
+      <figcaption>A Hacker News commenter on a language app's streak. Not about Rep Today; it is the mechanic we chose not to build. <a href="https://hn.algolia.com/api/v1/items/38919053">Source<span class="vh"> (a Hacker News comment)</span></a></figcaption>
+    </figure>
+  </section>
+
+  <div class="beat" data-beat aria-hidden="true"><span class="lbl lbl-rest">Rest</span><div class="beat-bar"><span></span></div><p class="beat-next">Next · Why this app exists</p></div>
+
+  <!-- ===== Round 1: why ===== -->
+  <section class="sec" id="r1" data-step aria-labelledby="r1-h">
+    <p class="lbl lbl-push">Round 1 of 3 · Four stations</p>
+    <h2 class="h2" id="r1-h">The distance between wanting to move and moving.</h2>
+    <p class="p">Decision fatigue. The 9pm catalog scroll. Paywall rage. A streak at zero. Four things people keep saying about workout apps, in their own words. None of them are Rep Today users; the app has none yet. They are the reason it is built the way it is.</p>
+
+    <div class="grid grid-2">
+      <div class="st">
+        <p class="lbl">Station 1 · Decision fatigue</p>
+        <h3 class="h3">Too many steps between wanting a workout and starting one</h3>
+        <blockquote class="quote">"I need an app that requires little decision-making ... I need the app to tell me exactly what to do."</blockquote>
+        <p class="attribution">A Hacker News commenter describing the workout app they wanted. <a href="https://hn.algolia.com/api/v1/items/36666806">Source<span class="vh"> (a Hacker News comment)</span></a></p>
+        <p class="answer">Rep Today asks a few setup questions once. After that, today's session is already built when you open the app, and one Start button begins it.</p>
+      </div>
+      <div class="st">
+        <p class="lbl">Station 2 · The 9pm catalog scroll</p>
+        <h3 class="h3">Scrolling a workout library is not working out</h3>
+        <blockquote class="quote">"excessive scrolling, multiple clicks to get to something"</blockquote>
+        <p class="attribution">An App Store reviewer of another fitness app. <a href="https://apps.apple.com/us/app/centr-strength-fitness-app/id1382530817">Source<span class="vh"> (its App Store page)</span></a></p>
+        <p class="answer">There is no catalog to browse. One session, already built, sized to the time you usually have.</p>
+      </div>
+      <div class="st">
+        <p class="lbl">Station 3 · Paywall rage</p>
+        <h3 class="h3">A subscription sheet standing between you and a workout</h3>
+        <blockquote class="quote">"you cannot use this app unless you pay for it. You just can't."</blockquote>
+        <p class="attribution">An App Store reviewer of another fitness app. <a href="https://apps.apple.com/us/app/30-day-fitness-workout-at-home/id1099771240">Source<span class="vh"> (its App Store page)</span></a></p>
+        <p class="answer">Every daily session Rep Today builds is free, forever. The paywall never gates one.</p>
+      </div>
+      <div class="st">
+        <p class="lbl">Station 4 · A streak at zero</p>
+        <h3 class="h3">One missed day erasing months of showing up</h3>
+        <blockquote class="quote">"That was it, back to 0, through no fault of my own."</blockquote>
+        <p class="attribution">A Hacker News commenter on a habit app's streak. <a href="https://hn.algolia.com/api/v1/items/40903998">Source<span class="vh"> (a Hacker News comment)</span></a></p>
+        <p class="answer">Rep Today has no streaks. A short week can dent your Consistency Score. One missed day never zeroes it.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="beat" data-beat aria-hidden="true"><span class="lbl lbl-rest">Rest</span><div class="beat-bar"><span></span></div><p class="beat-next">Next · How it works</p></div>
+
+  <!-- ===== Round 2: how ===== -->
+  <section class="sec how" id="r2" data-step aria-labelledby="r2-h">
+    <div class="how-copy">
+      <p class="lbl lbl-push">Round 2 of 3</p>
+      <h2 class="h2" id="r2-h">Built on your phone. <span class="nb">Hands-free</span> once you start.</h2>
+      <p class="p">You do not pick a workout. An on-device engine assembles every session with no network call, then paces the work and the rest for you. Here is exactly how that works, including where AI is involved and where it is not.</p>
+    </div>
+
+    <div class="phone phone-cut how-phone" role="img" aria-label="The Rep Today app's exercise screen: Standard Push-Up, 4 by 10, round 1 of 4. The Trainer shows the start and end positions above a large orange time-left countdown.">
+      <div class="scr" aria-hidden="true">
+        <div class="a-status"><b>9:41</b><span><svg width="18" height="12" viewBox="0 0 18 12"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></g></svg><svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1.6 4.4a10 10 0 0 1 13.8 0M4.1 7a6.4 6.4 0 0 1 8.8 0"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor" stroke="none"/></svg><svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="4" fill="none" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="20" height="9" rx="2.5" fill="currentColor"/><path d="M25 4.5v4a2.2 2.2 0 0 0 0-4z" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="a-play">
+          <div class="a-topbar">
+            <span class="a-round"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+            <span class="a-segs"><i><b style="width:33%"></b></i><i></i><i></i></span>
+            <span class="a-round"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M9 5.5v13M15 5.5v13"/></svg></span>
+          </div>
+          <p class="a-over" style="color:#FF6B3D">Push Day · 2 of 3</p>
+          <div class="a-stage">
+            <span class="a-pose"><img src="/img/trainer-push-up-start.webp" width="177" height="177" alt="" loading="lazy" decoding="async"><span>START</span></span>
+            <span class="a-pose"><img src="/img/trainer-push-up-end.webp" width="177" height="177" alt="" loading="lazy" decoding="async"><span>END</span></span>
+          </div>
+          <p class="a-title"><strong>Standard<br>Push-Up</strong><b>4 × 10</b></p>
+          <p class="a-cue">Can't do a full push-up yet? Do it against a wall, on an incline or on your knees.</p>
+          <p class="a-rounds">Round 1 of 4<span><i class="now"></i><i></i><i></i><i></i></span></p>
+          <div class="a-timer">
+            <p class="a-over">Time left</p>
+            <p class="a-time">0:36</p>
+            <div class="a-bar"><i style="width:46%"></i></div>
+          </div>
+          <div class="a-grow"></div>
+          <div class="a-done"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Done</span></div>
+          <div class="a-quiet">
+            <span><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="13" r="7"/><path d="M11 9.5V13l2.5 1.5M9 3h4M19 3v5M16.5 5.5h5"/></svg>+ More time</span>
+            <span><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>Swap</span>
+            <span><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5.5l9 6.5-9 6.5z"/><path d="M18.5 5.5v13"/></svg>Skip</span>
+          </div>
+        </div>
+        <div class="a-home"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <p class="lbl">1. The engine</p>
+      <h3 class="h3">Every session is built on your phone</h3>
+      <p>A deterministic on-device engine assembles each session from a 69-movement bodyweight library, with no network call and no AI. The days run in order: Push, Pull, Legs, then a Rest Day with an optional five-minute stretch or a Train anyway button.</p>
+      <p>You sign in once when you set the app up. After that, building and playing a session never waits on a connection.</p>
+    </div>
+    <div class="card">
+      <p class="lbl">2. The session</p>
+      <h3 class="h3">Press Start and it plays itself</h3>
+      <p>Each set counts down and flows into the next, rests end on their own, and a quiet tone marks each change. Your Trainer shows every movement.</p>
+      <p>Done, Skip, Swap, Pause and + More time are there when you want them. None of them is required.</p>
+    </div>
+    <div class="card">
+      <p class="lbl">3. The duration chip</p>
+      <h3 class="h3">Change one thing in one tap</h3>
+      <p>Got 20 minutes instead of 10? One tap on a duration chip, anywhere from 5 to 60 minutes, and the new session is there before your thumb lifts. Start is never disabled while it happens.</p>
+      <p>The app opens at the length you usually finish, so most days you change nothing.</p>
+    </div>
+    <div class="card">
+      <p class="lbl">4. The tuning</p>
+      <h3 class="h3">It adjusts between sessions, on your phone</h3>
+      <p>Reps move in steps of five. Finish a session as written and the next one asks for a little more; rate it "Too hard" and it steps back. Clear a movement at the top of its range and the next rung of its ladder opens, up to the rungs kept for your level. The Strength Phase, which you earn, opens the rest.</p>
+      <p>The same on-device engine decides all of it.</p>
+    </div>
+    <div class="card card-wide">
+      <p class="lbl">Where AI is involved</p>
+      <h3 class="h3">Only in the optional Premium Coach, never in the daily session</h3>
+      <p>Premium members may choose to use the AI Coach. It runs on Rep Today's servers and sends your message and your training records to OpenAI, which writes its replies. It can suggest things, such as a different session length, a swap, a reminder or a Custom Workout it writes, and nothing changes until you confirm it. It never writes the daily session, and nothing about it sits between opening the app and pressing Start.</p>
     </div>
   </div>
-</header>
 
-<main>
+  <div class="sec sec-plain">
+    <figure class="evidence">
+      <blockquote>"Making the decision can be emotionally and mentally taxing, whereas if I rely on the default ... the rest of the day just flows from that without the decision fatigue."</blockquote>
+      <figcaption>A Hacker News commenter on why a default beats a decision. Not a Rep Today user; we don't have any yet. <a href="https://hn.algolia.com/api/v1/items/37784759">Source<span class="vh"> (a Hacker News comment)</span></a></figcaption>
+    </figure>
+  </div>
 
-  <section class="hero">
-    <div class="container">
-      <div class="hero-grid">
-        <div class="hero-copy">
-          <p class="overline">Coming soon to iOS</p>
-          <h1 class="display">Missing a day never zeroes you out.</h1>
-          <p class="subhead">Rep Today opens to a ready session, counts five minutes as a full show-up, and celebrates a comeback after a week away.</p>
-        </div>
+  <div class="beat" data-beat aria-hidden="true"><span class="lbl lbl-rest">Rest</span><div class="beat-bar"><span></span></div><p class="beat-next">Next · What it costs</p></div>
 
-        <div class="phone-wrap">
-          <div class="phone" role="img" aria-label="Rep Today Ready Screen: a 10 minute session with four movement blocks and one Start button">
-            <div class="screen">
-              <div class="statusbar" aria-hidden="true">
-                <span class="time">9:41</span>
-                <span class="icons">
-                  <!-- signal -->
-                  <svg width="16" height="10" viewBox="0 0 16 10"><g fill="#A7B0B8"><rect x="0" y="6" width="3" height="4" rx="1"/><rect x="4.3" y="4" width="3" height="6" rx="1"/><rect x="8.6" y="2" width="3" height="8" rx="1"/><rect x="12.9" y="0" width="3" height="10" rx="1"/></g></svg>
-                  <!-- battery -->
-                  <svg width="23" height="11" viewBox="0 0 23 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#A7B0B8"/><rect x="2" y="2" width="13" height="7" rx="1.6" fill="#A7B0B8"/><path d="M21.5 3.5v4a2.2 2.2 0 0 0 0-4z" fill="#A7B0B8"/></svg>
-                </span>
-              </div>
-              <div class="island" aria-hidden="true"></div>
+  <!-- ===== Round 3: price ===== -->
+  <section class="sec price-band" id="r3" data-step aria-labelledby="r3-h">
+    <p class="lbl">Round 3 of 3 · Planned pricing</p>
+    <h2 class="h2" id="r3-h">Free means the workouts. All of them. Forever.</h2>
+    <p>The paywall never gates a workout. Premium unlocks depth, not the core loop. Premium exists so the people who want more depth fund the app, instead of the workouts being taxed. Prices below are planned and may change before launch.</p>
+  </section>
 
-              <p class="app-label">Today</p>
-              <p class="app-duration">10 min</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <p class="lbl">Free</p>
+      <p class="price">$0</p>
+      <ul class="plan-list">
+        <li>Unlimited workouts, forever</li>
+        <li>All durations, 5 to 60 minutes</li>
+        <li>Every Training Day and every movement ladder, the earned Strength Phase included</li>
+        <li>Sessions work offline after a one-time sign-in</li>
+      </ul>
+    </div>
+    <div class="card">
+      <p class="lbl">Premium, planned</p>
+      <p class="price">$7.99<span class="per"> /month, or $59.99 /year</span></p>
+      <ul class="plan-list">
+        <li>14-day free trial on the monthly plan</li>
+        <li>The AI Coach: it knows your training, and can log a run, adjust today or write a Custom Workout, with your OK</li>
+        <li>Deeper analytics on your training: pattern balance, weekly volume and how your sessions have felt</li>
+      </ul>
+      <p class="plan-note">The Strength Phase is earned, never bought: it opens for free once your consistency and cleared movements unlock it. Every session remains free to generate and start.</p>
+    </div>
+  </div>
 
-              <div class="chips" aria-hidden="true">
-                <span class="chip">5</span>
-                <span class="chip active">10</span>
-                <span class="chip">15</span>
-                <span class="chip">20</span>
-                <span class="chip">30</span>
-                <span class="chip">45</span>
-                <span class="chip">60</span>
-              </div>
+  <div class="sec sec-plain">
+    <figure class="evidence">
+      <blockquote>"the app won't do anything until you sign up for the free trial (which, if you forget, will convert to paid)"</blockquote>
+      <figcaption>A Hacker News commenter on another app's trial. It is the pattern this pricing is built against. <a href="https://hn.algolia.com/api/v1/items/39991813">Source<span class="vh"> (a Hacker News comment)</span></a></figcaption>
+    </figure>
+  </div>
 
-              <div class="blocks">
-                <div class="block">
-                  <span>
-                    <span class="move">Push-up</span><br>
-                    <span class="pillar">Strength</span>
-                  </span>
-                  <span class="dose">3 x 8</span>
-                </div>
-                <div class="block">
-                  <span>
-                    <span class="move">Hip hinge flow</span><br>
-                    <span class="pillar">Mobility</span>
-                  </span>
-                  <span class="dose">2 min</span>
-                </div>
-                <div class="block">
-                  <span>
-                    <span class="move">Bear crawl</span><br>
-                    <span class="pillar">Primal</span>
-                  </span>
-                  <span class="dose">40s</span>
-                </div>
-                <div class="block">
-                  <span>
-                    <span class="move">Deep squat hold</span><br>
-                    <span class="pillar">Mobility</span>
-                  </span>
-                  <span class="dose">3 x 30s</span>
-                </div>
-              </div>
+  <div class="beat" data-beat aria-hidden="true"><span class="lbl lbl-rest">Rest</span><div class="beat-bar"><span></span></div><p class="beat-next">Next · Cooldown</p></div>
 
-              <p class="variety">Today's mix leans away from yesterday's. Bear crawl rotates back in.</p>
-
-              <div class="start" role="presentation">Start</div>
-
-              <p class="consistency">Consistency 82 - You're someone who moves</p>
-            </div>
-          </div>
-          <p class="phone-caption small">Ready Screen (pre-release mock of the product UI)</p>
-        </div>
-
-        <div class="hero-proof">
-          <p class="proof-line">No streaks, no badges, no XP, anywhere. A missed day can dent your score. Nothing can ever zero it.</p>
-          <p class="waitlist-lead">Rep Today is pre-launch and not yet on the App Store.</p>
-          <div class="waitlist" role="group" aria-labelledby="waitlist-hero-head">
-            <p class="waitlist-head" id="waitlist-hero-head">Join the waitlist</p>
-            <p class="waitlist-sub">Add your email and we'll tell you the day it ships.</p>
-            <form class="wl-form" id="wl-form-hero" data-waitlist-form novalidate autocomplete="off" hidden>
-              <div data-wl-fields>
-                <div class="wl-field">
-                  <label for="wl-email-hero">Email</label>
-                  <input type="email" id="wl-email-hero" name="email_address" autocomplete="email" inputmode="email" required aria-describedby="wl-email-error-hero">
-                  <p class="wl-error" id="wl-email-error-hero" data-wl-error="email" hidden></p>
-                </div>
-                <fieldset class="wl-fit" aria-describedby="wl-fit-error-hero">
-                  <legend>Which sounds most like you?</legend>
-                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="lost-the-routine"><span>I used to work out and lost the routine</span></label>
-                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="exercises-regularly"><span>I work out regularly</span></label>
-                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="never-had-a-routine"><span>I've never had a routine</span></label>
-                  <p class="wl-error" id="wl-fit-error-hero" data-wl-error="fit" hidden></p>
-                </fieldset>
-                <label class="wl-choice wl-beta"><input type="checkbox" name="fields[beta_opt_in]" value="true"><span>Invite me to the beta before launch</span></label>
-                <input type="hidden" name="fields[source]" value="unknown">
-                <button type="submit" class="wl-submit">Join the waitlist</button>
-              </div>
-              <div class="wl-guard" data-wl-guard hidden></div>
-              <p class="wl-status" data-wl-status role="status" aria-live="polite"></p>
-            </form>
-            <noscript><p class="waitlist-fallback">The sign-up form needs JavaScript.</p></noscript>
-          </div>
-        </div>
+  <!-- ===== Cooldown ===== -->
+  <section class="sec" id="cooldown" data-step aria-labelledby="cooldown-h">
+    <p class="lbl">Cooldown</p>
+    <h2 class="h2" id="cooldown-h">The short facts.</h2>
+    <ul class="facts">
+      <li>Works offline after setup</li>
+      <li>No equipment</li>
+      <li>No streaks</li>
+      <li>iOS 17 or later</li>
+      <li class="fact-link"><a href="/privacy">Privacy</a></li>
+    </ul>
+    <div class="grid grid-3">
+      <div class="card">
+        <p class="lbl">Zero equipment</p>
+        <h3 class="h3">The hotel room test</h3>
+        <p>The 69-movement bodyweight library needs no workout equipment: a patch of floor and, for a few movements, a wall.</p>
+      </div>
+      <div class="card">
+        <p class="lbl">Fully on your phone</p>
+        <h3 class="h3">No signal required</h3>
+        <p>Airplane mode, hotel room, basement with no bars. Sessions are generated on-device, deterministically, and the session still builds.</p>
+      </div>
+      <div class="card">
+        <p class="lbl">One sign-in</p>
+        <h3 class="h3">Then it stays out of the way</h3>
+        <p>You sign in once, with Apple, Google or an email code, when you set the app up. Your plan and history then save to your account whenever you are connected.</p>
+      </div>
+      <div class="card">
+        <p class="lbl">Strength first</p>
+        <h3 class="h3">Push, Pull, Legs. Then rest.</h3>
+        <p>Every Training Day is strength work, taken in rotation, with a Rest Day after each cycle.</p>
+      </div>
+      <div class="card">
+        <p class="lbl">Ladders, not a catalog</p>
+        <h3 class="h3">You climb a movement</h3>
+        <p>Each movement sits on a ladder. You start on a rung you can win and climb it one cleared rung at a time.</p>
+      </div>
+      <div class="card">
+        <p class="lbl">Stretches at both ends</p>
+        <h3 class="h3">A warm-up and a way down</h3>
+        <p>Sessions open with a short stretch. Sessions of 15 minutes or more add a little core work and close with a stretch too.</p>
       </div>
     </div>
   </section>
 
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">Pillar 3 - The score</p>
-        <h2 class="h1">A score that forgives.</h2>
+  <section class="sec" aria-labelledby="about-h">
+    <p class="lbl">Cooldown · About</p>
+    <h2 class="h2" id="about-h">What we mean by discipline.</h2>
+    <div class="essay">
+      <p>There is a word this page has avoided until now: discipline.</p>
+      <p>Most fitness marketing uses it as a whip. Discipline as a 5am alarm, discipline as punishment, discipline as proof of character. We think that reading is wrong, and worse, useless at 9pm on a Tuesday when the kids are finally down and you have ten minutes and half a phone battery.</p>
+      <div class="definition">
+        <p>Discipline is not effort. Discipline is showing up.</p>
+        <p>Every decision between "I should work out" and "I am working out" is friction, and friction is what kills consistency.</p>
       </div>
-      <p>Rep Today keeps a Consistency Score. It is a forgiving rolling average, not a streak. A 5-minute session counts as a full show-up. Miss a day and your score dips. It never resets. Come back after a gap and the app serves a session that is easy and winnable, and it celebrates the return instead of penalizing it.</p>
-      <p>You're someone who moves, not someone who owes.</p>
-      <p class="muted">There is no XP, no levels, no badges, and no leaderboards anywhere in the app.</p>
-
-      <figure class="evidence">
-        <blockquote>"Then after 200 days, I lost my streak and... breathed a sigh of relief."</blockquote>
-        <figcaption>A Hacker News commenter on a language app's streak. Not about Rep Today; it is the mechanic we chose not to build. <a href="https://hn.algolia.com/api/v1/items/38919053">Source</a></figcaption>
-      </figure>
+      <p>So Rep Today deletes the decisions. Today's session is already built when you open the app. Five minutes counts as a full show-up. Missing yesterday costs you nothing today. The enemy this app is built against is not your character. It is the stack of small choices - which workout, how long, which program, is this the right one - that stands between wanting to move and moving.</p>
+      <p>Put plainly: the app is the disciplined one. It does the preparing, the deciding, the remembering, the adjusting. Every training day it lays a complete session out before you arrive, the way a friend might leave your shoes by the door. What is left for you is the only part that was ever yours to do: press Start.</p>
+      <p class="closing">You're someone who moves. The app's whole job is to make that the easiest true thing you prove today.</p>
     </div>
   </section>
 
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">Why this app exists</p>
-        <h2 class="h1">The distance between wanting to move and moving.</h2>
-        <p>Decision fatigue. The 9pm catalog scroll. Paywall rage. A streak at zero. Four things people keep saying about workout apps, in their own words. None of them are Rep Today users; the app has none yet. They are the reason it is built the way it is.</p>
-      </div>
+  <section class="sec" aria-labelledby="faq-h">
+    <p class="lbl">Cooldown · FAQ</p>
+    <h2 class="h2" id="faq-h">Fair questions</h2>
 
-      <div class="card-grid cols-2">
-        <div class="card">
-          <p class="kicker">Decision fatigue</p>
-          <h3 class="h3">Too many steps between wanting a workout and starting one</h3>
-          <blockquote class="pain-quote">"I need an app that requires little decision-making ... I need the app to tell me exactly what to do."</blockquote>
-          <p class="attribution">A Hacker News commenter describing the workout app they wanted. <a href="https://hn.algolia.com/api/v1/items/36666806">Source</a></p>
-          <p class="answer">Rep Today never asks. The session is on screen when the app opens, with one Start button.</p>
+    <div class="faq">
+      <details>
+        <summary>What is Rep Today not?</summary>
+        <div class="a">
+          <p>It is not a gym program, not a personal trainer, and not a replacement for a gym. It uses no equipment at all, so there are no pull-up bars, no weights and no machines. It is the app for the days when the gym was never going to happen: a real session, sized to the time you actually have, already built.</p>
         </div>
-        <div class="card">
-          <p class="kicker">The 9pm catalog scroll</p>
-          <h3 class="h3">Scrolling a workout library is not working out</h3>
-          <blockquote class="pain-quote">"excessive scrolling, multiple clicks to get to something"</blockquote>
-          <p class="attribution">An App Store reviewer of another fitness app. <a href="https://apps.apple.com/us/app/centr-strength-fitness-app/id1382530817">Source</a></p>
-          <p class="answer">There is no catalog to browse. One session, already built, sized to your default duration.</p>
+      </details>
+
+      <details>
+        <summary>Is there a workout every day?</summary>
+        <div class="a">
+          <p>Most days. After each Push, Pull and Legs cycle the app gives you a Rest Day, because rest is part of the program. On a Rest Day no session is waiting: you can take a five-minute stretch, or tap Train anyway and the next session is built.</p>
         </div>
-        <div class="card">
-          <p class="kicker">Paywall rage</p>
-          <h3 class="h3">A subscription sheet standing between you and a workout</h3>
-          <blockquote class="pain-quote">"you cannot use this app unless you pay for it. You just can't."</blockquote>
-          <p class="attribution">An App Store reviewer of another fitness app. <a href="https://apps.apple.com/us/app/30-day-fitness-workout-at-home/id1099771240">Source</a></p>
-          <p class="answer">Every Rep Today workout is free, forever. The paywall never gates a session.</p>
+      </details>
+
+      <details>
+        <summary>Why are there no streaks?</summary>
+        <div class="a">
+          <p>A streak counts what you could lose, and losing one is a common reason people quit an app for good. Rep Today keeps a Consistency Score instead: a rolling average that dips after a short week and recovers when you return. You're someone who moves. The score's job is to reflect that, not to threaten it.</p>
         </div>
-        <div class="card">
-          <p class="kicker">A streak at zero</p>
-          <h3 class="h3">One missed day erasing months of showing up</h3>
-          <blockquote class="pain-quote">"That was it, back to 0, through no fault of my own."</blockquote>
-          <p class="attribution">A Hacker News commenter on a habit app's streak. <a href="https://hn.algolia.com/api/v1/items/40903998">Source</a></p>
-          <p class="answer">Rep Today has no streaks. A missed day can dent your Consistency Score. Nothing can ever zero it.</p>
+      </details>
+
+      <details>
+        <summary>Does it need internet?</summary>
+        <div class="a">
+          <p>Setting the app up does: you sign in once, and that needs a connection. After that, sessions are generated, played and logged on your phone with no connection. Saving your plan and history to your account, the Premium AI Coach, purchases and deleting your account use a network when they run. None of them sits between opening the app and starting a session.</p>
         </div>
-      </div>
+      </details>
+
+      <details>
+        <summary>Can I build my own workout?</summary>
+        <div class="a">
+          <p>Not from scratch. You can change the length in one tap, ask for a different workout and swap a movement mid-session, but the app decides so you don't have to. With Premium, the Coach can write a Custom Workout when you ask, which you can edit before you accept it. If you want a fully customizable workout planner, this is honestly not that app.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Do I need an account?</summary>
+        <div class="a">
+          <p>Yes, one. You sign in with Apple, Google or an email code when you set the app up, so your plan and history are saved to your Rep Today account and survive a phone change. After that the app does not ask you to sign in again before a session, with or without a connection. Apple Health asks its own permission question, and the app works the same if you decline.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Will I run out of movements?</summary>
+        <div class="a">
+          <p>You don't run out of a movement, you climb it. Strength movements sit on ladders, and the engine starts you on the rung you have reached, opening the next one only once you have cleared it. The push-up ladder starts at the standard push-up, with a wall, incline or knee version offered if a full one is not there yet, and climbs through the wide and diamond push-up toward the archer and one-arm push-up. The squat ladder runs from a wall sit up toward the shrimp squat and pistol squat. The hardest rungs open with the Strength Phase, which you earn by showing up and clearing the foundations, never by paying.</p>
+          <p>Across a week it is the day that varies: Push, Pull, Legs, then rest. Warm-up and cooldown stretches rotate so you are not handed the same one two sessions running, and a Different workout button rebuilds today's session with other movements at the same length.</p>
+          <p>The library is 69 movements, and if what you want is a catalog to browse, this is honestly not that app. It requires no workout equipment, and the work in it has somewhere further to go.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Aren't some free tiers already good?</summary>
+        <div class="a">
+          <p>Yes. Nike Training Club's free tier, for one, is genuinely praised by its own reviewers (<a href="https://apps.apple.com/us/app/nike-training-club-wellness/id301521403">source<span class="vh"> (its App Store page)</span></a>). Rep Today's free promise is aimed at the apps that put the workout itself behind a subscription sheet, not at the apps that already give theirs away. What Rep Today adds on top of free is the rest of the stack at once: already built, offline after setup, nothing to pick.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is my data sold?</summary>
+        <div class="a">
+          <p>Never sold. There are no ads. Your history is stored on your phone first and saved to your Rep Today account when you are connected, and workouts are written to Apple Health only if you allow it.</p>
+          <p>Three things to be plain about. The app collects minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID - and you can turn it off in Settings. The optional Premium AI Coach sends your message and your training records to OpenAI to write its replies. And the pre-launch waitlist keeps your email, your answers to its form, which Rep Today link brought you, if any, and the date you joined; the Privacy Policy's waitlist section says why and for how long. None of that is ever sold either.</p>
+          <p>Full details are in our <a href="/privacy">Privacy Policy</a>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>When does it launch?</summary>
+        <div class="a">
+          <p>It hasn't yet. Rep Today is pre-launch: the core loop is built and tested, but the app is not on the App Store. iOS first, iOS 17 or later, no Android at launch. The waitlist is open now - add your email and we'll tell you the day it ships - but there is no date to announce yet.</p>
+        </div>
+      </details>
     </div>
   </section>
 
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">Pillar 1 - It opens ready</p>
-        <h2 class="h1">Nothing to answer, nothing to pick.</h2>
-        <p>You do not pick a workout. It is on screen when the app opens. Here is exactly how that works, including where AI is involved and where it is not.</p>
-      </div>
+  <div class="beat" data-beat aria-hidden="true"><span class="lbl lbl-rest">Rest</span><div class="beat-bar"><span></span></div><p class="beat-next">Next · Done</p></div>
 
-      <div class="card-grid cols-3">
-        <div class="card">
-          <p class="kicker">1. The engine</p>
-          <h3 class="h3">Every session is built on your phone</h3>
-          <p>A deterministic on-device engine assembles each session from a 76-movement library, fully offline. No server, no login, no quiz. The session is on screen before you could have typed a&nbsp;password.</p>
-        </div>
-        <div class="card">
-          <p class="kicker">2. The tuning</p>
-          <h3 class="h3">It adjusts between sessions, on your phone</h3>
-          <p>Between sessions, the app adjusts how fast you progress, what gets emphasized, and how much variety you see. Every workout is generated and safety-checked by Rep Today's deterministic on-device engine.</p>
-          <p>Optional AI can add a session-description line with an offline fallback. Premium members may also choose to use the network-based AI Coach, which sends their prompt and necessary derived workout context through Rep Today to OpenAI and can recommend only bounded between-session tuning. It never generates a workout, and nothing about it sits between opening the app and pressing Start.</p>
-        </div>
-        <div class="card">
-          <p class="kicker">3. The duration chip</p>
-          <h3 class="h3">Change one thing in one tap</h3>
-          <p>Got 20 minutes instead of 10? One tap on the duration chip, anywhere from 5 to 60 minutes, and the new session is there before your thumb lifts. It never asks "how long do you have?", and Start is never disabled while it happens.</p>
-        </div>
+  <!-- ===== Done ===== -->
+  <section class="sec done" id="done" data-step aria-labelledby="done-h">
+    <div class="done-head">
+      <div class="done-mark" aria-hidden="true">
+        <svg width="96" height="96" viewBox="0 0 100 100"><path d="M6 66a44 44 0 0 1 88 0v9a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z" fill="#FF6B3D"/></svg>
+        <span class="tick"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
       </div>
-
-      <figure class="evidence">
-        <blockquote>"Making the decision can be emotionally and mentally taxing, whereas if I rely on the default ... the rest of the day just flows from that without the decision fatigue."</blockquote>
-        <figcaption>A Hacker News commenter on why a default beats a decision. Not a Rep Today user; we don't have any yet. <a href="https://hn.algolia.com/api/v1/items/37784759">Source</a></figcaption>
-      </figure>
+      <h2 class="done-title" id="done-h">You showed up.</h2>
+      <p class="done-sub">That took a minute. So does starting.</p>
+      <p class="lead">Rep Today is pre-launch. Join the waitlist and we'll email you the moment it's on the App Store - no date to announce yet, no spam, one launch email, plus a beta invitation only if you ask for one.</p>
     </div>
-  </section>
-
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">Pillar 2 - Planned pricing</p>
-        <h2 class="h1">Free means the workouts. All of them. Forever.</h2>
-        <p>The paywall never gates a workout. Premium unlocks depth, not the core loop. Premium exists so the people who want more depth fund the app, instead of the workouts being taxed. Prices below are planned and may change before launch.</p>
-      </div>
-
-      <div class="card-grid cols-2">
-        <div class="card">
-          <p class="kicker">Free</p>
-          <p class="price">$0</p>
-          <ul class="plan-list">
-            <li>Unlimited workouts, forever</li>
-            <li>All durations, 5 to 60 minutes</li>
-            <li>All three pillars, all 76 movements</li>
-            <li>Works offline, no account needed</li>
-          </ul>
-        </div>
-        <div class="card">
-          <p class="kicker">Premium, planned</p>
-          <p class="price">$7.99<span class="per"> /month, or $59.99 /year</span></p>
-          <ul class="plan-list">
-            <li>14-day trial</li>
-            <li>Deeper analytics on your training, from day one</li>
-            <li>The Strength Phase, included the moment your consistency and cleared movement tiers unlock it</li>
-          </ul>
-          <p class="plan-note small">Until the Strength Phase unlocks, Premium is the analytics. The Strength Phase changes how sessions are programmed; every session remains free to generate and start.</p>
-        </div>
-      </div>
-
-      <figure class="evidence">
-        <blockquote>"the app won't do anything until you sign up for the free trial (which, if you forget, will convert to paid)"</blockquote>
-        <figcaption>A Hacker News commenter on another app's trial. It is the pattern this pricing is built against. <a href="https://hn.algolia.com/api/v1/items/39991813">Source</a></figcaption>
-      </figure>
-    </div>
-  </section>
-
-  <section class="band">
-    <div class="container">
-      <p class="overline" style="color: var(--fern);">Pillar 4 - Zero equipment</p>
-      <h2 class="h1">No workout equipment. Use the space you already have.</h2>
-      <p class="lead">Airplane mode, hotel room, basement with no bars. The session still builds, on your phone, not on a server.</p>
-
-      <div class="band-grid">
-        <div class="band-item">
-          <p class="num">Zero equipment</p>
-          <h3>The hotel room test</h3>
-          <p>The 76-movement bodyweight library requires no workout equipment; each session is designed for the space you already have.</p>
-        </div>
-        <div class="band-item">
-          <p class="num">Fully offline</p>
-          <h3>No signal required</h3>
-          <p>Sessions are generated on-device, deterministically. The app works the same with the network off as on.</p>
-        </div>
-        <div class="band-item">
-          <p class="num">No account</p>
-          <h3>Nothing to sign up for</h3>
-          <p>The app works fully without an account. Sign in with Apple is optional and separate from private CloudKit sync.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">Pillar 5 - The library</p>
-        <h2 class="h1">Mobility is a pillar, not a warm-up.</h2>
-        <p>Half your session can be the part other apps skip. The 76-movement library is built for zero-equipment training, with no bands, bar, or bench required.</p>
-      </div>
-
-      <div class="card-grid cols-3">
-        <div class="card">
-          <h3 class="h3">Mobility</h3>
-          <p>Co-primary, not a warm-up. Mobility work is programmed for how a desk day actually feels, and it earns full space in the session, weighted equally with strength and primal in the engine.</p>
-        </div>
-        <div class="card">
-          <h3 class="h3">Bodyweight strength</h3>
-          <p>Push, hinge, squat, and hold patterns with nothing but your body. Difficulty backs off immediately when a session was too hard and climbs gradually when it was too easy.</p>
-        </div>
-        <div class="card">
-          <h3 class="h3">Primal movement</h3>
-          <p>Crawls, holds, and ground work as a first-class pillar. The part of the library that makes a patch of floor feel like enough room to train.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="manifesto">
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">About</p>
-        <h2 class="h1">What we mean by discipline.</h2>
-      </div>
-      <div class="essay">
-        <p>There is a word this page has avoided until now: discipline.</p>
-        <p>Most fitness marketing uses it as a whip. Discipline as a 5am alarm, discipline as punishment, discipline as proof of character. We think that reading is wrong, and worse, useless at 9pm on a Tuesday when the kids are finally down and you have ten minutes and half a phone battery.</p>
-        <div class="definition">
-          <p>Discipline is not effort. Discipline is showing up.</p>
-          <p>Every decision between "I should work out" and "I am working out" is friction, and friction is what kills consistency.</p>
-        </div>
-        <p>So Rep Today deletes the decisions. The session is already on the screen when you open the app. Five minutes counts as a full show-up. Missing yesterday costs you nothing today. The enemy this app is built against is not your character. It is the stack of small choices - which workout, how long, which program, is this the right one - that stands between wanting to move and moving.</p>
-        <p>Put plainly: the app is the disciplined one. It does the preparing, the deciding, the remembering, the adjusting. Every day it lays a complete session out before you arrive, the way a friend might leave your shoes by the door. What is left for you is the only part that was ever yours to do: press Start.</p>
-        <p>You're someone who moves. The app's whole job is to make that the easiest true thing you prove today.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="container">
-      <div class="section-head">
-        <p class="overline">FAQ</p>
-        <h2 class="h1">Fair questions</h2>
-      </div>
-
-      <div class="faq">
-        <details>
-          <summary>What is Rep Today not?</summary>
-          <div class="answer">
-            <p>It is not a strength program, not coaching, and not a replacement for a gym. It is the app for the days when the gym was never going to happen: a real session, sized to the time you actually have, already on screen.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Why are there no streaks?</summary>
-          <div class="answer">
-            <p>A streak counts what you could lose, and losing one is a common reason people quit an app for good. Rep Today keeps a Consistency Score instead: a rolling average that dips when you miss and recovers when you return. You're someone who moves. The score's job is to reflect that, not to threaten it.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Does it need internet?</summary>
-          <div class="answer">
-            <p>The core workout experience does not need internet: sessions are generated and run on your phone. Optional features use a network, including AI-generated session language, the premium AI Coach, purchases, and private CloudKit synchronization when iCloud is available. None of them sits between opening the app and starting a generated workout.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Can I build my own workout?</summary>
-          <div class="answer">
-            <p>No. You can change the duration in one tap and swap a movement mid-session, but the app decides so you don't have to. If you want a fully customizable workout planner, this is honestly not that app.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Do I need an account?</summary>
-          <div class="answer">
-            <p>No. The app works fully without one. Sign in with Apple is optional and separate from private CloudKit sync. When iCloud is available for Rep Today, your profile, completed workout history, and in-force session policy sync automatically through your private iCloud; you can manage this in your device's iCloud settings. Apple Health asks its own permission question, and nothing asks before your first session.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Will I run out of movements?</summary>
-          <div class="answer">
-            <p>You don't run out of a movement, you climb it. Strength and primal movements sit in progression chains, and the engine starts you at the tier you have reached, moving you up only once you have cleared the one below it. Each movement pattern has easier and harder tiers: the push-up pattern starts as gently as a wall push-up and climbs through the knee and standard push-up toward the diamond and archer push-up, and the squat pattern runs from a wall sit up toward the shrimp squat and pistol squat. It is a push-up the whole way up, and it does not stay the same push-up.</p>
-            <p>Across a session it is the combination that varies. Sessions draw on three pillars - bodyweight strength, mobility, primal movement - and the engine keeps a variety window, so movements you did recently rotate out of the mix before they come back. Your first week is deliberately varied across all three pillars.</p>
-            <p>The library is 76 movements, and if what you want is a catalog to browse, this is honestly not that app. It requires no workout equipment, and the strength and primal work in it has somewhere further to go.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Aren't some free tiers already good?</summary>
-          <div class="answer">
-            <p>Yes. Nike Training Club's free tier, for one, is genuinely praised by its own reviewers (<a href="https://apps.apple.com/us/app/nike-training-club-wellness/id301521403">source</a>). Rep Today's free promise is aimed at the apps that put the workout itself behind a subscription sheet, not at the apps that already give theirs away. What Rep Today adds on top of free is the rest of the stack at once: instant open, offline, question-free.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Is my data sold?</summary>
-          <div class="answer">
-            <p>Never sold. There are no ads, and the core loop needs no account: your history lives on your device, with optional sync to your own private iCloud, and workouts are written to Apple Health only if you choose.</p>
-            <p>Two things to be plain about. The app plans minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID. And the pre-launch waitlist keeps your email, your answers to its form, which Rep Today link brought you, if any, and the date you joined; the Privacy Policy's waitlist section says why and for how long. None of that is ever sold either.</p>
-            <p>Full details are in our <a href="/privacy">Privacy Policy</a>.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>When does it launch?</summary>
-          <div class="answer">
-            <p>It hasn't yet. Rep Today is pre-launch: the core loop is built and tested, but the app is not on the App Store. iOS first, iOS 17 or later, no Android at launch. The waitlist is open now - add your email and we'll tell you the day it ships - but there is no date to announce yet.</p>
-          </div>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <section class="signup">
-    <div class="container">
-      <div class="section-head">
-        <p class="overline" style="color: var(--fern);">Before it ships</p>
-        <h2 class="h1">Be there on day one.</h2>
-        <p class="lead">Rep Today is pre-launch. Join the waitlist and we'll email you the moment it's on the App Store - no date to announce yet, no spam, one launch email, plus a beta invitation only if you ask for one.</p>
-      </div>
+    <div class="anchor" id="waitlist">
       <div class="waitlist" role="group" aria-labelledby="waitlist-foot-head">
         <p class="waitlist-head" id="waitlist-foot-head">Join the waitlist</p>
         <p class="waitlist-sub">Add your email and we'll tell you the day it ships.</p>
@@ -1162,23 +480,22 @@
 
 </main>
 
-<footer class="site">
-  <div class="container">
-    <div class="wordmark">
-      <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
-        <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
-      </svg>
-      <span class="name">Rep Today</span>
-    </div>
-    <div class="legal small">
-      <p><a href="/privacy">Privacy Policy</a></p>
-      <p>Screen images simulated. App is pre-release. Pre-launch. A USPTO search was completed and the App Store name was reserved on 2026-08-07. This does not state that a trademark was registered or legally&nbsp;cleared.</p>
-      <p>Built for iOS 17+.</p>
-    </div>
+<footer class="foot">
+  <span class="brand">
+    <svg width="20" height="20" viewBox="0 0 100 100" aria-hidden="true"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="currentColor" stroke-width="7"/><circle cx="50" cy="66" r="12" fill="currentColor"/></svg>
+    <span>Rep Today</span>
+  </span>
+  <div class="foot-links small"><a href="/privacy">Privacy Policy</a></div>
+  <div class="legal small">
+    <p>Screen images simulated. App is pre-release. Pre-launch. A USPTO search was completed and the App Store name was reserved on 2026-08-07. This does not state that a trademark was registered or legally&nbsp;cleared.</p>
+    <p>Built for iOS 17+.</p>
   </div>
 </footer>
+  </div>
+
+</div>
 
 <script src="/waitlist.js"></script>
+<script src="/session.js" defer></script>
 </body>
 </html>
