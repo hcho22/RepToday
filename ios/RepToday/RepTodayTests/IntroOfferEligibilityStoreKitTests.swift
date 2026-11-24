@@ -4,8 +4,9 @@ import XCTest
 @testable import RepToday
 
 /// Regression for the paywall's trial line against a real StoreKit test session (the local
-/// `RepToday.storekit` configuration): a fresh Apple ID is shown the monthly free trial, and one that
-/// already used it is not. Runs through `LiveStoreKitFacade` and the service, the production path.
+/// `RepToday.storekit` configuration): a fresh Apple ID is shown the free trial on both plans, and one
+/// that already used it on either plan sees it on neither, because Apple grants one introductory offer
+/// per subscription group. Runs through `LiveStoreKitFacade` and the service, the production path.
 ///
 /// Both tests skip where the session never takes control of StoreKit: iOS 26.3+ simulators never receive
 /// the configuration under `xcodebuild test` (the session logs `SKInternalErrorDomain` code 3; Apple
@@ -77,20 +78,33 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
         // StoreKit test session, which can outlast the paywall's settle timeout. Awaiting it here, with
         // no timeout, warms the session the way the purchase does in the test below.
         let plans = try await plans()
-        XCTAssertEqual(plans.first?.trialDescription, "14-day free trial")
-        XCTAssertNil(plans.last?.trialDescription)
+        XCTAssertEqual(plans.map(\.period), [.monthly, .yearly])
+        XCTAssertEqual(plans.map(\.trialDescription), ["14-day free trial", "14-day free trial"])
         let labels = try await paywallLabels(capturing: "fresh-user-paywall.png")
-        XCTAssertTrue(labels.contains { $0.contains("14-day free trial") }, "\(labels)")
+        for priceLine in ["$7.99 / month", "$59.99 / year"] {
+            XCTAssertTrue(labels.contains { $0.contains(priceLine) && $0.contains("14-day free trial") },
+                          "\(priceLine) carries the trial: \(labels)")
+        }
     }
 
-    func testUserWhoAlreadyUsedTheTrialSeesNoTrialLine() async throws {
-        try await session.buyProduct(identifier: SubscriptionPlan.ProductID.monthly)
-        try session.expireSubscription(productIdentifier: SubscriptionPlan.ProductID.monthly)
-        let labels = try await paywallLabels(capturing: "trial-used-paywall.png")
+    func testUserWhoUsedTheMonthlyTrialSeesNoTrialLineOnEitherPlan() async throws {
+        try await assertNoTrialAfterUsingIt(on: SubscriptionPlan.ProductID.monthly,
+                                            capturing: "trial-used-paywall.png")
+    }
+
+    func testUserWhoUsedTheYearlyTrialSeesNoTrialLineOnEitherPlan() async throws {
+        try await assertNoTrialAfterUsingIt(on: SubscriptionPlan.ProductID.yearly,
+                                            capturing: "yearly-trial-used-paywall.png")
+    }
+
+    private func assertNoTrialAfterUsingIt(on productID: String, capturing name: String) async throws {
+        try await session.buyProduct(identifier: productID)
+        try session.expireSubscription(productIdentifier: productID)
+        let labels = try await paywallLabels(capturing: name)
         XCTAssertFalse(labels.contains { $0.contains("free trial") }, "\(labels)")
         let plans = try await plans()
-        XCTAssertEqual(plans.first?.period, .monthly)
-        XCTAssertNil(plans.first?.trialDescription, "a consumed trial must not be promised again")
-        XCTAssertEqual(plans.first?.priceLine, "$7.99 / month")
+        XCTAssertEqual(plans.map(\.period), [.monthly, .yearly])
+        XCTAssertEqual(plans.map(\.trialDescription), [nil, nil], "a consumed trial must not be promised again")
+        XCTAssertEqual(plans.map(\.priceLine), ["$7.99 / month", "$59.99 / year"])
     }
 }

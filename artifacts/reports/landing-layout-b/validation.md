@@ -55,7 +55,7 @@ Each row is a claim the old page or the wireframe made that is no longer true of
 | How it works | "It never asks 'how long do you have?'" | "The app opens at the length you usually finish" | Onboarding asks once; the default is then learned. |
 | Pricing, Free | "All three pillars, all 76 movements" | "Every Training Day and every movement ladder, the earned Strength Phase included" | Pillars are gone; the Strength Phase is free. |
 | Pricing, Free | "Works offline, no account needed" | "Sessions work offline after a one-time sign-in" | Accounts. |
-| Pricing, Premium | "14-day trial" | "14-day free trial on the monthly plan" | Only the monthly product has an introductory offer. |
+| Pricing, Premium | "14-day trial" | "14-day free trial on the monthly plan" | Only the monthly product had an introductory offer. Superseded 2026-11-24: both plans carry the trial and the pages read "14-day free trial on either plan". |
 | Pricing, Premium | "Deeper analytics", "The Strength Phase, included", "Until the Strength Phase unlocks, Premium is the analytics" | The AI Coach and deeper analytics; "The Strength Phase is earned, never bought" | The Strength Phase is not a Premium feature; the Coach is. |
 | Score | "Miss a day and your score dips. It never resets ... it celebrates the return" | "Fall short one week and your score dips. It does not reset ... it counts the comeback as a full show-up" | Weekly score; no celebration screen. |
 | Short facts | "No account. Nothing to sign up for. ... Sign in with Apple is optional and separate from private CloudKit sync." | "One sign-in": Apple, Google or an email code, then your plan and history save to your account | Accounts replaced iCloud sync. |

@@ -67,9 +67,11 @@ is written to a per-run temporary directory so an ordinary test run leaves the w
    free-trial offer, and the configured positive monthly price. Observe exactly one `subscribe` with
    `plan = com.reptoday.app.premium.monthly`.
 6. Allow or force one more renewal. Observe no additional `subscribe`; it is an already-paid renewal.
-7. Repeat from a clean transaction history with the yearly product, which has no introductory offer.
-   Observe the paywall's direct-purchase `subscribe`, then confirm its first renewal produces no second
-   observer event.
+7. Exercise a direct paid purchase. Both products carry the same two-week introductory offer and
+   Apple grants one per subscription group, so cancel the monthly subscription, let it expire without
+   clearing the transaction history, and confirm the paywall no longer shows a trial line. Then buy
+   the yearly product. Observe the paywall's direct-purchase `subscribe`, then confirm its first
+   renewal produces no second observer event.
 8. Repeat the monthly trial but refund/revoke the first renewal in the transaction manager before the
    observer handles it (use a debugger pause if needed). Confirm a revoked update emits nothing. Run
    an Ask-to-Buy/pending purchase separately and confirm it emits neither monetization event before

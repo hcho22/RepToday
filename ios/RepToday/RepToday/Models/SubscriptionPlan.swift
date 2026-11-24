@@ -72,7 +72,7 @@ struct SubscriptionPlan: Identifiable, Equatable, Hashable {
             id: ProductID.yearly,
             displayPrice: "$59.99",
             period: .yearly,
-            trialDescription: nil
+            trialDescription: "14-day free trial"
         ),
     ]
 }

@@ -65,6 +65,11 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "9A5B2C10-1002-4A00-9000-REPTODAYYR01",
+          "introductoryOffer" : {
+            "internalID" : "9A5B2C10-1102-4A00-9000-REPTODAYYTR1",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
           "localizations" : [
             {
               "description" : "The coach and the deeper view, billed yearly - pattern balance, weekly volume, and difficulty mix.",
